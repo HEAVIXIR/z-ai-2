@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { checkCsrf } from "@/lib/csrf";
 import { hasPermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
-import { publishWanted, fulfillWanted, closeWantedByAdmin, WantedServiceError } from "@/lib/wanted-service";
+import { publishWanted, fulfillWanted, closeWantedByAdmin, rejectWanted, WantedServiceError } from "@/lib/wanted-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,11 +68,16 @@ export async function PATCH(req: Request, { params }: Params) {
     else if (body.action === "unverify") data.verified = false;
     // P0-D: close + fulfill go through the canonical service functions
     // (state machine + CAS), NOT the generic update below.
-    else if (body.action === "close" || body.action === "fulfill") {
+    else if (body.action === "close" || body.action === "fulfill" || body.action === "reject") {
       try {
-        const result = body.action === "close"
-          ? await closeWantedByAdmin(id, sessionUser.id)
-          : await fulfillWanted(id, sessionUser.id);
+        // H.2.6: "reject" routes through rejectWanted (REJECTED terminal
+        // state, audited as marketplace.wanted.reject). close/fulfill keep
+        // their canonical service functions. All three use the state
+        // machine + CAS + audit; none fall through to the generic update.
+        const result =
+          body.action === "close" ? await closeWantedByAdmin(id, sessionUser.id)
+          : body.action === "fulfill" ? await fulfillWanted(id, sessionUser.id)
+          : await rejectWanted(id, sessionUser.id);
         try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests/id] revalidateTag failed:', e); }
         return NextResponse.json({ ok: true, request: result });
       } catch (err: any) {

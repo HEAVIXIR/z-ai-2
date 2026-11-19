@@ -440,7 +440,29 @@ export default function NewListingPage() {
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
       if (imagesUploading) return false;
-      if (isServiceFlow) return Boolean(serviceTypeId);
+      if (isServiceFlow) {
+        // H.2.3 (P1 fix): WANTED + intent=SERVICE_REQUEST is a service-flow
+        // demand, but it MUST still satisfy the WANTED quantity / budget /
+        // deadline checks. Previously the `isServiceFlow` branch short-
+        // circuited to `Boolean(serviceTypeId)` and never reached the
+        // WANTED-specific block below, so a buyer could advance to the
+        // review step with an inverted/negative budget or an expired
+        // deadline. The server is the safety net, but the wizard must fail
+        // closed at the step that collects those fields.
+        if (!serviceTypeId) return false;
+        if (isWantedServiceRequest) {
+          const wq = Number(wanted.quantity);
+          const wmin = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\d]/g, "")) : null;
+          const wmax = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\d]/g, "")) : null;
+          const wdeadline = wanted.deadline ? new Date(`${wanted.deadline}T23:59:00`) : null;
+          return Number.isInteger(wq) && wq >= 1 && wq <= 10000 &&
+            (wmin === null || wmin >= 0n) &&
+            (wmax === null || wmax >= 0n) &&
+            (wmin === null || wmax === null || wmin <= wmax) &&
+            (!wdeadline || (!Number.isNaN(wdeadline.getTime()) && wdeadline.getTime() > Date.now()));
+        }
+        return true;
+      }
       if (transactionType === "QUOTE") {
         const quantity = Number(rfq.quantity);
         const min = rfq.budgetMin ? BigInt(rfq.budgetMin.replace(/[^\d]/g, "")) : null;
@@ -462,15 +484,53 @@ export default function NewListingPage() {
           (!deadline || (!Number.isNaN(deadline.getTime()) && deadline.getTime() > Date.now()));
       }
       if (isRequestFlow) return true;
-      if (isRent) return Boolean(form.price && form.rentalPeriod && images.length >= 1);
-      if (isAuction) return Boolean(form.price && auction.minIncrement && auction.startDate && auction.endDate && images.length >= 1);
-      return form.price && images.length >= 1;
+      if (isRent) {
+        // P1 fix (H.2.4d): treat price "0" / non-digit as invalid client-side
+        // (previously the string "0" was truthy and passed gating, only to be
+        // rejected by the server at submit time).
+        const rentPriceOk = Boolean(form.price) && /^\d+$/.test(String(form.price).replace(/[^\d]/g, "")) && BigInt(String(form.price).replace(/[^\d]/g, "") || "0") > 0n;
+        return Boolean(rentPriceOk && form.rentalPeriod && images.length >= 1);
+      }
+      if (isAuction) {
+        // H.2.4d (P1 fix): mirror the server-side auction sanity checks
+        // client-side (startPrice>0, minIncrement>0, reservePrice>=startPrice,
+        // endDate>startDate, startDate not far in the past) so the user gets
+        // inline feedback instead of a submit-time 400.
+        if (!(form.price && auction.minIncrement && auction.startDate && auction.endDate && images.length >= 1)) return false;
+        const startPrice = BigInt(String(form.price).replace(/[^\d]/g, "") || "0");
+        const minInc = BigInt(String(auction.minIncrement).replace(/[^\d]/g, "") || "0");
+        if (startPrice <= 0n || minInc <= 0n) return false;
+        if (auction.reservePrice) {
+          const reserve = BigInt(String(auction.reservePrice).replace(/[^\d]/g, "") || "0");
+          if (reserve < startPrice) return false;
+        }
+        const s = new Date(auction.startDate);
+        const e = new Date(auction.endDate);
+        if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return false;
+        if (e.getTime() <= s.getTime()) return false;
+        // Allow up to 5 min clock skew (server allows 60s; be lenient here).
+        if (s.getTime() < Date.now() - 5 * 60 * 1000) return false;
+        return true;
+      }
+      // SALE (default): price must be a positive integer string ("0" is not
+      // a valid price). See H.2.4d for the rationale.
+      const salePriceOk = Boolean(form.price) && /^\d+$/.test(String(form.price).replace(/[^\d]/g, "")) && BigInt(String(form.price).replace(/[^\d]/g, "") || "0") > 0n;
+      return Boolean(salePriceOk && images.length >= 1);
     }
     return true;
   };
 
   const next = () => canProceed() && setStep((s) => Math.min(7, s + 1));
   const back = () => setStep((s) => Math.max(1, s - 1));
+
+  // H.2.4e: stable idempotency key for the current submission attempt.
+  // Generated lazily on first submit and reused on retry so the server
+  // resolves a network-blip resubmission to the prior result instead of
+  // creating a duplicate. Cleared on definitive success so the next
+  // (separate) submission gets a fresh key. A 400/validation failure does
+  // NOT clear the key — but no audit row was written, so the next attempt
+  // is still a fresh create (findIdempotentResult returns null).
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -556,9 +616,19 @@ export default function NewListingPage() {
       }
 
       const endpoint = transactionType === "WANTED" ? "/api/wanted" : "/api/listings";
+      // Generate (or reuse) the idempotency key for this submission.
+      if (!idempotencyKeyRef.current) {
+        idempotencyKeyRef.current =
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `k${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+      }
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKeyRef.current,
+        },
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
@@ -576,6 +646,9 @@ export default function NewListingPage() {
       // P0-B: always capture the created id + slug for the success-screen link.
       if (data.id) setCreatedId(String(data.id));
       if (data.slug) setCreatedSlug(String(data.slug));
+      // Success is definitive — clear the idempotency key so a future,
+      // separate submission cannot accidentally replay this one.
+      idempotencyKeyRef.current = null;
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {

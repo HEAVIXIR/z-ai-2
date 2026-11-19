@@ -185,6 +185,55 @@ export const WANTED_CREATE: RateLimitPreset = {
 };
 
 /**
+ * Listing creation (SALE/RENT/AUCTION/QUOTE/SERVICE_*) — 10 per hour per
+ * authenticated user. Mirrors WANTED_CREATE: a seller spamming the
+ * moderation queue with listings is the supply-side equivalent of the
+ * demand-side duplicate-submit storm. In-process, per-isolate.
+ */
+export const LISTING_CREATE: RateLimitPreset = {
+  limit: 10,
+  windowMs: HOUR,
+  scope: "user",
+  label: "listing-create",
+};
+
+/**
+ * Legacy /api/requests adapter creation — 10 per hour per authenticated
+ * user. The legacy route funnels into createWanted; the same duplicate-
+ * submit risk applies until the route is retired.
+ */
+export const REQUEST_CREATE: RateLimitPreset = {
+  limit: 10,
+  windowMs: HOUR,
+  scope: "user",
+  label: "request-create",
+};
+
+/**
+ * Standalone RFQ creation (/api/rfq) — 10 per hour per authenticated
+ * user. Each RFQ opens a procurement workflow that consumes seller
+ * attention; unbounded creation would flood the quote marketplace.
+ */
+export const RFQ_CREATE: RateLimitPreset = {
+  limit: 10,
+  windowMs: HOUR,
+  scope: "user",
+  label: "rfq-create",
+};
+
+/**
+ * Quote submission on an RFQ (/api/rfq/[id]/quotes) — 20 per hour per
+ * authenticated seller. A seller may quote on several RFQs, but the
+ * rate must not allow quote-spam against a single RFQ.
+ */
+export const QUOTE_SUBMIT: RateLimitPreset = {
+  limit: 20,
+  windowMs: HOUR,
+  scope: "user",
+  label: "quote-submit",
+};
+
+/**
  * Convenience map for runtime lookup by name (useful if a future
  * dispatcher selects presets dynamically).
  */
@@ -207,6 +256,10 @@ export const RATE_LIMIT_PRESETS = {
   COMPANY_INVITATION_ACCEPT,
   COMPANY_CREATE,
   WANTED_CREATE,
+  LISTING_CREATE,
+  REQUEST_CREATE,
+  RFQ_CREATE,
+  QUOTE_SUBMIT,
 } as const;
 
 export type RateLimitPresetName = keyof typeof RATE_LIMIT_PRESETS;

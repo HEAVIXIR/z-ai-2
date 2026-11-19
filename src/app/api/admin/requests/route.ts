@@ -124,7 +124,8 @@ export async function POST(req: Request) {
       case "unverify": data = { verified: false }; break;
       case "approve":
       case "close":
-      case "fulfill": {
+      case "fulfill":
+      case "reject": {
         // P0-B + P0-C + P0-D: delegate to the canonical
         // bulkTransitionWanted service function, which:
         //  - deduplicates + validates + caps ids at 100 (P0-B)
@@ -135,9 +136,11 @@ export async function POST(req: Request) {
         //  - enforces the transition matrix (P0-D: only valid
         //    transitions proceed; terminal states rejected)
         //  - returns approved count + rejected ids with their status
+        // H.2.6: "reject" is now a first-class action (REJECTED was a
+        // recognized terminal status but previously unreachable).
         try {
           const result = await bulkTransitionWanted(
-            action as "approve" | "close" | "fulfill",
+            action as "approve" | "close" | "fulfill" | "reject",
             ids,
             sessionUser.id,
           );

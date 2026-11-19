@@ -32,6 +32,12 @@ export interface LogAuditParams {
   userAgent?: string | null;
   requestId?: string | null;
   reason?: string | null;
+  // H.2.4e: optional stable delivery key. When supplied, the audit row is
+  // written with AuditLog.idempotencyKey (a @unique column). Callers that
+  // accept an Idempotency-Key header use this to make replay idempotent:
+  // a retry finds the prior audit row by key+action+actor and returns the
+  // cached result instead of creating a duplicate entity.
+  idempotencyKey?: string | null;
 }
 
 function safeStringify(value: unknown): string | null {
@@ -62,6 +68,7 @@ export async function logAudit(params: LogAuditParams): Promise<void> {
         userAgent: ua,
         requestId: params.requestId ?? null,
         reason: params.reason ?? null,
+        idempotencyKey: params.idempotencyKey ?? null,
       },
     });
   } catch (err) {
@@ -103,6 +110,7 @@ export async function logAuditStrict(params: LogAuditParams): Promise<void> {
       userAgent: ua,
       requestId: params.requestId ?? null,
       reason: params.reason ?? null,
+      idempotencyKey: params.idempotencyKey ?? null,
     },
   });
 }

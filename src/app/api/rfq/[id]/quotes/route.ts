@@ -23,6 +23,11 @@
  */
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
+import { readBoundedJson } from "@/lib/read-bounded-json";
+import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { rateLimitKey } from "@/lib/request-context";
+import { QUOTE_SUBMIT } from "@/lib/rate-limit-presets";
 import {
   getRFQ,
   submitQuote,
@@ -31,6 +36,10 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// H.2.4b: body-size ceiling for quote submission. A quote carries a price,
+// delivery time, validity and notes — 64 KiB is generous.
+const MAX_QUOTE_BODY_BYTES = 64 * 1024;
 
 /* GET /api/rfq/[id]/quotes — list quotes for an RFQ.
  * The RFQ details are also returned so the client can render
@@ -86,7 +95,13 @@ export async function GET(
 }
 
 /* POST /api/rfq/[id]/quotes — submit a quote (authenticated
- * seller). Body: { price, deliveryTime?, validity?, notes? }. */
+ * seller). Body: { price, deliveryTime?, validity?, notes? }.
+ *
+ * H.2.4b: previously this route accepted an UNBOUNDED body with NO CSRF
+ * check and NO rate limit. It now applies CSRF + bounded-body +
+ * QUOTE_SUBMIT rate-limit so a logged-in seller cannot quote-spam an RFQ
+ * or submit via a cross-site request.
+ */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -101,14 +116,41 @@ export async function POST(
       );
     }
 
-    const body = await req.json().catch(() => ({}));
-    const { price, deliveryTime, validity, notes } = body;
+    // CSRF — state-changing mutation, must be origin-checked.
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
+
+    // Rate limit — user-scoped, caps quote-spam.
+    const rl = rateLimit({
+      key: rateLimitKey(user.id, QUOTE_SUBMIT.label),
+      limit: QUOTE_SUBMIT.limit,
+      windowMs: QUOTE_SUBMIT.windowMs,
+    });
+    if (!rl.ok) {
+      const retryAfter = retryAfterSeconds(rl.resetAt);
+      return NextResponse.json(
+        { error: "تعداد درخواست‌ها بیش از حد مجاز است. لطفاً بعداً تلاش کنید." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      );
+    }
+
+    // Bounded read BEFORE JSON.parse — caps body size at 64 KiB.
+    const parsedBody = await readBoundedJson<Record<string, unknown>>(req, MAX_QUOTE_BODY_BYTES);
+    if (!parsedBody.ok) {
+      return NextResponse.json({ error: parsedBody.error }, { status: parsedBody.status });
+    }
+    const body = parsedBody.value;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "بدنه درخواست معتبر نیست." }, { status: 400 });
+    }
+    const { price, deliveryTime, validity, notes } = body as Record<string, unknown>;
 
     const quote = await submitQuote(id, user.id, {
-      price,
-      deliveryTime,
-      validity,
-      notes,
+      price: price as string | number | bigint,
+      deliveryTime: deliveryTime as string | null | undefined,
+      validity: validity as string | null | undefined,
+      notes: notes as string | null | undefined,
       userId: user.id,
     });
 

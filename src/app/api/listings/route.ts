@@ -20,6 +20,10 @@ import { trackError } from "@/lib/error-tracking";
 import { getAsset, attachAsset } from "@/lib/media-service";
 import { validateListingAttributeValues } from "@/lib/listing-attributes";
 import { readBoundedJson } from "@/lib/read-bounded-json";
+import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { rateLimitKey } from "@/lib/request-context";
+import { LISTING_CREATE } from "@/lib/rate-limit-presets";
+import { extractIdempotencyKey, findIdempotentResult } from "@/lib/idempotency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -338,6 +342,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
     }
 
+    // H.2.4e: rate limit — user-scoped, caps listing-create spam against
+    // the moderation queue (mirrors WANTED_CREATE on the demand side).
+    {
+      const rl = rateLimit({
+        key: rateLimitKey(user.id, LISTING_CREATE.label),
+        limit: LISTING_CREATE.limit,
+        windowMs: LISTING_CREATE.windowMs,
+      });
+      if (!rl.ok) {
+        const retryAfter = retryAfterSeconds(rl.resetAt);
+        return NextResponse.json(
+          { error: "تعداد درخواست‌ها بیش از حد مجاز است. لطفاً بعداً تلاش کنید." },
+          { status: 429, headers: { "Retry-After": String(retryAfter) } },
+        );
+      }
+    }
+
     const parsedBody = await readBoundedJson<Record<string, any>>(
       req,
       MAX_LISTING_REQUEST_BODY_BYTES,
@@ -351,6 +372,36 @@ export async function POST(req: Request) {
     const body = parsedBody.value;
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return NextResponse.json({ error: "بدنه درخواست معتبر نیست." }, { status: 400 });
+    }
+
+    // H.2.4e: idempotency. If the client sent an Idempotency-Key header,
+    // resolve to the prior listing result on retry instead of creating a
+    // duplicate listing (which would mint a fresh slug). The check runs
+    // before field validation so a retry short-circuits fast.
+    const idempotencyKey = extractIdempotencyKey(req);
+    if (idempotencyKey) {
+      const prior = await findIdempotentResult({
+        key: idempotencyKey,
+        action: "marketplace.listing.create",
+        actorId: user.id,
+      });
+      if (prior) {
+        // The cached result carries the listing id; fetch the slug so the
+        // client can navigate to the listing detail page on replay.
+        const cached = await db.listing.findUnique({
+          where: { id: prior.id },
+          select: { id: true, slug: true, status: true },
+        });
+        if (cached) {
+          return NextResponse.json({
+            ok: true,
+            id: cached.id,
+            slug: cached.slug,
+            status: cached.status,
+            idempotentReplay: true,
+          });
+        }
+      }
     }
 
     const title = String(body.title ?? "").trim();
@@ -778,6 +829,37 @@ export async function POST(req: Request) {
       expiresAt: null,
     };
 
+    // H.2.4d: server-side RENT validation. The client enforces these in
+    // canProceed, but a direct API caller can bypass the wizard. Fail
+    // closed on: rentalPeriod required + enum; deposit >= 0;
+    // minimumRentalPeriod integer >= 1; availabilityEnd > availabilityStart.
+    if ((body.listingType || body.transactionType) === "RENT") {
+      const RENTAL_PERIODS = new Set(["HOURLY", "DAILY", "WEEKLY", "MONTHLY", "PROJECT"]);
+      const rp = body.rentalPeriod ? String(body.rentalPeriod) : "";
+      if (!rp || !RENTAL_PERIODS.has(rp)) {
+        return NextResponse.json({ error: "دوره اجاره معتبر نیست." }, { status: 400 });
+      }
+      if (body.deposit !== undefined && body.deposit !== "") {
+        const dep = parseBig(body.deposit);
+        if (dep === null || dep < 0n) {
+          return NextResponse.json({ error: "مبلغ ودیعه نمی‌تواند منفی باشد." }, { status: 400 });
+        }
+      }
+      if (body.minimumRentalPeriod !== undefined && body.minimumRentalPeriod !== "") {
+        const minP = parseNumber(body.minimumRentalPeriod);
+        if (minP === null || !Number.isInteger(minP) || minP < 1) {
+          return NextResponse.json({ error: "حداقل دوره اجاره باید عدد صحیح مثبت باشد." }, { status: 400 });
+        }
+      }
+      if (body.availabilityStart && body.availabilityEnd) {
+        const s = new Date(body.availabilityStart);
+        const e = new Date(body.availabilityEnd);
+        if (!isNaN(s.getTime()) && !isNaN(e.getTime()) && e.getTime() <= s.getTime()) {
+          return NextResponse.json({ error: "پایان دسترس‌پذیری باید پس از شروع آن باشد." }, { status: 400 });
+        }
+      }
+    }
+
     // P2-5b — Rental fields (additive; only stored when listingType=RENT).
     if ((body.listingType || body.transactionType) === "RENT") {
       if (body.rentalPeriod) data.rentalPeriod = String(body.rentalPeriod);
@@ -842,6 +924,35 @@ export async function POST(req: Request) {
       }
       return created;
     });
+
+    // H.2.4e: audit the listing create itself. Previously only the nested
+    // RFQ/Auction children were audited, so a SALE/RENT/SERVICE listing
+    // left no `marketplace.listing.create` trail. The idempotencyKey is
+    // stamped so a retried submission resolves to this row on replay.
+    try {
+      await logAudit({
+        actorId: user.id,
+        actorType: "USER",
+        action: "marketplace.listing.create",
+        entityType: "Listing",
+        entityId: listing.id,
+        idempotencyKey: idempotencyKey ?? null,
+        after: {
+          id: listing.id,
+          slug: listing.slug,
+          title: listing.title,
+          listingType: listing.listingType,
+          status: listing.status,
+          categoryId: listing.categoryId ?? null,
+          brandId: listing.brandId ?? null,
+          modelId: listing.modelId ?? null,
+          serviceTypeId: listing.serviceTypeId ?? null,
+        },
+        reason: `ثبت آگهی: ${listing.title}`,
+      });
+    } catch (auditError) {
+      console.error("[listings] listing create audit deferred", auditError instanceof Error ? auditError.message : "unknown");
+    }
 
     if (listing.rfq) {
       try {

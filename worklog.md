@@ -8925,3 +8925,66 @@ Stage Summary:
   * origin/security/49.2X-08-vA-vE-completion: 81f07f44412ab404086a87bf85789ae92e05a499
   * origin/ci/production-gates: 98614cd56a653423ee9efce0a1aded477a6d51a5  (still at main — push was rejected)
 - PR #3: untouched (no `gh` CLI available to query status programmatically, but no git operation touched its branch or commits).
+
+---
+
+## PHASE H.2 — Listing-form completion hardening (2026-11-19)
+
+**Branch:** `integration/preview-readiness-workerd-2026-11-15`
+**Directive:** Senior-manager PHASE H.2 (final listing form completion).
+
+### Delivered WITHOUT a migration (committed this phase)
+- **H.2.3 (P1):** fixed the WANTED+SERVICE_REQUEST `canProceed` short-circuit
+  in `listings/new/page.tsx` — the service-flow branch now also enforces the
+  WANTED quantity/budget/deadline checks (previously bypassed).
+- **H.2.4a (P0 security):** added CSRF to `/api/wanted/[id]` PATCH/DELETE
+  (cross-site close was possible; DELETE delegates to PATCH so both are covered).
+- **H.2.4b (P0 security):** added CSRF + rate-limit + bounded body to the
+  legacy `/api/requests` POST, `/api/rfq` POST, and `/api/rfq/[id]/quotes`
+  POST (all were unguarded). Added `LISTING_CREATE`/`REQUEST_CREATE`/
+  `RFQ_CREATE`/`QUOTE_SUBMIT` presets.
+- **H.2.4c (P0 integrity):** `/api/wanted` POST now fails closed on invalid
+  `categoryId`/`brandId`/`modelId`/`serviceTypeId` (existence + brand↔model +
+  category↔model compatibility) and validates `attributeValues` shape.
+  Previously best-effort (NULL on miss / unvalidated).
+- **H.2.4d:** RENT server-side validation (rentalPeriod enum+required,
+  deposit≥0, minimumRentalPeriod int≥1, availabilityEnd>start) + AUCTION
+  client `canProceed` (reservePrice≥startPrice, endDate>startDate) +
+  SALE/RENT price-"0" client fix.
+- **H.2.4e (idempotency):** audit-log-backed idempotency via the existing
+  `AuditLog.idempotencyKey` column (no migration). `logAudit` writes the key;
+  `createWanted` forwards it; `/api/wanted` + `/api/listings` POST do
+  check-before-create on retry; the wizard sends `Idempotency-Key` header.
+- **H.2.4e:** added `LISTING_CREATE` rate-limit + `marketplace.listing.create`
+  audit log to `/api/listings` POST (was missing — only RFQ/Auction children
+  were audited).
+- **H.2.6:** `rejectWanted` service function + `reject` action in the bulk +
+  single-row admin routes (REJECTED was terminal but unreachable). Dashboard
+  counters now include REJECTED + EXPIRED separately.
+
+### BLOCKED (proposal only — migration gate)
+- **H.2.2:** WANTED structured storage (quantity/categoryId/brandId/modelId/
+  serviceTypeId/attributeValues as canonical FKs/relations on `BuyRequest`).
+  Execution-ready migration SQL + schema diff + service code + round-trip test
+  plan in `docs/operations/RFC-WANTED-STRUCTURAL-STORAGE-H2.md`. Migration
+  execution NOT authorized (backup/restore gate).
+- **H.2.5:** media orphan-cleanup audit + proposal in
+  `docs/operations/MEDIA-ORPHAN-CLEANUP-PROPOSAL.md`. SALE/RENT/AUCTION/SERVICE
+  media pipeline (staging→ListingImage relation→attach→retry→display) verified
+  sound; orphan sweep is the only open item.
+- **H.2.8:** Preview #346 still blocked (schema drift — `Listing.serviceTypeId`
+  migration not applied to Preview DB). Read-only diagnosis continued; no
+  deploy/mutation.
+
+### Tests
+- Updated `tests/unit/listing-taxonomy-domain-forms.test.ts` +
+  `tests/security/step-13.31-error-leak.test.ts` to match the new behavior.
+- Added `tests/contract/phase-h2-listing-form-hardening.test.ts` (21 contract
+  tests covering H.2.3/4a/4b/4c/4d/4e/6).
+- typecheck + lint clean; full suite: only DB/env-dependent tests fail (store/
+  phaseN need PostgreSQL+seed — green in CI).
+
+### Identity preservation
+- H.1 preserved: `/dashboard/wanted` success destination, server-side auth +
+  `userId` ownership filter, public WANTED ACTIVE-only, Step 1 intent selector.
+- Token scrubbed from disk after use; no leakage in commits/logs/issues.

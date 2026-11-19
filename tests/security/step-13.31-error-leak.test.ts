@@ -121,7 +121,7 @@ describe("STEP 13.31 — P2-C: error path does not leak raw err.message", () => 
     const res = await POST(
       new Request("http://localhost/api/rfq", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Origin: "http://localhost:3000" },
         body: JSON.stringify({ title: "Test RFQ Title" }),
       }),
     );
@@ -289,7 +289,7 @@ describe("STEP 13.31 — P2-C: error path does not leak raw err.message", () => 
     const res = await POST(
       new Request("http://localhost/api/rfq/rfq-1/quotes", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Origin: "http://localhost:3000" },
         body: JSON.stringify({ price: 100000000 }),
       }),
       { params: Promise.resolve({ id: "rfq-1" }) },

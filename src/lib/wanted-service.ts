@@ -86,6 +86,7 @@ const STATUS_PUBLISHED = "ACTIVE"; // schema-active = publicly visible
 const STATUS_PENDING = "PENDING"; // awaiting admin review before publication
 const STATUS_CLOSED = "CLOSED";
 const STATUS_FULFILLED = "FULFILLED";
+const STATUS_REJECTED = "REJECTED"; // H.2.6: moderation rejection (admin)
 
 // ── State-machine (P0-C, P0-D) ──────────────────────────────────
 // A single canonical transition map. Every status mutation in this
@@ -107,8 +108,8 @@ const TERMINAL_STATUSES = new Set([
  * Any transition not listed here is rejected with 409.
  */
 const ALLOWED_TRANSITIONS: Record<string, Record<string, string>> = {
-  PENDING: { approve: STATUS_PUBLISHED, close: STATUS_CLOSED, fulfill: STATUS_FULFILLED },
-  ACTIVE: { close: STATUS_CLOSED, fulfill: STATUS_FULFILLED },
+  PENDING: { approve: STATUS_PUBLISHED, close: STATUS_CLOSED, fulfill: STATUS_FULFILLED, reject: STATUS_REJECTED },
+  ACTIVE: { close: STATUS_CLOSED, fulfill: STATUS_FULFILLED, reject: STATUS_REJECTED },
   // Terminal states: no outbound transitions.
   CLOSED: {},
   FULFILLED: {},
@@ -122,7 +123,7 @@ const ALLOWED_TRANSITIONS: Record<string, Record<string, string>> = {
  * null if it is not. This is the single source of truth for "can this
  * action be applied to this row".
  */
-function resolveTransitionTarget(currentStatus: string, action: "approve" | "close" | "fulfill"): string | null {
+function resolveTransitionTarget(currentStatus: string, action: "approve" | "close" | "fulfill" | "reject"): string | null {
   const allowed = ALLOWED_TRANSITIONS[currentStatus];
   if (!allowed) return null;
   return allowed[action] ?? null;
@@ -257,6 +258,14 @@ export async function createWanted(params: {
   serviceTypeId?: string | null;
   attributeValues?: unknown[] | null;
   userId: string;
+  /**
+   * H.2.4e: optional stable delivery key. When supplied, it is written to
+   * AuditLog.idempotencyKey (@unique) so a retried submission with the
+   * same key resolves to the prior result instead of creating a duplicate.
+   * The API route performs the check-before-create; the service only
+   * stamps the key on the audit row.
+   */
+  idempotencyKey?: string | null;
 }): Promise<{ id: string; status: string }> {
   const {
     title,
@@ -279,6 +288,7 @@ export async function createWanted(params: {
     serviceTypeId = null,
     attributeValues = null,
     userId,
+    idempotencyKey = null,
   } = params;
 
   // ── Validate ──
@@ -381,6 +391,7 @@ export async function createWanted(params: {
     action: "marketplace.wanted.create",
     entityType: "BuyRequest",
     entityId: request.id,
+    idempotencyKey: idempotencyKey ?? null,
     after: {
       title: request.title,
       status: "PENDING_REVIEW", // the task-spec semantic status (awaiting moderation)
@@ -843,6 +854,87 @@ export async function closeWantedByAdmin(
   return { id, status: targetStatus };
 }
 
+// ── rejectWanted (H.2.6) ───────────────────────────────────────
+/**
+ * Reject a wanted request (status → REJECTED). Moderation action owned
+ * by admins. Audited as `marketplace.wanted.reject` (actorType: ADMIN).
+ * Idempotent on already-REJECTED. Uses the canonical state machine +
+ * CAS (same pattern as closeWantedByAdmin). Terminal states (CLOSED,
+ * FULFILLED, EXPIRED, REJECTED) are rejected with 409.
+ *
+ * Previously REJECTED was a recognized terminal status but had NO
+ * inbound transition and NO service function — admin could not put a
+ * request into REJECTED via any API. This completes the moderation
+ * lifecycle so a reviewer can reject (not just close) a request.
+ *
+ * @throws WantedServiceError(404) when the request doesn't exist.
+ * @throws WantedServiceError(400) when id or adminUserId is empty.
+ * @throws WantedServiceError(409) when the request is in a terminal
+ *   state that cannot transition to REJECTED.
+ */
+export async function rejectWanted(
+  id: string,
+  adminUserId: string,
+): Promise<{ id: string; status: string }> {
+  if (!id) {
+    throw new WantedServiceError(400, "id الزامی است");
+  }
+  if (!adminUserId) {
+    throw new WantedServiceError(400, "adminUserId الزامی است");
+  }
+
+  const before = await db.buyRequest.findUnique({
+    where: { id },
+    select: { id: true, status: true, title: true },
+  });
+  if (!before) {
+    throw new WantedServiceError(404, "درخواست خرید یافت نشد");
+  }
+  // Idempotent — already rejected.
+  if (before.status === STATUS_REJECTED) {
+    return { id: before.id, status: before.status };
+  }
+
+  const targetStatus = resolveTransitionTarget(before.status, "reject");
+  if (!targetStatus) {
+    throw new WantedServiceError(
+      409,
+      `درخواست در وضعیت نهایی «${before.status}» است و قابل رد کردن نیست.`,
+    );
+  }
+
+  const casResult = await db.buyRequest.updateMany({
+    where: { id, status: before.status },
+    data: { status: targetStatus },
+  });
+  if (casResult.count === 0) {
+    const current = await db.buyRequest.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (current && current.status === STATUS_REJECTED) {
+      return { id, status: current.status };
+    }
+    throw new WantedServiceError(
+      409,
+      `وضعیت درخواست در حین رد کردن به «${current?.status ?? "?"}» تغییر کرد. دوباره تلاش کنید.`,
+    );
+  }
+
+  await logAudit({
+    actorId: adminUserId,
+    actorType: "ADMIN",
+    action: "marketplace.wanted.reject",
+    entityType: "BuyRequest",
+    entityId: id,
+    before: { status: before.status },
+    after: { status: targetStatus },
+    reason: `رد درخواست خرید ${id} توسط مدیر — ${before.title ?? ""}`,
+  });
+
+  return { id, status: targetStatus };
+}
+
 /**
  * Bulk transition wanted requests with a compare-and-set that is
  * concurrency-safe per-row. Used by the admin bulk approve/close/fulfill
@@ -860,7 +952,7 @@ export async function closeWantedByAdmin(
  * @param ids — deduplicated, validated, capped at 100.
  */
 export async function bulkTransitionWanted(
-  action: "approve" | "close" | "fulfill",
+  action: "approve" | "close" | "fulfill" | "reject",
   rawIds: string[],
   adminUserId: string,
 ): Promise<{

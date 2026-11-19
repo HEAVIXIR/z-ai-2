@@ -44,6 +44,7 @@ import {
   listWanted,
   WantedServiceError,
 } from "@/lib/wanted-service";
+import { extractIdempotencyKey, findIdempotentResult } from "@/lib/idempotency";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -188,6 +189,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "بدنه درخواست معتبر نیست." }, { status: 400 });
     }
 
+    // H.2.4e: idempotency. If the client sent an Idempotency-Key header,
+    // look up a prior successful submission with the same key+actor. A
+    // retry (network blip, double-click) resolves to the cached result
+    // instead of creating a duplicate BuyRequest. The check runs BEFORE
+    // field validation so a retry short-circuits fast.
+    const idempotencyKey = extractIdempotencyKey(req);
+    if (idempotencyKey) {
+      const prior = await findIdempotentResult({
+        key: idempotencyKey,
+        action: "marketplace.wanted.create",
+        actorId: userId,
+      });
+      if (prior) {
+        return NextResponse.json({
+          ok: true,
+          success: true,
+          id: prior.id,
+          status: prior.status,
+          idempotentReplay: true,
+        });
+      }
+    }
+
     const {
       title,
       description,
@@ -297,6 +321,106 @@ export async function POST(req: Request) {
       }
     }
 
+    // H.2.4c (P0 data integrity): fail-closed taxonomy validation.
+    // Previously createWanted resolved categoryId/brandId to display names
+    // best-effort and silently stored NULL on a miss, while modelId and
+    // serviceTypeId were accepted unvalidated (audit-only). A direct API
+    // caller could submit arbitrary/garbage IDs and produce a BuyRequest
+    // with a NULL category or a modelId that does not belong to the
+    // supplied brand. The directive requires invalid taxonomy IDs and
+    // mismatched brand/model/category combinations to fail closed at the
+    // API boundary. The structured FK persistence itself remains blocked
+    // on the migration freeze; this validation runs against the live
+    // Category/Brand/ProductModel/ServiceType tables so the IDs are at
+    // least provably valid before the request enters the moderation queue.
+    const requestedCategoryId = categoryId ? String(categoryId) : null;
+    const requestedBrandId = brandId ? String(brandId) : null;
+    const requestedModelId = modelId ? String(modelId) : null;
+    const requestedServiceTypeId = serviceTypeId ? String(serviceTypeId) : null;
+
+    const [categoryRow, brandRow, modelRow, serviceTypeRow] = await Promise.all([
+      requestedCategoryId
+        ? db.category.findUnique({
+            where: { id: requestedCategoryId },
+            select: { id: true, active: true, name: true },
+          })
+        : Promise.resolve(null),
+      requestedBrandId
+        ? db.brand.findUnique({
+            where: { id: requestedBrandId },
+            select: { id: true, active: true, status: true, name: true },
+          })
+        : Promise.resolve(null),
+      requestedModelId
+        ? db.productModel.findUnique({
+            where: { id: requestedModelId },
+            select: { id: true, status: true, brandId: true, categoryId: true, name: true },
+          })
+        : Promise.resolve(null),
+      requestedServiceTypeId
+        ? db.serviceType.findFirst({
+            where: { id: requestedServiceTypeId, active: true },
+            select: { id: true, key: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    if (requestedCategoryId && (!categoryRow || !categoryRow.active)) {
+      return NextResponse.json({ error: "دسته‌بندی انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+    }
+    if (requestedBrandId && (!brandRow || !brandRow.active || brandRow.status !== "ACTIVE")) {
+      return NextResponse.json({ error: "برند انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+    }
+    if (requestedModelId) {
+      if (!modelRow || modelRow.status !== "ACTIVE") {
+        return NextResponse.json({ error: "مدل انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+      }
+      // Brand/model compatibility: if a brand was also supplied, the model
+      // must belong to that brand. A mismatched pair is rejected closed.
+      if (requestedBrandId && modelRow.brandId !== requestedBrandId) {
+        return NextResponse.json(
+          { error: "مدل انتخاب‌شده متعلق به برند انتخاب‌شده نیست." },
+          { status: 400 },
+        );
+      }
+      // Category/model compatibility: if a category was also supplied and
+      // the model carries a direct categoryId, they must match. (Models
+      // may also be linked via ProductModelAttributeCategory — that path
+      // is not enforced here to avoid an extra join, but the existence +
+      // brand checks above already close the common abuse vector.)
+      if (requestedCategoryId && modelRow.categoryId && modelRow.categoryId !== requestedCategoryId) {
+        return NextResponse.json(
+          { error: "مدل انتخاب‌شده با دسته‌بندی انتخاب‌شده سازگار نیست." },
+          { status: 400 },
+        );
+      }
+    }
+    if (requestedServiceTypeId && !serviceTypeRow) {
+      return NextResponse.json({ error: "نوع خدمت انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
+    }
+
+    // H.2.4c: attributeValues shape validation. The structured FK
+    // persistence is blocked on the migration freeze, but the payload
+    // must still be a well-formed array of attribute snapshots so the
+    // audit `after` payload (the only current carrier) is not garbage.
+    if (attributeValues !== undefined && attributeValues !== null) {
+      if (!Array.isArray(attributeValues)) {
+        return NextResponse.json({ error: "attributeValues باید یک آرایه باشد." }, { status: 400 });
+      }
+      if (attributeValues.length > 100) {
+        return NextResponse.json({ error: "تعداد ویژگی‌ها نمی‌تواند بیش از ۱۰۰ مورد باشد." }, { status: 400 });
+      }
+      for (const av of attributeValues) {
+        if (!av || typeof av !== "object" || Array.isArray(av)) {
+          return NextResponse.json({ error: "هر ویژگی باید یک شیء باشد." }, { status: 400 });
+        }
+        const obj = av as Record<string, unknown>;
+        if (typeof obj.attributeId !== "string" || !obj.attributeId) {
+          return NextResponse.json({ error: "هر ویژگی باید شامل attributeId معتبر باشد." }, { status: 400 });
+        }
+      }
+    }
+
     const created = await createWanted({
       title: typeof title === "string" ? title : "",
       description: description as string | null | undefined,
@@ -314,6 +438,7 @@ export async function POST(req: Request) {
       city: selectedCity?.name ?? (requestedCityId ? null : (city as string | null | undefined)),
       deadline: normalizedDeadline,
       userId,
+      idempotencyKey,
     });
 
     // Invalidate the homepage "requests" cache tag so the new

@@ -73,7 +73,14 @@ export default async function DashboardWantedPage() {
     total: requests.length,
     pending: requests.filter((r) => r.status === "PENDING").length,
     active: requests.filter((r) => r.status === "ACTIVE").length,
+    // H.2.6: the "closed" bucket previously counted only CLOSED/FULFILLED,
+    // so REJECTED and EXPIRED requests contributed to `total` but to no
+    // lifecycle counter — they appeared in the list with a badge but were
+    // invisible in the summary. They are now first-class counters so the
+    // owner can see the full lifecycle distribution at a glance.
     closed: requests.filter((r) => r.status === "CLOSED" || r.status === "FULFILLED").length,
+    rejected: requests.filter((r) => r.status === "REJECTED").length,
+    expired: requests.filter((r) => r.status === "EXPIRED").length,
   };
 
   return (
@@ -83,7 +90,7 @@ export default async function DashboardWantedPage() {
         <div className="mt-6">
           <h1 className="text-2xl font-black text-white">درخواست‌های خرید من</h1>
           <p className="mt-1 text-sm text-white/50">
-            {toFa(stats.total)} درخواست کل · {toFa(stats.pending)} در انتظار بررسی · {toFa(stats.active)} فعال · {toFa(stats.closed)} بسته‌شده
+            {toFa(stats.total)} درخواست کل · {toFa(stats.pending)} در انتظار بررسی · {toFa(stats.active)} فعال · {toFa(stats.closed)} بسته‌شده{stats.rejected > 0 ? ` · ${toFa(stats.rejected)} ردشده` : ""}{stats.expired > 0 ? ` · ${toFa(stats.expired)} منقضی` : ""}
           </p>
         </div>
 
