@@ -627,7 +627,7 @@ model BuyRequest {
   // DB-enforced idempotency: @unique lets createWanted catch P2002 on a truly
   // concurrent double-submit (closes the gap the audit-log-backed idempotency
   // leaves open). Nullable → existing rows unaffected.
-  idempotencyKey  String?  @unique
+  idempotencyKey  String?
 
   // ── H.3 structured-spec relations ──
   // SetNull: deleting a Category/Brand/ProductModel/ServiceType nulls the FK
@@ -640,6 +640,9 @@ model BuyRequest {
   // ── H.3 typed-attribute relation (parent rows; see BuyRequestAttributeOption child) ──
   attributeValues BuyRequestAttributeValue[]
 
+  // Idempotency keys are scoped to the authenticated owner; different users
+  // may legitimately generate the same client-side key without colliding.
+  @@unique([userId, idempotencyKey])
   @@index([categoryId])
   @@index([brandId])
   @@index([modelId])
