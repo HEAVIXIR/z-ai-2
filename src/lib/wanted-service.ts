@@ -221,11 +221,10 @@ export async function createWanted(params: {
   attributeValues?: unknown[] | null;
   userId: string;
   /**
-   * H.2.4e: optional stable delivery key. When supplied, it is written to
-   * AuditLog.idempotencyKey (@unique) so a retried submission with the
-   * same key resolves to the prior result instead of creating a duplicate.
-   * The API route performs the check-before-create; the service only
-   * stamps the key on the audit row.
+   * Optional stable delivery key. It is written to BuyRequest's owner-scoped
+   * composite unique key and the audit trail. The API route handles sequential
+   * replay; the DB constraint closes concurrent create races without
+   * cross-user key collisions.
    */
   idempotencyKey?: string | null;
 }): Promise<{ id: string; status: string }> {
@@ -306,9 +305,8 @@ export async function createWanted(params: {
 
   // ── Demand intent ──
   // `intent` is the canonical demand-side signal (BUY/RENT/SERVICE).
-  // It is stored in BuyRequest.transaction (no schema migration — the
-  // column is a free-text String) and is what the matching engine
-  // reads to narrow the supply candidate pool to compatible types.
+  // It is stored in both BuyRequest.transaction (legacy compatibility) and
+  // BuyRequest.intent (canonical structured field) for matching/filtering.
   // Prefer the explicit `intent` param; fall back to the legacy
   // `transactionType` alias (which carried the listing-type label,
   // e.g. "WANTED"). normalizeDemandIntent collapses legacy/unknown
@@ -348,7 +346,7 @@ export async function createWanted(params: {
   // the whole request (no orphan BuyRequest, no orphan attribute rows).
   //
   // DB-level idempotency: idempotencyKey is written to BuyRequest.idempotencyKey
-  // (@unique). A truly concurrent double-submit (race before either request
+  // (composite unique on userId + idempotencyKey). A truly concurrent double-submit (race before either request
   // audits) is caught by the P2002 unique violation — we fetch the existing
   // row and return it idempotently. This closes the gap the audit-log-backed
   // idempotency leaves open (sequential retries were already handled in the
