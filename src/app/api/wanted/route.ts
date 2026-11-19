@@ -338,7 +338,7 @@ export async function POST(req: Request) {
     // WANTED's optional suggested price is an exact budget when no range is supplied.
     // Never silently discard it or ambiguously combine it with a min/max range.
     const hasSuggestedPrice = price !== undefined && price !== null && String(price).trim() !== "";
-    if (hasSuggestedPrice && (budgetMin !== undefined && budgetMin !== null && budgetMin !== "" || budgetMax !== undefined && budgetMax !== null && budgetMax !== "")) {
+    if (hasSuggestedPrice && ((budgetMin !== undefined && budgetMin !== null && budgetMin !== "") || (budgetMax !== undefined && budgetMax !== null && budgetMax !== ""))) {
       return NextResponse.json({ error: "قیمت پیشنهادی را جداگانه وارد کنید یا از بازه حداقل/حداکثر بودجه استفاده کنید؛ هر دو هم‌زمان مجاز نیستند." }, { status: 400 });
     }
     const effectiveBudgetMin = hasSuggestedPrice ? price : budgetMin;
@@ -362,6 +362,9 @@ export async function POST(req: Request) {
       };
       const bMin = parseBudget(effectiveBudgetMin);
       const bMax = parseBudget(effectiveBudgetMax);
+      if (hasSuggestedPrice && bMin === null) {
+        return NextResponse.json({ error: "قیمت پیشنهادی باید یک مبلغ عددی معتبر باشد." }, { status: 400 });
+      }
       if (bMin !== null && bMin < 0n) {
         return NextResponse.json({ error: "حداقل بودجه نمی‌تواند منفی باشد." }, { status: 400 });
       }
@@ -492,7 +495,7 @@ export async function POST(req: Request) {
       quantity: normalizedQuantity,
       budgetMin: effectiveBudgetMin as string | number | bigint | null | undefined,
       budgetMax: effectiveBudgetMax as string | number | bigint | null | undefined,
-      categoryId: categoryId as string | null | undefined,
+      categoryId: requestedCategoryId,
       brandId: brandId as string | null | undefined,
       modelId: modelId as string | null | undefined,
       attributeValues: attributeValues as unknown[] | null | undefined,
