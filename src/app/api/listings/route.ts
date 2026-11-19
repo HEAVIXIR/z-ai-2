@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
-import { categoryLayerForTransactionType, requiresListingImage, requiresListingPrice } from "@/lib/transaction-type-routing";
+import { categoryLayerForTransactionType, isRequestTransactionType, requiresListingImage, requiresListingPrice } from "@/lib/transaction-type-routing";
 import { getCurrentUser } from "@/lib/auth";
 import { toPublicListingDTO } from "@/lib/public-listing-dto";
 import { parseBig, parseNumber, slugify, uniqueSlug } from "@/lib/api-helpers";
@@ -352,12 +352,6 @@ export async function POST(req: Request) {
     if (!title || title.length < 3) {
       return NextResponse.json({ error: "عنوان آگهی معتبر نیست" }, { status: 400 });
     }
-    if (!body.categoryId) {
-      return NextResponse.json(
-        { error: "دسته‌بندی الزامی است؛ انتخاب برند اختیاری است." },
-        { status: 400 },
-      );
-    }
 
     const rawTransactionType = body.transactionType ?? body.listingType;
     if (!rawTransactionType) {
@@ -370,6 +364,31 @@ export async function POST(req: Request) {
     });
     if (!transactionType || !transactionType.active) {
       return NextResponse.json({ error: "نوع معامله معتبر یا فعال نیست." }, { status: 400 });
+    }
+
+    // The listings route materializes SUPPLY listings only. A demand-side
+    // BuyRequest (WANTED) is its own domain — a standalone entity with a
+    // dedicated canonical entry point (POST /api/wanted → wanted-service
+    // → createWanted). Accepting it here would materialize a supply
+    // Listing for a demand post, which contaminates the matching engine's
+    // candidate pool (a demand post would become a supply candidate).
+    // QUOTE is handled inline below as an RFQ attached to a listing (the
+    // RFQ domain), so it is the one request type this route keeps.
+    if (isRequestTransactionType(transactionType.key) && transactionType.key !== "QUOTE") {
+      return NextResponse.json(
+        {
+          error:
+            "ثبت تقاضای خرید از مسیر اختصاصی /api/wanted انجام می‌شود؛ این مسیر فقط آگهی عرضه می‌سازد.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!body.categoryId) {
+      return NextResponse.json(
+        { error: "دسته‌بندی الزامی است؛ انتخاب برند اختیاری است." },
+        { status: 400 },
+      );
     }
 
     const isServiceTransaction = ["SERVICE_REQUEST", "SERVICE_OFFER"].includes(transactionType.key);
