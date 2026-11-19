@@ -84,7 +84,8 @@ describe("P0-A + P0-B: intent in Step 1 + review screen completeness", () => {
     expect(successBlock).toContain("createdSlug");
     expect(successBlock).toContain("createdId");
     expect(successBlock).toContain("مشاهده آگهی ثبت‌شده");
-    expect(successBlock).toContain("مشاهده درخواست ثبت‌شده");
+    // H.1: WANTED success links to the dashboard (not the public API).
+    expect(successBlock).toContain("مشاهده درخواست در داشبورد");
   });
 
   it("P0-B: review screen has additional review rows", () => {

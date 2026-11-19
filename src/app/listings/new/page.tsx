@@ -637,10 +637,21 @@ export default function NewListingPage() {
           {submitted ? (
             <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/[0.06] p-10 text-center">
               <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-emerald-400" />
-              <h1 className="text-2xl font-black text-white">آگهی شما ثبت شد!</h1>
+              <h1 className="text-2xl font-black text-white">
+                {transactionType === "WANTED" ? "درخواست خرید شما ثبت شد!" : "آگهی شما ثبت شد!"}
+              </h1>
+              {/* H.1: show the created id + status so the user can verify */}
+              {createdId && (
+                <p className="mt-2 text-xs text-white/40">
+                  شناسه: <span className="font-mono text-white/60">{createdId}</span>
+                  {" · "}
+                  وضعیت: <span className="font-bold text-amber-300">در انتظار بررسی</span>
+                </p>
+              )}
               <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-white/55">
-                آگهی شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. در صورت تأیید، در صفحهٔ
-                آگهی‌ها نمایش داده می‌شود و وارد کمپین «فروش در ۷ روز» می‌گردد.
+                {transactionType === "WANTED"
+                  ? "درخواست شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. پس از تأیید، در فهرست درخواست‌های خرید فعال نمایش داده می‌شود و برای تطبیق با آگهی‌های عرضه مناسب در دسترس قرار می‌گیرد."
+                  : "آگهی شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. در صورت تأیید، در صفحهٔ آگهی‌ها نمایش داده می‌شود و وارد کمپین «فروش در ۷ روز» می‌گردد."}
               </p>
               {mediaWarning && (
                 <div className="mx-auto mt-5 max-w-md rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-right text-xs leading-6 text-amber-200">
@@ -679,10 +690,10 @@ export default function NewListingPage() {
                 )}
                 {createdId && transactionType === "WANTED" && (
                   <Link
-                    href={`/api/wanted/${createdId}`}
+                    href="/dashboard/wanted"
                     className="rounded-xl bg-[#F58220] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
                   >
-                    مشاهده درخواست ثبت‌شده
+                    مشاهده درخواست در داشبورد
                   </Link>
                 )}
                 <Link
