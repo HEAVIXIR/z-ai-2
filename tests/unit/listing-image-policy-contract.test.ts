@@ -43,7 +43,7 @@ describe("listing image subscription policy", () => {
     expect(resolver).toContain("plan?.maxListings");
     expect(resolver).toContain("PREMIUM_LISTING_IMAGE_POLICY");
     expect(resolver).toContain("PRO_LISTING_IMAGE_POLICY");
-    expect(resolver).toContain("Math.min(configuredMaxListings, tierPolicy.maxListings)");
+    expect(resolver).toContain("maxListings: tierPolicy.maxListings");
     expect(adminComparison).toContain("تا ۴ آگهی فعال");
     expect(adminComparison).toContain("تا ۱۰ آگهی فعال");
     expect(adminComparison).toContain("تا ۲۰ آگهی فعال");
