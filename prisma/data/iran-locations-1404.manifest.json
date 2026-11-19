@@ -1,0 +1,18 @@
+{
+  "datasetFile": "iran-locations-1404.json",
+  "sha256": "e12c51e0a040e3a59ea500fc970b0f9ecc74893c80faa44db9f263389f04bc44",
+  "sourceFile": "prisma/data/iran-cities-1404.json",
+  "sourceBlobSha": "c263180e617a23360255b2acd08c8333a76d5bb8",
+  "sourceUrl": "https://github.com/sajaddp/list-of-cities-in-Iran",
+  "sourceVersion": "3.1.2",
+  "officialSourceYear": 1404,
+  "sourceLicense": "GPL-3.0",
+  "sourceRecords": 1481,
+  "distinctCities": 1479,
+  "provinces": 31,
+  "countries": 1,
+  "normalization": "Country → Province → City; county/district/village records are not modeled or exposed",
+  "duplicatePolicy": "Two same-name records in the same province were collapsed by the source snapshot to fit the existing province/name unique key.",
+  "rightsReviewStatus": "PENDING",
+  "commercialUseAllowed": false
+}
