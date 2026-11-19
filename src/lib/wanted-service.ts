@@ -363,19 +363,23 @@ export async function createWanted(params: {
   // as the BuyRequest row (atomic — an attribute write failure rolls back the
   // whole request, no orphan BuyRequest without its spec).
   let validatedAttributes: NormalizedBuyRequestAttributeValue[] = [];
-  if (Array.isArray(attributeValues) && attributeValues.length > 0) {
-    const validation = await validateBuyRequestAttributeValues(
-      db,
-      { categoryId, modelId },
-      attributeValues,
-      false, // isAdmin — sellers cannot self-assert ADMIN_VERIFIED
-      false, // enforceRequired — the wizard already gates required fields client-side
-    );
-    if (!validation.ok) {
-      throw new WantedServiceError(400, validation.error);
-    }
-    validatedAttributes = validation.values;
+  if (attributeValues !== null && attributeValues !== undefined && !Array.isArray(attributeValues)) {
+    throw new WantedServiceError(400, "attributeValues باید یک آرایه باشد.");
   }
+  // Always run server-side validation, including when the client submits no
+  // attributes: required CategoryAttribute/ProductModelAttribute values must
+  // not be bypassable by calling the API directly or omitting the payload.
+  const validation = await validateBuyRequestAttributeValues(
+    db,
+    { categoryId, modelId },
+    Array.isArray(attributeValues) ? attributeValues : [],
+    false, // isAdmin — sellers cannot self-assert ADMIN_VERIFIED
+    true,  // enforceRequired — server is authoritative for required attributes
+  );
+  if (!validation.ok) {
+    throw new WantedServiceError(400, validation.error);
+  }
+  validatedAttributes = validation.values;
 
   // ── H.3: Persist (atomic — BuyRequest + structured FKs + attribute parent/child) ──
   // All structured fields now have real columns (migration
