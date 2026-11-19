@@ -136,6 +136,7 @@ export async function POST(req: Request) {
         try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests] revalidateTag failed:', e); }
 
         return NextResponse.json({ ok: true, action: "close", count: result.count });
+      }
       default:
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }
