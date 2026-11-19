@@ -73,7 +73,7 @@ open a database connection.
 The apply path is deliberately gated and is not part of normal deployment:
 
 ```sh
-HEAVIX_ENV=preview HEAVIX_ALLOW_PREVIEW_LOCATION_SEED=1 \
+HEAVIX_ENV=preview HEAVIX_ALLOW_PREVIEW_LOCATION_SEED=1 HEAVIX_PREVIEW_LOCATION_SEED_APPROVED=YES \
   bun run db:seed-iran-locations -- --apply --confirm-preview-location-seed
 ```
 
