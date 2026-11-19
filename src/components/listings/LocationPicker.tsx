@@ -59,6 +59,7 @@ export default function LocationPicker({
   // 1) Load country list (default to ایران)
   useEffect(() => {
     let alive = true;
+    setLoadingCountries(true);
     setCountryError(false);
     (async () => {
       try {
@@ -68,6 +69,10 @@ export default function LocationPicker({
         if (!alive) return;
         const countryList = data.countries ?? [];
         setCountries(countryList);
+        if (countryList.length === 0) {
+          setCountryError(true);
+          return;
+        }
         if (!value.countryId && countryList.length > 0) {
           const iran =
             countryList.find((c) => c.code === "IR" || c.name === "ایران") ??
@@ -90,6 +95,10 @@ export default function LocationPicker({
     if (!value.countryId) {
       setProvinces([]);
       setCities([]);
+      setLoadingProvinces(false);
+      setLoadingCities(false);
+      setProvinceError(false);
+      setCityError(false);
       return;
     }
     let alive = true;
@@ -106,6 +115,7 @@ export default function LocationPicker({
         const data = (await res.json()) as { provinces: Province[] };
         if (!alive) return;
         setProvinces(data.provinces ?? []);
+        if ((data.provinces ?? []).length === 0) setProvinceError(true);
         // If the current provinceId is no longer valid, clear it
         if (value.provinceId && !(data.provinces ?? []).some((p) => p.id === value.provinceId)) {
           onChange({ ...value, provinceId: "", cityId: "", provinceLabel: undefined, cityLabel: undefined });
@@ -128,6 +138,8 @@ export default function LocationPicker({
   useEffect(() => {
     if (!value.provinceId) {
       setCities([]);
+      setLoadingCities(false);
+      setCityError(false);
       return;
     }
     let alive = true;
@@ -143,6 +155,7 @@ export default function LocationPicker({
         const data = (await res.json()) as { cities: City[] };
         if (!alive) return;
         setCities(data.cities ?? []);
+        if ((data.cities ?? []).length === 0) setCityError(true);
         if (value.cityId && !(data.cities ?? []).some((c) => c.id === value.cityId)) {
           onChange({ ...value, cityId: "", cityLabel: undefined });
         }
@@ -193,7 +206,7 @@ export default function LocationPicker({
         </div>
         {countryError && (
           <p role="alert" className="mt-2 text-xs text-red-300">
-            دریافت کشورها ناموفق بود.
+            فهرست کشورها دریافت نشد یا هنوز داده‌ای در آن ثبت نشده است.
             <button type="button" onClick={() => setCountryRetry((current) => current + 1)} className="mr-2 underline">تلاش مجدد</button>
           </p>
         )}
@@ -238,7 +251,7 @@ export default function LocationPicker({
         </div>
         {provinceError && (
           <p role="alert" className="mt-2 text-xs text-red-300">
-            دریافت استان‌ها ناموفق بود.
+            فهرست استان‌های این کشور دریافت نشد یا خالی است.
             <button type="button" onClick={() => setProvinceRetry((current) => current + 1)} className="mr-2 underline">تلاش مجدد</button>
           </p>
         )}
@@ -283,7 +296,7 @@ export default function LocationPicker({
         </div>
         {cityError && (
           <p role="alert" className="mt-2 text-xs text-red-300">
-            دریافت شهرها ناموفق بود.
+            فهرست شهرهای این استان دریافت نشد یا خالی است.
             <button type="button" onClick={() => setCityRetry((current) => current + 1)} className="mr-2 underline">تلاش مجدد</button>
           </p>
         )}
