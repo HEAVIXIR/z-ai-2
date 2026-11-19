@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  FREE_MAX_IMAGE_UPLOAD_BYTES,
   MAX_IMAGE_UPLOAD_BYTES,
   prepareImageForUpload,
 } from "@/lib/browser-image-optimization";
@@ -85,6 +86,31 @@ describe("prepareImageForUpload", () => {
     expect(result.file.name).toBe("large-image.jpg");
     expect(result.uploadBytes).toBeLessThanOrEqual(MAX_IMAGE_UPLOAD_BYTES);
     expect(context.fillRect).toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("compresses to the free-plan 1 MiB target", async () => {
+    const file = pngFile(FREE_MAX_IMAGE_UPLOAD_BYTES + 1, 3000, 2000);
+    const bitmap = { width: 3000, height: 2000, close: vi.fn() } as unknown as ImageBitmap;
+    vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue(bitmap));
+
+    const context = { drawImage: vi.fn(), clearRect: vi.fn(), fillRect: vi.fn(), fillStyle: "" };
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+      toBlob: vi.fn((callback: BlobCallback, type?: string) => {
+        callback(type === "image/webp"
+          ? new Blob([new Uint8Array(700 * 1024)], { type: "image/webp" })
+          : new Blob([new Uint8Array(800 * 1024)], { type: "image/jpeg" }));
+      }),
+    } as unknown as HTMLCanvasElement;
+    vi.stubGlobal("document", { createElement: vi.fn(() => canvas) });
+
+    const result = await prepareImageForUpload(file, FREE_MAX_IMAGE_UPLOAD_BYTES);
+
+    expect(result.uploadBytes).toBeLessThanOrEqual(FREE_MAX_IMAGE_UPLOAD_BYTES);
+    expect(result.file.type).toBe("image/webp");
     expect(bitmap.close).toHaveBeenCalledTimes(1);
   });
 
