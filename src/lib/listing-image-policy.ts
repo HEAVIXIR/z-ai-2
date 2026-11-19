@@ -28,6 +28,7 @@ export async function getListingImagePolicy(userId: string): Promise<ListingImag
   }
 
   const planCode = subscription.plan.trim().toUpperCase();
+  if (planCode !== "PRO" && planCode !== "PREMIUM") return FREE_LISTING_IMAGE_POLICY;
   const plan = await db.subscriptionPlan.findUnique({
     where: { code: planCode },
     select: { active: true, priceMonthly: true, priceYearly: true, maxImages: true },
