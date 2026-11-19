@@ -96,6 +96,10 @@ type ServiceTypeOption = { id: string; key: string; nameFa: string; nameEn: stri
 export default function NewListingPage() {
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
+  // P0-B: capture the created listing/request id + slug so the success
+  // screen can link to it (previously discarded when mediaStatus !== PENDING).
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attributeWarning, setAttributeWarning] = useState<string | null>(null);
@@ -413,10 +417,18 @@ export default function NewListingPage() {
     setMediaWarning(null);
     setMediaRepairListingId(null);
     setSubmitting(false);
+    setCreatedId(null);
+    setCreatedSlug(null);
   };
 
   const canProceed = () => {
-    if (step === 1) return Boolean(transactionType);
+    if (step === 1) {
+      // P0-A: for WANTED, the intent MUST be selected at Step 1 before the
+      // user can proceed to Step 2 (category). The intent determines which
+      // taxonomy roots are shown (serviceRoots vs marketplaceRoots).
+      if (transactionType === "WANTED" && !wanted.intent) return false;
+      return Boolean(transactionType);
+    }
     if (step === 2) return Boolean(categoryId);
     if (step === 3) return form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 4) {
@@ -561,6 +573,9 @@ export default function NewListingPage() {
           `${Number(data.mediaPendingCount) || 0} تصویر ثبت شده اما انتقال نهایی آن‌ها کامل نشده است. آگهی ذخیره شده؛ می‌توانید بازیابی تصاویر را دوباره امتحان کنید.`,
         );
       }
+      // P0-B: always capture the created id + slug for the success-screen link.
+      if (data.id) setCreatedId(String(data.id));
+      if (data.slug) setCreatedSlug(String(data.slug));
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
@@ -652,9 +667,27 @@ export default function NewListingPage() {
                 </div>
               )}
               <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                {/* P0-B: link to the created listing/request so the user can
+                    verify it was saved (not just a generic /listings link). */}
+                {createdSlug && transactionType !== "WANTED" && (
+                  <Link
+                    href={`/listings/${createdSlug}`}
+                    className="rounded-xl bg-[#F58220] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
+                  >
+                    مشاهده آگهی ثبت‌شده
+                  </Link>
+                )}
+                {createdId && transactionType === "WANTED" && (
+                  <Link
+                    href={`/api/wanted/${createdId}`}
+                    className="rounded-xl bg-[#F58220] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
+                  >
+                    مشاهده درخواست ثبت‌شده
+                  </Link>
+                )}
                 <Link
                   href="/listings"
-                  className="rounded-xl bg-[#F58220] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
+                  className="rounded-xl border border-white/15 px-6 py-3 text-sm font-bold text-white/80 transition hover:text-white"
                 >
                   مشاهده آگهی‌ها
                 </Link>
@@ -745,6 +778,38 @@ export default function NewListingPage() {
                     <div className="mt-6">
                       <TransactionTypePicker value={transactionType} onChange={handleTransactionTypeChange} />
                     </div>
+
+                    {/* P0-A: WANTED intent selector MOVED to Step 1 — BEFORE category selection.
+                        The intent (buy/rent/service) determines which taxonomy roots are shown
+                        at Step 2 (serviceRoots for SERVICE_REQUEST, marketplaceRoots otherwise).
+                        Moving it here ensures the category is always chosen with the correct
+                        taxonomy, eliminating the mismatch where a MARKETPLACE category was
+                        paired with a SERVICE_REQUEST intent. The user MUST pick an intent
+                        before proceeding (canProceed enforces it). */}
+                    {transactionType === "WANTED" && (
+                      <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
+                        <label className={labelCls}>نوع تقاضا *</label>
+                        <div className="flex flex-wrap gap-2">
+                          {([
+                            { v: "SALE", l: "خرید" },
+                            { v: "RENT", l: "اجاره" },
+                            { v: "SALE_AND_RENT", l: "خرید/اجاره" },
+                            { v: "SERVICE_REQUEST", l: "خدمات" },
+                          ] as const).map((t) => (
+                            <button
+                              key={t.v}
+                              type="button"
+                              onClick={() => handleWantedIntentChange(t.v)}
+                              className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${wanted.intent === t.v ? "border-amber-400 bg-amber-400/15 text-amber-200" : "border-white/10 bg-white/[0.03] text-white/60 hover:border-white/20"}`}
+                            >
+                              {t.l}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-xs text-white/45">نوع تقاضا تعیین می‌کند این درخواست با کدام آگهی‌های عرضه تطبیق داده شود (خرید ← فروش/مزایده، اجاره ← اجاره، خدمات ← ارائه خدمت). این انتخاب باید پیش از انتخاب دسته‌بندی انجام شود.</p>
+                      </div>
+                    )}
+
                     <p className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-[11px] leading-5 text-white/50">
                       نوع فعالیت، مسیر ثبت را تعیین می‌کند: عرضه یا درخواست کالا و تجهیزات، اجاره دارایی،
                       استعلام قیمت و مزایده به‌عنوان روش معامله، یا معرفی خدمت و ثبت درخواست خدمت.
@@ -1124,26 +1189,19 @@ export default function NewListingPage() {
                         <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
                           <p className="mb-3 text-sm font-black text-amber-300">جزئیات درخواست خرید</p>
                           <div className="grid gap-4 sm:grid-cols-2">
+                            {/* P0-A: intent selector moved to Step 1. Here in Step 6
+                                we show a read-only badge of the selected intent so the
+                                user remembers what they picked, plus the quantity/
+                                budget/deaddown fields. */}
                             <div className="sm:col-span-2">
-                              <label className={labelCls}>نوع تقاضا *</label>
-                              <div className="flex flex-wrap gap-2">
-                                {([
-                                  { v: "SALE", l: "خرید" },
-                                  { v: "RENT", l: "اجاره" },
-                                  { v: "SALE_AND_RENT", l: "خرید/اجاره" },
-                                  { v: "SERVICE_REQUEST", l: "خدمات" },
-                                ] as const).map((t) => (
-                                  <button
-                                    key={t.v}
-                                    type="button"
-                                    onClick={() => handleWantedIntentChange(t.v)}
-                                    className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${wanted.intent === t.v ? "border-amber-400 bg-amber-400/15 text-amber-200" : "border-white/10 bg-white/[0.03] text-white/60 hover:border-white/20"}`}
-                                  >
-                                    {t.l}
-                                  </button>
-                                ))}
+                              <label className={labelCls}>نوع تقاضا (انتخاب‌شده در مرحله ۱)</label>
+                              <div className="flex h-10 items-center rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 text-sm font-bold text-amber-200">
+                                {wanted.intent === "SALE" ? "خرید"
+                                  : wanted.intent === "RENT" ? "اجاره"
+                                  : wanted.intent === "SALE_AND_RENT" ? "خرید/اجاره"
+                                  : wanted.intent === "SERVICE_REQUEST" ? "خدمات"
+                                  : "—"}
                               </div>
-                              <p className="mt-2 text-xs text-white/45">نوع تقاضا تعیین می‌کند این درخواست با کدام آگهی‌های عرضه تطبیق داده شود (خرید ← فروش/مزایده، اجاره ← اجاره، خدمات ← ارائه خدمت).</p>
                             </div>
                             <div>
                               <label className={labelCls}>تعداد موردنیاز *</label>
@@ -1509,11 +1567,44 @@ export default function NewListingPage() {
                       <ReviewRow
                         label="موقعیت"
                         value={
-                          [location.countryId, location.provinceId, location.cityId]
+                          [location.countryLabel, location.provinceLabel, location.cityLabel]
                             .filter(Boolean)
                             .join(" / ") || "—"
                         }
                       />
+                      {form.shortDesc && (
+                        <ReviewRow label="خلاصه" value={form.shortDesc} />
+                      )}
+                      {form.description && (
+                        <ReviewRow label="توضیحات" value={form.description.length > 100 ? form.description.slice(0, 100) + "…" : form.description} />
+                      )}
+                      {form.sellerName && (
+                        <ReviewRow label="نام تماس" value={form.sellerName} />
+                      )}
+                      {form.sellerPhone && (
+                        <ReviewRow label="شماره تماس" value={form.sellerPhone} />
+                      )}
+                      {transactionType === "RENT" && rental.availabilityStart && (
+                        <ReviewRow label="شروع دسترس‌پذیری" value={rental.availabilityStart} />
+                      )}
+                      {transactionType === "RENT" && rental.availabilityEnd && (
+                        <ReviewRow label="پایان دسترس‌پذیری" value={rental.availabilityEnd} />
+                      )}
+                      {transactionType === "QUOTE" && rfq.terms && (
+                        <ReviewRow label="شرایط استعلام" value={rfq.terms.length > 100 ? rfq.terms.slice(0, 100) + "…" : rfq.terms} />
+                      )}
+                      {transactionType === "WANTED" && wanted.intent && (
+                        <ReviewRow
+                          label="نوع تقاضا"
+                          value={
+                            wanted.intent === "SALE" ? "خرید"
+                            : wanted.intent === "RENT" ? "اجاره"
+                            : wanted.intent === "SALE_AND_RENT" ? "خرید/اجاره"
+                            : wanted.intent === "SERVICE_REQUEST" ? "خدمات"
+                            : wanted.intent
+                          }
+                        />
+                      )}
                       <ReviewRow
                         label="ویژگی‌ها"
                         value={

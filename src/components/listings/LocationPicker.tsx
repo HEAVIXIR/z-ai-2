@@ -19,6 +19,13 @@ export type LocationValue = {
   countryId: string;
   provinceId: string;
   cityId: string;
+  // P0-B: resolved display names for the review screen. Populated by
+  // the LocationPicker when the user selects a country/province/city,
+  // so the wizard's Step 7 review can show human-readable names instead
+  // of raw cuid IDs.
+  countryLabel?: string;
+  provinceLabel?: string;
+  cityLabel?: string;
 };
 
 type Country = { id: string; name: string; nameEn: string | null; code: string | null };
@@ -65,7 +72,7 @@ export default function LocationPicker({
           const iran =
             countryList.find((c) => c.code === "IR" || c.name === "ایران") ??
             countryList[0];
-          onChange({ ...value, countryId: iran.id, provinceId: "", cityId: "" });
+          onChange({ ...value, countryId: iran.id, provinceId: "", cityId: "", countryLabel: iran.name, provinceLabel: undefined, cityLabel: undefined });
         }
       } catch {
         if (alive) setCountryError(true);
@@ -101,7 +108,7 @@ export default function LocationPicker({
         setProvinces(data.provinces ?? []);
         // If the current provinceId is no longer valid, clear it
         if (value.provinceId && !(data.provinces ?? []).some((p) => p.id === value.provinceId)) {
-          onChange({ ...value, provinceId: "", cityId: "" });
+          onChange({ ...value, provinceId: "", cityId: "", provinceLabel: undefined, cityLabel: undefined });
         }
       } catch {
         if (alive) {
@@ -137,7 +144,7 @@ export default function LocationPicker({
         if (!alive) return;
         setCities(data.cities ?? []);
         if (value.cityId && !(data.cities ?? []).some((c) => c.id === value.cityId)) {
-          onChange({ ...value, cityId: "" });
+          onChange({ ...value, cityId: "", cityLabel: undefined });
         }
       } catch {
         if (alive) {
@@ -164,9 +171,10 @@ export default function LocationPicker({
         <div className="relative">
           <select
             value={value.countryId}
-            onChange={(e) =>
-              onChange({ countryId: e.target.value, provinceId: "", cityId: "" })
-            }
+            onChange={(e) => {
+              const selected = countries.find((c) => c.id === e.target.value);
+              onChange({ countryId: e.target.value, provinceId: "", cityId: "", countryLabel: selected?.name, provinceLabel: undefined, cityLabel: undefined });
+            }}
             className={selectCls}
             disabled={loadingCountries}
           >
@@ -197,13 +205,17 @@ export default function LocationPicker({
         <div className="relative">
           <select
             value={value.provinceId}
-            onChange={(e) =>
+            onChange={(e) => {
+              const selected = provinces.find((p) => p.id === e.target.value);
               onChange({
                 countryId: value.countryId,
+                countryLabel: value.countryLabel,
                 provinceId: e.target.value,
+                provinceLabel: selected?.name,
                 cityId: "",
-              })
-            }
+                cityLabel: undefined,
+              });
+            }}
             className={selectCls}
             disabled={loadingProvinces || !value.countryId}
           >
@@ -238,13 +250,17 @@ export default function LocationPicker({
         <div className="relative">
           <select
             value={value.cityId}
-            onChange={(e) =>
+            onChange={(e) => {
+              const selected = cities.find((c) => c.id === e.target.value);
               onChange({
                 countryId: value.countryId,
+                countryLabel: value.countryLabel,
                 provinceId: value.provinceId,
+                provinceLabel: value.provinceLabel,
                 cityId: e.target.value,
-              })
-            }
+                cityLabel: selected?.name,
+              });
+            }}
             className={selectCls}
             disabled={loadingCities || !value.provinceId}
           >
