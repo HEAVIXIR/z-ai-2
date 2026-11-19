@@ -1402,7 +1402,7 @@ export default function NewListingPage() {
                             </label>
                             <input
                               value={form.price}
-                              onChange={(e) => set("price", e.target.value)}
+                              onChange={(e) => set("price", isRequestFlow ? e.target.value.replace(/[^\d]/g, "") : e.target.value)}
                               placeholder="مثلاً: 8500000000"
                               dir="ltr"
                               className={inputCls}
