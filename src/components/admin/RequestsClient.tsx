@@ -11,6 +11,7 @@ import {
   X,
   Save,
   Target,
+  Rocket,
 } from "lucide-react";
 import { toFa, formatCompactPrice, faDate } from "@/lib/format";
 
@@ -70,6 +71,7 @@ export default function RequestsClient({
           if (action === "unverify") return { ...r, verified: false };
           if (action === "close") return { ...r, status: "CLOSED" };
           if (action === "fulfill") return { ...r, status: "FULFILLED" };
+          if (action === "approve") return { ...r, status: "ACTIVE" };
           return r;
         }),
       );
@@ -206,12 +208,14 @@ export default function RequestsClient({
                         className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                           r.status === "ACTIVE"
                             ? "bg-emerald-100 text-emerald-700"
-                            : r.status === "CLOSED"
-                              ? "bg-zinc-100 text-zinc-600"
-                              : "bg-blue-100 text-blue-700"
+                            : r.status === "PENDING"
+                              ? "bg-amber-100 text-amber-700"
+                              : r.status === "CLOSED"
+                                ? "bg-zinc-100 text-zinc-600"
+                                : "bg-blue-100 text-blue-700"
                         }`}
                       >
-                        {r.status === "ACTIVE" ? "فعال" : r.status === "CLOSED" ? "بسته" : r.status}
+                        {r.status === "ACTIVE" ? "فعال" : r.status === "PENDING" ? "در انتظار بررسی" : r.status === "CLOSED" ? "بسته" : r.status}
                       </span>
                       {r.verified && (
                         <span className="rounded-full bg-[#F58220]/10 px-2 py-0.5 text-[10px] font-bold text-[#F58220]">
@@ -223,6 +227,17 @@ export default function RequestsClient({
                   <td className="px-4 py-3 text-xs text-zinc-400">{faDate(r.createdAt)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1">
+                      {r.status === "PENDING" && (
+                        <button
+                          type="button"
+                          onClick={() => updateStatus(r.id, "approve")}
+                          disabled={loading}
+                          title="تأیید و انتشار"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 text-sky-600 transition hover:bg-sky-50"
+                        >
+                          <Rocket className="h-4 w-4" />
+                        </button>
+                      )}
                       {!r.verified ? (
                         <button
                           type="button"
@@ -431,6 +446,7 @@ function RequestModal({
               onChange={(e) => setForm({ ...form, status: e.target.value })}
               className="h-10 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-xs text-zinc-900 outline-none focus:border-[#F58220]"
             >
+              <option value="PENDING">در انتظار بررسی</option>
               <option value="ACTIVE">فعال</option>
               <option value="CLOSED">بسته</option>
               <option value="FULFILLED">تأمین‌شده</option>

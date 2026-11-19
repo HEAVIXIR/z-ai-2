@@ -115,6 +115,32 @@ export async function POST(req: Request) {
       case "unverify": data = { verified: false }; break;
       case "close": data = { status: "CLOSED" }; break;
       case "fulfill": data = { status: "FULFILLED" }; break;
+      case "approve": {
+        // Moderation gate: publish PENDING requests (status → ACTIVE,
+        // publishedAt → now). Bulk variant mirrors the single-row
+        // publishWanted service function but uses updateMany for
+        // efficiency + a single batched audit entry. Idempotent on
+        // already-ACTIVE rows (they just get publishedAt refreshed).
+        const approvedAt = new Date();
+        const result = await db.buyRequest.updateMany({
+          where: { id: { in: ids } },
+          data: { status: "ACTIVE", publishedAt: approvedAt },
+        });
+        await logAudit({
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "marketplace.wanted.publishMany",
+          entityType: "BuyRequest",
+          entityId: null,
+          before: { ids, requestedAction: "approve" },
+          after: { status: "ACTIVE", publishedAt: approvedAt.toISOString(), count: result.count },
+          reason: "Bulk approve + publish of wanted requests via admin API",
+        });
+        // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
+        try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests] revalidateTag failed:', e); }
+
+        return NextResponse.json({ ok: true, action: "approve", count: result.count });
+      }
       case "delete": {
         // Preserve marketplace and audit history: the legacy "delete"
         // action is now a bulk soft-close, never a destructive DB delete.

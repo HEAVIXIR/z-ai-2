@@ -78,6 +78,7 @@ export class WantedServiceError extends Error {
 // records `status: PUBLISHED` so the intent — "this is a
 // published wanted request" — is preserved in the trail).
 const STATUS_PUBLISHED = "ACTIVE"; // schema-active = publicly visible
+const STATUS_PENDING = "PENDING"; // awaiting admin review before publication
 const STATUS_CLOSED = "CLOSED";
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -251,13 +252,18 @@ export async function createWanted(params: {
   ]);
 
   // ── Lifecycle timestamps ──
-  // publishedAt is set to NOW so the request is immediately eligible
-  // for matching (isBuyRequestMatchEligible requires publishedAt <= now).
-  // expiresAt is derived from the free-text deadline when it parses
-  // into a valid Date; otherwise it stays null and the request remains
-  // matchable until it is explicitly closed. This is the wire-up that
-  // makes the existing eligibility helper actually enforce expiration.
-  const publishedAt = new Date();
+  // MODERATION LIFECYCLE: a new wanted request is created in PENDING
+  // review state — it is NOT immediately public or matchable. The
+  // wizard's success message promises "published after expert review",
+  // and this makes that promise true: status=PENDING, publishedAt=null
+  // until an admin approves (publishWanted). The public feed filters
+  // status=ACTIVE, public detail rejects status!=ACTIVE, and the
+  // matching eligibility helper rejects PENDING — so a PENDING request
+  // is invisible everywhere except the owner's own ?mine=true list and
+  // the admin review queue. expiresAt is still derived from deadline
+  // at create time so it takes effect the moment the request is
+  // approved (publishedAt=now); it is not re-derived on approval.
+  const publishedAt: Date | null = null;
   const expiresAt = parseDeadlineToExpiresAt(deadline);
 
   // ── Demand intent ──
@@ -289,7 +295,7 @@ export async function createWanted(params: {
       expiresAt,
       requesterName: requesterName ? String(requesterName).slice(0, 120) : null,
       requesterPhone: requesterPhone ? String(requesterPhone).slice(0, 40) : null,
-      status: STATUS_PUBLISHED, // schema-active = publicly visible
+      status: STATUS_PENDING, // moderation gate — admin must approve before publication
       verified: false,
       userId,
     },
@@ -311,8 +317,8 @@ export async function createWanted(params: {
     entityId: request.id,
     after: {
       title: request.title,
-      status: "PUBLISHED", // the task-spec semantic status
-      schemaStatus: request.status, // what we actually wrote
+      status: "PENDING_REVIEW", // the task-spec semantic status (awaiting moderation)
+      schemaStatus: request.status, // what we actually wrote (PENDING)
       description: description ? String(description).slice(0, 500) : null,
       // DECISION (quantity): BuyRequest has no `quantity` column, and
       // schema migrations are locked pending a fresh backup. Quantity
@@ -343,8 +349,9 @@ export async function createWanted(params: {
       province: province ?? null,
       city: city ?? null,
       // Lifecycle timestamps — recorded so the audit trail proves
-      // expiration was wired (expiresAt derived from deadline).
-      publishedAt: publishedAt.toISOString(),
+      // expiration was wired (expiresAt derived from deadline). For a
+      // PENDING request publishedAt is null until admin approval.
+      publishedAt: null,
       expiresAt: expiresAt ? expiresAt.toISOString() : null,
       deadlineRaw: deadline ? String(deadline).slice(0, 120) : null,
     },
@@ -592,6 +599,74 @@ export async function closeWanted(
   });
 
   return { id: after.id, status: after.status };
+}
+
+// ── publishWanted ─────────────────────────────────────────────
+/**
+ * Approve + publish a PENDING wanted request (status PENDING → ACTIVE,
+ * publishedAt → now). This is the moderation gate: an admin reviews the
+ * submitted request and publishes it so it becomes visible on the public
+ * feed and eligible for matching. Audited as `marketplace.wanted.publish`
+ * (actorType: ADMIN). Idempotent — publishing an already-ACTIVE request
+ * is a no-op (returns the current state without re-auditing).
+ *
+ * expiresAt is NOT re-derived here: it was computed from `deadline` at
+ * create time and is already stored. Setting publishedAt=now activates
+ * the eligibility window (publishedAt <= now AND expiresAt > now).
+ *
+ * @throws WantedServiceError(404) when the request doesn't exist.
+ * @throws WantedServiceError(400) when id or adminUserId is empty.
+ */
+export async function publishWanted(
+  id: string,
+  adminUserId: string,
+): Promise<{ id: string; status: string; publishedAt: string }> {
+  if (!id) {
+    throw new WantedServiceError(400, "id الزامی است");
+  }
+  if (!adminUserId) {
+    throw new WantedServiceError(400, "adminUserId الزامی است");
+  }
+
+  const before = await db.buyRequest.findUnique({
+    where: { id },
+    select: { id: true, status: true, title: true, publishedAt: true },
+  });
+  if (!before) {
+    throw new WantedServiceError(404, "درخواست خرید یافت نشد");
+  }
+  // Idempotent — already published.
+  if (before.status === STATUS_PUBLISHED) {
+    return {
+      id: before.id,
+      status: before.status,
+      publishedAt: before.publishedAt instanceof Date ? before.publishedAt.toISOString() : new Date().toISOString(),
+    };
+  }
+
+  const publishedAt = new Date();
+  const after = await db.buyRequest.update({
+    where: { id },
+    data: { status: STATUS_PUBLISHED, publishedAt },
+    select: { id: true, status: true, publishedAt: true },
+  });
+
+  await logAudit({
+    actorId: adminUserId,
+    actorType: "ADMIN",
+    action: "marketplace.wanted.publish",
+    entityType: "BuyRequest",
+    entityId: id,
+    before: { status: before.status },
+    after: { status: after.status, publishedAt: publishedAt.toISOString() },
+    reason: `انتشار درخواست خرید ${id} — ${before.title ?? ""}`,
+  });
+
+  return {
+    id: after.id,
+    status: after.status,
+    publishedAt: after.publishedAt instanceof Date ? after.publishedAt.toISOString() : publishedAt.toISOString(),
+  };
 }
 
 // ── getWantedMatches ─────────────────────────────────────────

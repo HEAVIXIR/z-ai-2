@@ -44,7 +44,7 @@ export default function NewRequestPage() {
             <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.06] p-8 text-center">
               <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-emerald-400" />
               <h2 className="text-xl font-black text-white">درخواست شما ثبت شد!</h2>
-              <p className="mt-2 text-sm text-white/50">درخواست شما در بخش «درخواست‌های فعال» نمایش داده می‌شود.</p>
+              <p className="mt-2 text-sm text-white/50">کارشناسان هویکس درخواست شما را بررسی می‌کنند و در صورت تأیید، آن را برای فروشندگان قابل‌مشاهده می‌کنند.</p>
               <p className="mt-4 text-xs text-white/30">در حال انتقال...</p>
             </div>
           ) : (

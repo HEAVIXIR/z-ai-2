@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { checkCsrf } from "@/lib/csrf";
 import { hasPermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
+import { publishWanted, WantedServiceError } from "@/lib/wanted-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,6 +64,25 @@ export async function PATCH(req: Request, { params }: Params) {
     else if (body.action === "close") data.status = "CLOSED";
     else if (body.action === "fulfill") data.status = "FULFILLED";
     else if (body.action === "activate") data.status = "ACTIVE";
+
+    // Moderation gate: "approve" publishes a PENDING request (status →
+    // ACTIVE + publishedAt → now) via the canonical service function,
+    // which owns its own audit (marketplace.wanted.publish). Delegated
+    // rather than inlined so the publish transition + audit are single-
+    // sourced and testable. Returns early (skips the generic update below).
+    if (body.action === "approve") {
+      try {
+        const published = await publishWanted(id, sessionUser.id);
+        // Invalidate Homepage cache so the newly-published request surfaces.
+        try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests/id] revalidateTag failed:', e); }
+        return NextResponse.json({ ok: true, request: { id: published.id, status: published.status, publishedAt: published.publishedAt } });
+      } catch (err: any) {
+        if (err instanceof WantedServiceError) {
+          return NextResponse.json({ error: err.message }, { status: err.status });
+        }
+        throw err;
+      }
+    }
 
     const r = await db.buyRequest.update({ where: { id }, data });
     await logAudit({
