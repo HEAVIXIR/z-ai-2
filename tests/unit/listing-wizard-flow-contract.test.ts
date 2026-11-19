@@ -29,7 +29,7 @@ describe("HEAVIX listing wizard end-to-end source contract", () => {
 
   it("routes each demand and supply transaction to its canonical API and carries the review payload", () => {
     const page = read("src/app/listings/new/page.tsx");
-    expect(page).toContain('transactionType === "WANTED" ? "/api/wanted" : "/api/listings"');
+    expect(page).toContain('const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings"');
     expect(page).toContain("attributeValues: attributePayload");
     expect(page).toContain("images: images.map((url) => ({ url }))");
     expect(page).toContain('"Idempotency-Key": idempotencyKeyRef.current');
