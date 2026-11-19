@@ -450,7 +450,7 @@ export default function NewListingPage() {
         // deadline. The server is the safety net, but the wizard must fail
         // closed at the step that collects those fields.
         if (!serviceTypeId) return false;
-        if (isWantedServiceRequest) {
+        if (isWantedServiceRequest || isServiceRequest) {
           const wq = Number(wanted.quantity);
           const wmin = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\d]/g, "")) : null;
           const wmax = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\d]/g, "")) : null;
@@ -588,8 +588,11 @@ export default function NewListingPage() {
         images: images.map((url) => ({ url })),
       };
 
-      if (transactionType === "WANTED") {
-        body.intent = wanted.intent;
+      const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST";
+      if (isDemandSubmission) {
+        body.listingType = "WANTED";
+        body.transactionType = "WANTED";
+        body.intent = transactionType === "SERVICE_REQUEST" ? "SERVICE_REQUEST" : wanted.intent;
         body.quantity = Number(wanted.quantity);
         body.budgetMin = wanted.budgetMin || undefined;
         body.budgetMax = wanted.budgetMax || undefined;
@@ -627,7 +630,7 @@ export default function NewListingPage() {
         body.availabilityEnd = rental.availabilityEnd || undefined;
       }
 
-      const endpoint = transactionType === "WANTED" ? "/api/wanted" : "/api/listings";
+      const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings";
       // Generate (or reuse) the idempotency key for this submission.
       if (!idempotencyKeyRef.current) {
         idempotencyKeyRef.current =
@@ -1281,7 +1284,7 @@ export default function NewListingPage() {
                         </div>
                       )}
 
-                      {transactionType === "WANTED" && (
+                      {(transactionType === "WANTED" || isServiceRequest) && (
                         <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
                           <p className="mb-3 text-sm font-black text-amber-300">جزئیات درخواست خرید</p>
                           <div className="grid gap-4 sm:grid-cols-2">
@@ -1292,7 +1295,7 @@ export default function NewListingPage() {
                             <div className="sm:col-span-2">
                               <label className={labelCls}>نوع تقاضا (انتخاب‌شده در مرحله ۱)</label>
                               <div className="flex h-10 items-center rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 text-sm font-bold text-amber-200">
-                                {wanted.intent === "SALE" ? "خرید"
+                                {isServiceRequest ? "خدمات" : wanted.intent === "SALE" ? "خرید"
                                   : wanted.intent === "RENT" ? "اجاره"
                                   : wanted.intent === "SALE_AND_RENT" ? "خرید/اجاره"
                                   : wanted.intent === "SERVICE_REQUEST" ? "خدمات"
@@ -1601,7 +1604,7 @@ export default function NewListingPage() {
                     <div className="mt-6 space-y-4">
                       <ReviewRow label="نوع معامله" value={transactionType} />
                       {isServiceFlow && <ReviewRow label="نوع خدمت" value={serviceTypes.find((item) => item.id === serviceTypeId)?.nameFa ?? "—"} />}
-                      {transactionType === "WANTED" && (
+                      {(transactionType === "WANTED" || isServiceRequest) && (
                         <>
                           <ReviewRow label="تعداد موردنیاز" value={wanted.quantity || "—"} />
                           <ReviewRow
@@ -1694,11 +1697,11 @@ export default function NewListingPage() {
                       {transactionType === "QUOTE" && rfq.terms && (
                         <ReviewRow label="شرایط استعلام" value={rfq.terms.length > 100 ? rfq.terms.slice(0, 100) + "…" : rfq.terms} />
                       )}
-                      {transactionType === "WANTED" && wanted.intent && (
+                      {(transactionType === "WANTED" || isServiceRequest) && (wanted.intent || isServiceRequest) && (
                         <ReviewRow
                           label="نوع تقاضا"
                           value={
-                            wanted.intent === "SALE" ? "خرید"
+                            isServiceRequest ? "خدمات" : wanted.intent === "SALE" ? "خرید"
                             : wanted.intent === "RENT" ? "اجاره"
                             : wanted.intent === "SALE_AND_RENT" ? "خرید/اجاره"
                             : wanted.intent === "SERVICE_REQUEST" ? "خدمات"
