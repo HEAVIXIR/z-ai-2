@@ -43,7 +43,7 @@ export function validateLocationDataset(dataset, manifest, actualSha256) {
   } else {
     if (!/^https:\/\//i.test(clean(manifest.sourceUrl))) add("manifest.sourceUrl", "an HTTPS source URL is required");
     for (const field of ["sourceName", "license", "sourceVersion", "sourceDate", "rightsReviewStatus"]) {
-      if (!clean(manifest[field])) add(\`manifest.\${field}\`, "required provenance field is missing");
+      if (!clean(manifest[field])) add(`manifest.${field}`, "required provenance field is missing");
     }
     if (clean(manifest.sourceDate) && !/^\d{4}-\d{2}-\d{2}$/.test(clean(manifest.sourceDate))) {
       add("manifest.sourceDate", "sourceDate must use YYYY-MM-DD format");
@@ -67,32 +67,32 @@ export function validateLocationDataset(dataset, manifest, actualSha256) {
     if (rows.length === 0) add(level, "must contain at least one record");
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
-      const path = \`\${level}[\${i}]\`;
+      const path = `${level}[${i}]`;
       if (!row || typeof row !== "object" || Array.isArray(row)) {
         add(path, "record must be an object");
         continue;
       }
       const code = clean(row.sourceCode);
       const name = clean(row.name);
-      if (!code) add(\`\${path}.sourceCode\`, "stable sourceCode is required");
-      if (!name) add(\`\${path}.name\`, "name is required");
+      if (!code) add(`${path}.sourceCode`, "stable sourceCode is required");
+      if (!name) add(`${path}.name`, "name is required");
       if (code) {
-        if (seen[level].has(code)) add(\`\${path}.sourceCode\`, \`duplicate sourceCode: \${code}\`);
+        if (seen[level].has(code)) add(`${path}.sourceCode`, `duplicate sourceCode: ${code}`);
         seen[level].add(code);
       }
       if (name) {
         const parent = level === "countries" ? "" : clean(level === "provinces" ? row.countryCode : row.provinceCode);
-        const nameKey = \`\${parent}::\${key(name)}\`;
-        if (names[level].has(nameKey)) add(\`\${path}.name\`, "duplicate normalized name under the same parent");
+        const nameKey = `${parent}::${key(name)}`;
+        if (names[level].has(nameKey)) add(`${path}.name`, "duplicate normalized name under the same parent");
         names[level].add(nameKey);
       }
       if (level === "provinces") {
-        if (!clean(row.countryCode)) add(\`\${path}.countryCode\`, "countryCode is required");
-        else if (!seen.countries.has(clean(row.countryCode))) add(\`\${path}.countryCode\`, "countryCode does not reference a country in this dataset");
+        if (!clean(row.countryCode)) add(`${path}.countryCode`, "countryCode is required");
+        else if (!seen.countries.has(clean(row.countryCode))) add(`${path}.countryCode`, "countryCode does not reference a country in this dataset");
       }
       if (level === "cities") {
-        if (!clean(row.provinceCode)) add(\`\${path}.provinceCode\`, "provinceCode is required");
-        else if (!seen.provinces.has(clean(row.provinceCode))) add(\`\${path}.provinceCode\`, "provinceCode does not reference a province in this dataset");
+        if (!clean(row.provinceCode)) add(`${path}.provinceCode`, "provinceCode is required");
+        else if (!seen.provinces.has(clean(row.provinceCode))) add(`${path}.provinceCode`, "provinceCode does not reference a province in this dataset");
       }
       if (level === "cities" || level === "provinces") {
         const coordinateError = validCoordinatePair(row);
@@ -142,7 +142,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.stdout.write(JSON.stringify({ mode: "DRY_RUN_ONLY", ...report }, null, 2) + "\n");
       if (!report.structurallyValid) process.exitCode = 1;
     } catch (error) {
-      process.stderr.write(\`Validation failed: \${error instanceof Error ? error.message : String(error)}\n\`);
+      process.stderr.write(`Validation failed: ${error instanceof Error ? error.message : String(error)}\n`);
       process.exitCode = 1;
     }
   }
