@@ -443,4 +443,11 @@ describe("H.3 follow-up hardening: WANTED attribute transport and server enforce
     expect(route).toContain('intentStr === "SERVICE_REQUEST" && !requestedServiceTypeId');
     expect(route).toContain('intentStr !== "SERVICE_REQUEST" && requestedServiceTypeId');
   });
+
+  it("rejects brand/category and model/category mismatches before persistence", () => {
+    const route = read("src/app/api/wanted/route.ts");
+    expect(route).toContain("db.brandCategory.findUnique");
+    expect(route).toContain("!brandCategoryRow");
+    expect(route).toContain("modelRow.categoryId !== requestedCategoryId");
+  });
 });
