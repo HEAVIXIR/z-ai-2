@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/authorization";
 import { addItem } from "@/lib/compare-engine";
+import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { COMPARE_ADD_ITEM } from "@/lib/rate-limit-presets";
+import { getClientIp, rateLimitKey } from "@/lib/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +25,17 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const limited = rateLimit({
+    key: rateLimitKey(getClientIp(req), COMPARE_ADD_ITEM.label),
+    limit: COMPARE_ADD_ITEM.limit,
+    windowMs: COMPARE_ADD_ITEM.windowMs,
+  });
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: "تعداد تغییرات مقایسه بیش از حد مجاز است." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSeconds(limited.resetAt)), "Cache-Control": "private, no-store" } },
+    );
+  }
   try {
     const { id } = await params;
 
@@ -62,10 +76,16 @@ export async function POST(
     }
 
     const item = await addItem(id, { listingId, productId, brandId, modelId });
-    return NextResponse.json({ item });
+    return NextResponse.json({ item }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err: any) {
     const msg = err?.message ?? "Server error";
-    const status = msg.includes("حداکثر") ? 400 : msg.includes("not found") ? 404 : 500;
+    const status = msg === "Session archived"
+      ? 410
+      : msg.includes("حداکثر")
+        ? 400
+        : msg.includes("not found")
+          ? 404
+          : 500;
     return NextResponse.json({ error: msg }, { status });
   }
 }
