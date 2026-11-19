@@ -28,8 +28,15 @@ import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
 
-// Store procurement and suppliers mutate only through dedicated transactional APIs.
-const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers', 'payments']);
+// Resources that mutate only through dedicated transactional APIs and
+// MUST NOT be mutated via the Universal Resource PATCH/DELETE/action
+// endpoints (which bypass domain state machines, CAS, and audit trails).
+// P0 audit: buy-requests added — its status transitions must go through
+// the canonical wanted-service state machine (publishWanted /
+// closeWantedByAdmin / fulfillWanted / bulkTransitionWanted), and DELETE
+// must be a soft-close (never a hard delete that orphans marketplace
+// history). The universal routes would write status directly + hard-delete.
+const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers', 'payments', 'buy-requests']);
 
 type Params = { params: Promise<{ resource: string; id: string }> };
 

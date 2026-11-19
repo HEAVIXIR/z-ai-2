@@ -134,7 +134,21 @@ export async function PATCH(req: Request, { params }: Params) {
   }
 }
 
-/* DELETE /api/admin/requests/[id] */
+/* DELETE /api/admin/requests/[id]
+ *
+ * P0 audit (D1): the single-row DELETE previously did a HARD physical
+ * removal of the BuyRequest row — orphaning
+ * marketplace/offer history, and bypassing the state machine + audit
+ * trail. This was inconsistent with the bulk-delete path (which soft-
+ * closes via bulkTransitionWanted("close")).
+ *
+ * Fix: single-row DELETE is now a soft-close via closeWantedByAdmin
+ * (the canonical state machine + CAS + audit). The row is preserved
+ * with status=CLOSED; the audit records both the requested "delete"
+ * intent AND the resulting close transition. A true hard-delete (for
+ * moderation/PITI removal) would be a separate gated action with its
+ * own permission + retention policy — NOT this endpoint.
+ */
 export async function DELETE(req: Request, { params }: Params) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
@@ -152,21 +166,33 @@ export async function DELETE(req: Request, { params }: Params) {
   }
   try {
     const { id } = await params;
-    const before = await db.buyRequest.findUnique({ where: { id } });
-    await db.buyRequest.delete({ where: { id } });
+    const before = await db.buyRequest.findUnique({
+      where: { id },
+      select: { id: true, title: true, status: true, verified: true },
+    });
+    if (!before) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    // Soft-close via the canonical service (state machine + CAS + audit).
+    // closeWantedByAdmin is idempotent on already-CLOSED rows.
+    await closeWantedByAdmin(id, sessionUser.id);
+    // Record the legacy "delete" intent in the audit trail (the close
+    // audit is written by closeWantedByAdmin as marketplace.wanted.close;
+    // this entry records that the admin requested a delete, mapped to close).
     await logAudit({
       actorId: sessionUser.id,
       actorType: "ADMIN",
       action: "admin.buyRequests.delete",
       entityType: "BuyRequest",
       entityId: id,
-      before: before ? { title: before.title, status: before.status, verified: before.verified } : null,
-      reason: "via admin API",
+      before: { title: before.title, status: before.status, verified: before.verified },
+      after: { mappedAction: "soft-close", reason: "Legacy single-row delete safely mapped to soft close" },
+      reason: "Legacy single-row delete mapped to soft close via admin API (no physical removal)",
     });
     // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests/id] revalidateTag failed:', e); }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, action: "close" });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },

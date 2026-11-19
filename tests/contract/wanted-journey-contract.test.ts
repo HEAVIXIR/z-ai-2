@@ -6,9 +6,16 @@ const read = (file: string) =>
   readFileSync(path.join(process.cwd(), file), "utf8");
 
 /**
- * End-to-end WANTED journey contract (P0-A through P0-D + E2E).
+ * WANTED journey CONTRACT test (NOT a behavioral E2E test).
  *
- * Pins the full create→moderate→publish→visible→matchable flow:
+ * This is a SOURCE-CONTRACT test (string assertions on source files), NOT
+ * an end-to-end behavioral test. It pins the wiring of the full
+ * create→moderate→publish→visible→matchable flow, but it does NOT execute
+ * the flow against a real database. A true behavioral E2E test (create →
+ * DB row → admin approve → public feed → matching) requires a live
+ * database and is BLOCKED by Issue #346 (preview-database gate).
+ *
+ * What this contract verifies (source wiring):
  * 1. Wizard sends intent + quantity + budget + deadline to /api/wanted.
  * 2. POST /api/wanted: CSRF + rate-limit + bounded-body + intent-required.
  * 3. createWanted: PENDING + publishedAt=null (NOT immediately public).
@@ -16,12 +23,16 @@ const read = (file: string) =>
  * 5. Public feed filters ACTIVE+published+unexpired (PENDING hidden).
  * 6. Matching eligibility rejects non-ACTIVE/non-published/expired.
  *
- * This is a source-contract test (string assertions) because the E2E
- * behavioral test (with a real DB) is blocked by the preview-database
- * gate (#346). It documents the contract the E2E test will enforce
- * once a DB is available.
+ * What this contract does NOT verify (requires a real DB):
+ * - That the row is actually created in the BuyRequest table.
+ * - That publishWanted's CAS updateMany actually transitions the row.
+ * - That the public feed actually returns the published row.
+ * - That matching actually surfaces compatible supply listings.
+ *
+ * These behavioral assertions are tracked as a BLOCKED acceptance
+ * criterion pending the #346 database gate.
  */
-describe("WANTED end-to-end journey contract", () => {
+describe("WANTED journey source-contract (NOT behavioral E2E)", () => {
   it("wizard sends WANTED to /api/wanted with intent + quantity + budget + deadline", () => {
     const page = read("src/app/listings/new/page.tsx");
     expect(page).toContain('transactionType === "WANTED" ? "/api/wanted" : "/api/listings"');

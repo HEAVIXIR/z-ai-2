@@ -315,3 +315,60 @@ describe("bulkTransitionWanted behavioral state machine (P0-B/C/D)", () => {
     expect(result.rejected).toEqual([{ id: "e1", status: "PENDING" }]);
   });
 });
+
+describe("closeWantedByAdmin behavioral (P0-D1 — DELETE → soft-close)", () => {
+  beforeEach(() => {
+    mockFindUnique.mockReset();
+    mockFindMany.mockReset();
+    mockUpdate.mockReset();
+    mockUpdateMany.mockReset();
+    mockLogAudit.mockReset();
+  });
+
+  it("P0-D1: closes an ACTIVE request via CAS (the DELETE path)", async () => {
+    mockFindUnique.mockResolvedValue({
+      id: "req-del-1",
+      status: "ACTIVE",
+      title: "To be deleted",
+    });
+    mockUpdateMany.mockResolvedValue({ count: 1 });
+
+    const { closeWantedByAdmin } = await import("@/lib/wanted-service");
+    const result = await closeWantedByAdmin("req-del-1", "admin-1");
+
+    expect(result.status).toBe("CLOSED");
+    expect(mockUpdateMany).toHaveBeenCalledOnce();
+    // No hard delete — the CAS updateMany is the only write.
+    const auditCall = mockLogAudit.mock.calls[0][0];
+    expect(auditCall.action).toBe("marketplace.wanted.close");
+    expect(auditCall.actorType).toBe("ADMIN");
+  });
+
+  it("P0-D1: close is idempotent on already-CLOSED", async () => {
+    mockFindUnique.mockResolvedValue({
+      id: "req-del-2",
+      status: "CLOSED",
+      title: "Already closed",
+    });
+
+    const { closeWantedByAdmin } = await import("@/lib/wanted-service");
+    const result = await closeWantedByAdmin("req-del-2", "admin-1");
+
+    expect(result.status).toBe("CLOSED");
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("P0-D1: rejects FULFILLED (terminal — no re-close)", async () => {
+    mockFindUnique.mockResolvedValue({
+      id: "req-del-3",
+      status: "FULFILLED",
+      title: "Fulfilled",
+    });
+
+    const { closeWantedByAdmin } = await import("@/lib/wanted-service");
+    await expect(closeWantedByAdmin("req-del-3", "admin-1")).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+  });
+});

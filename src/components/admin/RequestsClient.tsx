@@ -100,7 +100,12 @@ export default function RequestsClient({
           city: r.city,
           province: r.province,
           deadline: r.deadline,
-          status: r.status,
+          // P0 audit (B4): status is intentionally NOT sent in the PATCH
+          // payload — transitions happen only via the action buttons
+          // (approve/close/fulfill), which go through the canonical
+          // wanted-service state machine. The server strips status from
+          // the generic PATCH allowed list (P0-2), so sending it is a
+          // no-op; we omit it here too for clarity + defense-in-depth.
           verified: r.verified,
           adminNotes: r.adminNotes,
         }),
@@ -440,17 +445,22 @@ function RequestModal({
           </div>
 
           <div className="flex items-center gap-3">
-            <label className="text-xs font-bold text-zinc-700">وضعیت:</label>
-            <select
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value })}
-              className="h-10 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-xs text-zinc-900 outline-none focus:border-[#F58220]"
-            >
-              <option value="PENDING">در انتظار بررسی</option>
-              <option value="ACTIVE">فعال</option>
-              <option value="CLOSED">بسته</option>
-              <option value="FULFILLED">تأمین‌شده</option>
-            </select>
+            <label className="text-xs font-bold text-zinc-700">وضعیت (تنها از طریق دکمه‌های عملیات):</label>
+            {/* P0 audit (B4): status is read-only in the edit modal.
+                Transitions happen only via the action buttons (approve/
+                close/fulfill) which go through the canonical state machine. */}
+            <div className={`flex h-10 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 px-4 text-xs font-bold ${
+              form.status === "ACTIVE" ? "text-emerald-600"
+              : form.status === "PENDING" ? "text-amber-600"
+              : form.status === "CLOSED" ? "text-zinc-500"
+              : "text-blue-600"
+            }`}>
+              {form.status === "ACTIVE" ? "فعال"
+              : form.status === "PENDING" ? "در انتظار بررسی"
+              : form.status === "CLOSED" ? "بسته"
+              : form.status === "FULFILLED" ? "تأمین‌شده"
+              : form.status}
+            </div>
             <label className="mr-auto inline-flex items-center gap-2 text-xs font-bold text-zinc-700">
               <input
                 type="checkbox"

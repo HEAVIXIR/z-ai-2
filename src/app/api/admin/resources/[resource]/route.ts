@@ -46,8 +46,12 @@ import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
 
-// Store procurement and suppliers mutate only through dedicated transactional APIs.
-const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers', 'payments']);
+// Resources that mutate only through dedicated transactional APIs.
+// P0 audit: buy-requests added — BuyRequest creation must go through
+// createWanted (canonical service) via /api/wanted or /api/requests,
+// NOT the universal resource POST (which would bypass the PENDING
+// moderation gate + intent validation + audit).
+const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers', 'payments', 'buy-requests']);
 
 type Params = { params: Promise<{ resource: string }> };
 

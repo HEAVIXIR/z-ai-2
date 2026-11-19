@@ -52,17 +52,22 @@ describe("administrative mutation CSRF contracts", () => {
 
   it("blocks bulk mutations against the payment ledger", () => {
     const route = read("src/app/api/admin/resources/[resource]/bulk/route.ts");
-    expect(route).toMatch(/resourceKey === "payments"/);
-    expect(route).toMatch(/PAYMENT_BULK_MUTATION_DISABLED/);
-    expect(route).toMatch(/requireAdmin\("payment\.manage"\)/);
+    // P0 audit: the bulk route now uses a DEDICATED_MUTATION_RESOURCES set
+    // (which includes payments + buy-requests) instead of an inline
+    // payments-only check. The set gate 409-blocks bulk mutations.
+    expect(route).toMatch(/DEDICATED_MUTATION_RESOURCES\.has\(resourceKey\)/);
+    expect(route).toMatch(/DEDICATED_RESOURCE_BULK_DISABLED/);
+    expect(route).toMatch(/resourceKey === 'payments' \? 'payment\.manage'/);
     expect(route).toMatch(/checkCsrf\(req\)/);
   });
 
   it("routes universal payment mutations through the dedicated financial ledger API", () => {
     const collection = read("src/app/api/admin/resources/[resource]/route.ts");
     const detail = read("src/app/api/admin/resources/[resource]/[id]/route.ts");
-    expect(collection).toMatch(/new Set\(\['procurement', 'suppliers', 'payments'\]\)/);
-    expect(detail).toMatch(/new Set\(\['procurement', 'suppliers', 'payments'\]\)/);
+    // P0 audit: the DEDICATED_MUTATION_RESOURCES set now includes buy-requests
+    // (in addition to procurement/suppliers/payments).
+    expect(collection).toMatch(/new Set\(\['procurement', 'suppliers', 'payments', 'buy-requests'\]\)/);
+    expect(detail).toMatch(/new Set\(\['procurement', 'suppliers', 'payments', 'buy-requests'\]\)/);
     expect(collection).toMatch(/resourceKey === 'payments' \? 'payment\.manage'/);
     expect(detail).toMatch(/resourceKey === 'payments' \? 'payment\.manage'/);
   });

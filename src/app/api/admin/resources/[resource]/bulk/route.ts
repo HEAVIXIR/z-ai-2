@@ -28,6 +28,13 @@ export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ resource: string }> };
 
+// P0 audit: resources that mutate only through dedicated transactional
+// APIs and MUST NOT be bulk-mutated via the Universal Resource bulk
+// endpoint (which bypasses domain state machines, CAS, and audit trails).
+// Mirrors the [id] route's DEDICATED_MUTATION_RESOURCES. buy-requests
+// bulk transitions go through bulkTransitionWanted (canonical service).
+const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers', 'payments', 'buy-requests']);
+
 // PR-SC-00: resolve server-side tenant access context.
 async function resolveTenantCtx(
   userId: string | null,
@@ -43,14 +50,21 @@ async function resolveTenantCtx(
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { resource: resourceKey } = await params;
-  if (resourceKey === "payments") {
-    const [, authError] = await requireAdmin("payment.manage");
+  // P0 audit: dedicated-mutation resources (incl. buy-requests) are
+  // 409-blocked from the universal bulk endpoint — they must use their
+  // canonical service APIs (bulkTransitionWanted for buy-requests, etc).
+  if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
+    const perm = resourceKey === 'procurement' ? 'procurement.manage'
+      : resourceKey === 'payments' ? 'payment.manage'
+      : resourceKey === 'buy-requests' ? 'request.manage'
+      : 'store.manage';
+    const [, authError] = await requireAdmin(perm);
     if (authError) return authError;
     if (!checkCsrf(req)) {
       return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
     }
     return NextResponse.json(
-      { error: "عملیات گروهی روی دفتر مالی غیرفعال است؛ از گردش اختصاصی پرداخت استفاده کنید", code: "PAYMENT_BULK_MUTATION_DISABLED" },
+      { error: 'این منبع فقط از طریق API اختصاصی قابل تغییر است؛ عملیات گروهی Universal غیرفعال است.', code: 'DEDICATED_RESOURCE_BULK_DISABLED' },
       { status: 409 },
     );
   }
