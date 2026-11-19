@@ -31,11 +31,11 @@ describe("definitive machine terminal form coverage", () => {
         const indent = line.match(/^ */)?.[0].length ?? 0;
         return indent === 6 || indent === 10;
       })
-      .map((line) => line.match(/slug:\\s*"([^"]+)"/)?.[1])
+      .map((line) => line.match(/slug:\s*"([^"]+)"/)?.[1])
       .filter((slug): slug is string => Boolean(slug));
 
-    const literalTemplateSlugs = [...formBlock.matchAll(/slug:\\s*"([^"]+)"/g)].map((match) => match[1]);
-    const generatedTemplateSlugs = [...formBlock.matchAll(/leafForm\\("([^"]+)"/g)].map((match) => match[1]);
+    const literalTemplateSlugs = [...formBlock.matchAll(/slug:\s*"([^"]+)"/g)].map((match) => match[1]);
+    const generatedTemplateSlugs = [...formBlock.matchAll(/leafForm\("([^"]+)"/g)].map((match) => match[1]);
     const templateSlugs = [...literalTemplateSlugs, ...generatedTemplateSlugs];
     const templateSet = new Set(templateSlugs);
     const missing = terminalSlugs.filter((slug) => !templateSet.has(slug));
