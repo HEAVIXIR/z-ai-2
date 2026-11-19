@@ -148,6 +148,9 @@ export function assertPreviewLocationSeedApproval(
   if (env.HEAVIX_ALLOW_PREVIEW_LOCATION_SEED !== "1") {
     throw new Error("HEAVIX_ALLOW_PREVIEW_LOCATION_SEED=1 is required.");
   }
+  if (env.HEAVIX_PREVIEW_LOCATION_SEED_APPROVED !== "YES") {
+    throw new Error("HEAVIX_PREVIEW_LOCATION_SEED_APPROVED=YES is required for explicit approval.");
+  }
   if (!plan.seedAllowed) {
     throw new Error("Location catalog import is blocked until manifest rights review is APPROVED and commercialUseAllowed=true.");
   }
