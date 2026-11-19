@@ -581,13 +581,18 @@ export async function POST(req: Request) {
         asset.uploadedBy !== user.id ||
         asset.visibility !== "PRIVATE" ||
         asset.status !== "STAGED" ||
-        asset.size > imagePolicy.maxImageBytes ||
         asset.entityType !== "Listing" ||
         asset.entityId !== null
       ) {
         return NextResponse.json(
           { error: "یکی از تصاویر متعلق به حساب شما نیست یا قبلاً استفاده شده است." },
           { status: 403 },
+        );
+      }
+      if (asset.size > imagePolicy.maxImageBytes) {
+        return NextResponse.json(
+          { error: `حجم یکی از تصاویر از سقف ${imagePolicy.maxImageBytes / (1024 * 1024)} مگابایت پلن فعلی بیشتر است؛ تصویر را دوباره بارگذاری کنید.` },
+          { status: 400 },
         );
       }
       stagedAssets.push(asset);
