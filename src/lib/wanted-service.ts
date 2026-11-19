@@ -180,18 +180,14 @@ function parseDeadlineToExpiresAt(
  * schema, recorded as PUBLISHED in the audit so the intent is
  * preserved). Returns the new record id + status.
  *
- * Field mapping (task-spec → schema):
- *   - title             → BuyRequest.title (required)
- *   - description       → BuyRequest.description (optional)
- *   - quantity          → no schema column; recorded in audit
- *                         `after` payload only (preserves intent
- *                         without a schema migration)
- *   - budgetMin/Max     → BuyRequest.budgetMin/Max (BigInt?)
- *   - categoryId        → resolved to Category.name → BuyRequest.category
- *   - brandId           → resolved to Brand.name → BuyRequest.brandPref
- *   - transactionType   → BuyRequest.transaction (default SALE)
- *   - province/city     → BuyRequest.province/city
- *   - userId            → BuyRequest.userId (owner)
+ * Field mapping:
+ *   - title/description/budget/location → canonical BuyRequest scalar fields
+ *   - quantity/categoryId/brandId/modelId/serviceTypeId/intent → canonical
+ *     BuyRequest columns + taxonomy foreign keys (migration H.3)
+ *   - attributeValues → typed BuyRequestAttributeValue parents and
+ *     BuyRequestAttributeOption children for MULTI_SELECT
+ *   - legacy category/brand display strings remain populated for older readers
+ *   - userId → BuyRequest.userId (owner); idempotency is owner-scoped
  *
  * @throws WantedServiceError(400) when title or userId missing.
  */
