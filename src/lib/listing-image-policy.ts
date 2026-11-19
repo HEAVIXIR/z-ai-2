@@ -46,14 +46,11 @@ export async function getListingImagePolicy(userId: string): Promise<ListingImag
 
   // Plan DB values may still be stale until the approved seed is applied.
   // The commercial caps remain authoritative and DB values can only tighten them.
-  const configuredMaxListings = Number(plan?.maxListings ?? 0);
   const configuredMaxImages = Number(plan?.maxImages ?? 0);
 
   return {
     ...tierPolicy,
-    maxListings: configuredMaxListings > 0
-      ? Math.min(configuredMaxListings, tierPolicy.maxListings)
-      : tierPolicy.maxListings,
+    maxListings: tierPolicy.maxListings,
     maxImages: configuredMaxImages > 0
       ? Math.min(configuredMaxImages, tierPolicy.maxImages)
       : tierPolicy.maxImages,
