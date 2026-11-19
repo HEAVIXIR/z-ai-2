@@ -1244,3 +1244,27 @@ The B2 media infrastructure is robust:
 
 ### Invariants held
 - No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 open/unmerged. No paid services. Token not leaked.
+
+## 2026-11-19 — PHASE H.1: WANTED success link to owner dashboard (exact-SHA green)
+
+- Branch: `integration/preview-readiness-workerd-2026-11-15`. P0 audit fix: the WANTED success link pointed to `/api/wanted/{id}` (public API, 404s PENDING requests). Fixed: now links to `/dashboard/wanted` (new owner-scoped dashboard). Code-validated HEAD: `1991348`. CI `44544636617` SUCCESS (7 jobs green, 2 skipped — NOT counted as pass). OpenNext `44544636525` SUCCESS.
+
+### H.1 — WANTED success link fix (commit 1991348)
+- **Bug**: the wizard's success screen linked to `/api/wanted/{id}` — but the public GET `/api/wanted/[id]` route only returns ACTIVE+published requests. A freshly-created WANTED request is PENDING, so the link would 404.
+- **Fix**: the success link now points to `/dashboard/wanted` — a new owner-scoped dashboard page that shows the authenticated user's BuyRequests across ALL lifecycle states (PENDING, ACTIVE, CLOSED, FULFILLED). Ownership enforced by `where: { userId: user.id }`. The public API still filters on ACTIVE only (no change).
+- **Success screen**: now shows the created request id, the PENDING status label (در انتظار بررسی), a transaction-type-specific success message, and a WANTED-specific explanation of the moderation + matching flow.
+- **New page**: `src/app/dashboard/wanted/page.tsx` — auth-required, ownership-filtered, shows PENDING/ACTIVE/CLOSED/FULFILLED with appropriate labels + empty-state CTA.
+
+### Tests
+- 4 new contract tests (success link → dashboard, created id shown, dashboard enforces ownership, public API still ACTIVE-only).
+- 1 existing test updated (مشاهده درخواست ثبت‌شده → مشاهده درخواست در داشبورد).
+- 14 tests pass (2 files). typecheck:worker EXIT 0. ESLint clean.
+
+### Remaining (NOT closed — tracked on #345 + #346)
+- **WANTED structured persistence**: RFC corrected; migration blocked on backup/restore gate.
+- **Server-side validation hardening** (P2 #11-21): RENT/AUCTION/WANTED validation gaps.
+- **Behavioral E2E with real DB**: blocked by #346.
+- **Preview acceptance**: blocked by #346 (schema drift — migration not applied to Preview DB).
+
+### Invariants held
+- No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 open/unmerged. No paid services. Token not leaked.
