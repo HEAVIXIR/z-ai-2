@@ -624,9 +624,9 @@ model BuyRequest {
   modelId         String?
   serviceTypeId   String?
   intent          String?          // canonical demand intent (SALE/RENT/SALE_AND_RENT/SERVICE_REQUEST)
-  // DB-enforced idempotency: @unique lets createWanted catch P2002 on a truly
-  // concurrent double-submit (closes the gap the audit-log-backed idempotency
-  // leaves open). Nullable → existing rows unaffected.
+  // DB-enforced owner-scoped idempotency: the composite unique key lets
+  // createWanted catch P2002 on concurrent retries without cross-user key
+  // collisions. Nullable → existing rows unaffected.
   idempotencyKey  String?
 
   // ── H.3 structured-spec relations ──
