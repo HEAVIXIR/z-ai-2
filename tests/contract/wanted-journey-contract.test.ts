@@ -44,6 +44,14 @@ describe("WANTED journey source-contract (NOT behavioral E2E)", () => {
     expect(page).toContain("body.deadline =");
   });
 
+  it("WANTED wizard labels exact-price input as an alternative to a budget range and blocks conflicting values", () => {
+    const page = read("src/app/listings/new/page.tsx");
+    expect(page).toContain("قیمت پیشنهادی دقیق (اختیاری؛ به‌جای بازه بودجه)");
+    expect(page).toContain("const exactPriceConflictsWithRange = hasExactPrice && (min !== null || max !== null)");
+    expect(page).toContain("!exactPriceConflictsWithRange");
+    expect(page).toContain("{!isRequestFlow && (");
+  });
+
   it("POST /api/wanted preserves contact details, requires category, and persists a suggested price as an exact budget", () => {
     const route = read("src/app/api/wanted/route.ts");
     expect(route).toContain("requesterName: normalizedRequesterName || null");
