@@ -405,12 +405,17 @@ describe("PHASE H.2 — listing-form hardening contracts", () => {
       expect(wf).toContain("column_name='quantity'");
       expect(wf).toContain("table_name='BuyRequestAttributeValue'");
       expect(wf).toContain("table_name='BuyRequestAttributeOption'");
+      // Backup acceptance compares the complete public-table inventory and
+      // rehearses this exact migration on the disposable PostgreSQL restore.
+      expect(wf).toContain('diff -u "$WORK/expected-public-tables.txt" "$WORK/restored-public-tables.txt"');
+      expect(wf).toContain("prisma/migrations/20261119160000_wanted_structural_storage/migration.sql");
+      expect(wf).toContain("BuyRequest_userId_idempotencyKey_key");
     });
   });
 });
 
 describe("H.3 follow-up hardening: WANTED attribute transport and server enforcement", () => {
-  it("submits MULTI_SELECT option IDs as a typed array instead of textValue", () => {
+  it("submits typed MULTI_SELECT IDs and preserves legacy Listing textValue", () => {
     const ui = read("src/components/listings/AttributeFields.tsx");
     expect(ui).toContain("entry.selectedOptionIds = arr.map(String)");
     // Ordinary listings still consume the legacy textValue representation.
