@@ -8,10 +8,17 @@ const read = (relativePath: string) =>
 describe("listing image subscription policy", () => {
   it("defines the agreed free and paid quotas", () => {
     const shared = read("src/lib/listing-image-policy-shared.ts");
+    const seed = read("prisma/seed-phase6-7-automation-monetization.ts");
     expect(shared).toContain("maxImages: 4");
     expect(shared).toContain("maxImageBytes: 1 * 1024 * 1024");
     expect(shared).toContain("maxImages: 8");
     expect(shared).toContain("maxImageBytes: 2 * 1024 * 1024");
+    expect(seed).toContain("maxImages: 4");
+    expect(seed).toContain("maxImages: 8");
+    expect(seed).toContain("۴ تصویر برای هر آگهی");
+    expect(seed.match(/۸ تصویر برای هر آگهی/g)?.length).toBe(2);
+    expect(seed).not.toContain("۱۶ تصویر برای هر آگهی");
+    expect(seed).not.toContain("۳۲ تصویر برای هر آگهی");
   });
 
   it("derives paid status only from an active, non-expired, configured paid subscription", () => {
