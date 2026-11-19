@@ -31,7 +31,7 @@ describe("Iran administrative CSV converter", () => {
       "Id,ParentCountryDivisionId,Name,Code,DivisionType",
       "1,,ایران,00,0",
       "2,missing,شهرستان,01,2",
-    ].join("\\n");
+    ].join("\n");
     expect(() => convertIranDivisionsCsv(text)).toThrow(/missing parent/);
   });
 
