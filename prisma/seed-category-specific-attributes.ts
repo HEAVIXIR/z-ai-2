@@ -2772,7 +2772,7 @@ templates.push(
     f("starting_method", "روش راه‌اندازی", "Starting Method", "SELECT", { options: ["مستقیم", "ستاره-مثلث", "سافت‌استارتر", "درایو فرکانس متغیر"] }),
   ]},
 
-];
+);
 
 // Dedicated leaf-level additions for the current definitive 16-group machine tree.
 // Parent-family attributes remain inherited; these fields capture the subtype-specific
