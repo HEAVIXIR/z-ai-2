@@ -10,7 +10,7 @@ describe("Listing image upload contract", () => {
     const source = read("src/components/listings/ListingImageUploader.tsx");
     expect(source).toContain('fetch("/api/media/staging"');
     expect(source).toContain('body.append("file", prepared.file)');
-    expect(source).toContain("prepareImageForUpload(source)");
+    expect(source).toContain("prepareImageForUpload(source, policy.maxImageBytes)");
     expect(source).toContain("result?.url");
     expect(source).not.toContain("placeholder-");
     expect(source).toContain('accept="image/jpeg,image/png,image/webp"');
