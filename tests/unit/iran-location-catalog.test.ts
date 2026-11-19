@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import dataset from "../../prisma/data/iran-locations-1404.json";
 import manifest from "../../prisma/data/iran-locations-1404.manifest.json";
+import { buildIranLocationCatalog } from "../../scripts/geospatial/build-iran-location-catalog.mjs";
 
 describe("HEAVIX Iran canonical location catalog", () => {
   it("contains only the requested Country → Province → City levels", () => {
@@ -31,6 +32,15 @@ describe("HEAVIX Iran canonical location catalog", () => {
       expect(provinceCodes.has(city.provinceCode)).toBe(true);
       expect(city.name.trim().length).toBeGreaterThan(0);
     }
+  });
+
+  it("reproduces the committed dataset and manifest from the existing source file", () => {
+    const sourceBytes = readFileSync(resolve(process.cwd(), "prisma/data/iran-cities-1404.json"));
+    const generated = buildIranLocationCatalog(sourceBytes);
+    const committedDataset = readFileSync(resolve(process.cwd(), "prisma/data/iran-locations-1404.json"));
+    const committedManifest = readFileSync(resolve(process.cwd(), "prisma/data/iran-locations-1404.manifest.json"));
+    expect(Buffer.from(generated.datasetBytes).equals(committedDataset)).toBe(true);
+    expect(Buffer.from(generated.manifestBytes).equals(committedManifest)).toBe(true);
   });
 
   it("matches the exact committed dataset bytes to the manifest SHA-256", () => {
