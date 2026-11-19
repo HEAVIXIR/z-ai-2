@@ -454,11 +454,17 @@ export default function NewListingPage() {
           const wq = Number(wanted.quantity);
           const wmin = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\d]/g, "")) : null;
           const wmax = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\d]/g, "")) : null;
+          const exactPrice = form.price.trim();
+          const hasExactPrice = exactPrice.length > 0;
+          const exactPriceValid = !hasExactPrice || /^\d+$/.test(exactPrice);
+          const exactPriceConflictsWithRange = hasExactPrice && (wmin !== null || wmax !== null);
           const wdeadline = wanted.deadline ? new Date(`${wanted.deadline}T23:59:00`) : null;
           return Number.isInteger(wq) && wq >= 1 && wq <= 10000 &&
             (wmin === null || wmin >= 0n) &&
             (wmax === null || wmax >= 0n) &&
             (wmin === null || wmax === null || wmin <= wmax) &&
+            exactPriceValid &&
+            !exactPriceConflictsWithRange &&
             (!wdeadline || (!Number.isNaN(wdeadline.getTime()) && wdeadline.getTime() > Date.now()));
         }
         return true;
