@@ -52,6 +52,18 @@ describe("HEAVIX listing wizard end-to-end source contract", () => {
     expect(api).toContain("attachAsset(asset.id, \"Listing\", listing.id, user.id)");
   });
 
+  it("routes direct SERVICE_REQUEST through the canonical BuyRequest flow", () => {
+    const page = read("src/app/listings/new/page.tsx");
+    const routing = read("src/lib/transaction-type-routing.ts");
+    const listings = read("src/app/api/listings/route.ts");
+    expect(page).toContain('transactionType === "SERVICE_REQUEST" ? "SERVICE_REQUEST" : wanted.intent');
+    expect(page).toContain('transactionType === "WANTED" || transactionType === "SERVICE_REQUEST"');
+    expect(page).toContain('const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings"');
+    expect(page).toContain("if (isWantedServiceRequest || isServiceRequest)");
+    expect(routing).toContain('normalized === "SERVICE_REQUEST"');
+    expect(listings).toContain("isRequestTransactionType(transactionType.key)");
+  });
+
   it("persists WANTED through its canonical API rather than creating a supply Listing", () => {
     const wanted = read("src/app/api/wanted/route.ts");
     const listings = read("src/app/api/listings/route.ts");
