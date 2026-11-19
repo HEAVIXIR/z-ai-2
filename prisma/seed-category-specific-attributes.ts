@@ -3268,6 +3268,11 @@ templates.push(...missingTerminalLeafForms);
 // Dedicated technical forms for all terminal spare-parts categories.
 // Shared equipment identity fields remain in the common listing flow.
 const partsLeafForms: Template[] = [
+  leafForm("spare-parts", "قطعات یدکی عمومی", [
+    { key: "part_family", fa: "خانواده قطعه", en: "Part Family", type: "SELECT", options: ["موتور", "انتقال قدرت", "هیدرولیک", "برق و الکترونیک", "زیربندی", "خنک‌کاری", "مصرفی", "سایر"] },
+    { key: "oem_part_number", fa: "شماره فنی سازنده", en: "OEM Part Number", type: "TEXT", filterable: true },
+    { key: "compatible_models", fa: "مدل‌های سازگار", en: "Compatible Models", type: "LONG_TEXT" },
+  ]),
   leafForm("engine-parts", "قطعات موتور", [
     { key: "part_family", fa: "خانواده قطعه موتور", en: "Engine Part Family", type: "SELECT", options: ["پیستون و رینگ", "یاتاقان", "سوپاپ و متعلقات", "میل‌لنگ", "سرسیلندر", "توربوشارژر", "سیستم سوخت‌رسانی", "سایر"] },
     { key: "oem_part_number", fa: "شماره فنی سازنده", en: "OEM Part Number", type: "TEXT", filterable: true },
