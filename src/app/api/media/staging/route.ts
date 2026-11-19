@@ -5,11 +5,26 @@ import { enforceRateLimit } from "@/lib/rate-limit-check";
 import { UPLOAD } from "@/lib/rate-limit-presets";
 import { uploadAsset } from "@/lib/media-service";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload-security";
+import { getListingImagePolicy } from "@/lib/listing-image-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_UPLOAD_REQUEST_BYTES = MAX_UPLOAD_BYTES + 256 * 1024;
+
+/** GET /api/media/staging — authenticated image entitlement for the uploader UI. */
+export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "برای مشاهده محدودیت تصاویر باید وارد شوید." }, { status: 401 });
+  }
+  try {
+    const policy = await getListingImagePolicy(user.id);
+    return NextResponse.json({ policy }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch {
+    return NextResponse.json({ error: "بررسی سطح اشتراک ناموفق بود." }, { status: 503 });
+  }
+}
 
 /**
  * POST /api/media/staging
@@ -42,6 +57,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    const policy = await getListingImagePolicy(user.id);
     const formData = await request.formData();
     const file = formData.get("file");
     if (!(file instanceof File)) {
@@ -58,6 +74,7 @@ export async function POST(request: Request) {
       originalFilename: file.name,
       entityType: "Listing",
       visibility: "PRIVATE",
+      maxOutputBytes: policy.maxImageBytes,
       altText: formData.get("altText")?.toString() || undefined,
     });
 
@@ -72,6 +89,8 @@ export async function POST(request: Request) {
       ok: true,
       assetId: result.asset.id,
       url: result.asset.url,
+      size: result.asset.size,
+      policy,
     });
   } catch {
     return NextResponse.json(
