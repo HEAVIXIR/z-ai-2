@@ -437,4 +437,10 @@ describe("H.3 follow-up hardening: WANTED attribute transport and server enforce
     expect(validator).not.toContain("if (values.length === 0) return { ok: true, values: [] }");
     expect(validator.indexOf("// Required enforcement")).toBeGreaterThan(validator.indexOf("const values = incoming"));
   });
+
+  it("requires a ServiceType only for SERVICE_REQUEST intent", () => {
+    const route = read("src/app/api/wanted/route.ts");
+    expect(route).toContain('intentStr === "SERVICE_REQUEST" && !requestedServiceTypeId');
+    expect(route).toContain('intentStr !== "SERVICE_REQUEST" && requestedServiceTypeId');
+  });
 });
