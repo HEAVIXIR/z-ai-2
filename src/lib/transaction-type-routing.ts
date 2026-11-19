@@ -57,6 +57,95 @@ export function isSupplyListingType(key: string): boolean {
   return (SUPPLY_LISTING_TYPES as readonly string[]).includes(normalized);
 }
 
+// ── Demand intent (WANTED / BuyRequest side) ────────────────────
+/**
+ * A demand-side request (BuyRequest) expresses an *intent*: what the
+ * buyer wants to do — buy, rent, both, or procure a service. The
+ * intent is stored in `BuyRequest.transaction` (a free-text String
+ * column, so NO schema migration is required) and is what the matching
+ * engine uses to narrow the supply candidate pool to *compatible*
+ * listing types only.
+ *
+ * Vocabulary is deliberately the existing demand-intent vocabulary the
+ * frontend already understands (see TRANSACTION_LABELS in
+ * RequestsClient.tsx and ActiveRequestsSection.tsx):
+ *   - "SALE"            → buy intent   (خرید)
+ *   - "RENT"            → rent intent  (اجاره)
+ *   - "SALE_AND_RENT"   → flexible     (خرید/اجاره)
+ *   - "SERVICE_REQUEST" → service demand (خدمات)
+ *
+ * Legacy rows created before the intent wiring stored "WANTED" (the
+ * listing-type label) in `transaction`. `normalizeDemandIntent`
+ * collapses those onto the buy intent so existing demand keeps
+ * matching SALE + AUCTION supply — the same surface it had before.
+ */
+export type DemandIntent =
+  | "SALE"
+  | "RENT"
+  | "SALE_AND_RENT"
+  | "SERVICE_REQUEST";
+
+/**
+ * Map a demand intent → the supply listing types that can satisfy it.
+ * This is the contract the matching engine enforces so that, e.g., a
+ * rent-demand never matches a sale-supply (and vice versa).
+ *
+ *   - SALE (buy)            → SALE, AUCTION   (auctions are a sale mechanism)
+ *   - RENT                  → RENT
+ *   - SALE_AND_RENT         → SALE, RENT, AUCTION (flexible demand)
+ *   - SERVICE_REQUEST       → SERVICE_OFFER
+ *
+ * Unknown/legacy intents fall back to the buy-intent surface so the
+ * engine never silently drops an otherwise-eligible request.
+ */
+export const DEMAND_INTENT_TO_SUPPLY_TYPES: Record<
+  DemandIntent,
+  readonly string[]
+> = {
+  SALE: ["SALE", "AUCTION"],
+  RENT: ["RENT"],
+  SALE_AND_RENT: ["SALE", "RENT", "AUCTION"],
+  SERVICE_REQUEST: ["SERVICE_OFFER"],
+};
+
+const BUY_INTENT_SURFACE = DEMAND_INTENT_TO_SUPPLY_TYPES.SALE;
+
+/**
+ * Normalize the raw `BuyRequest.transaction` value into a canonical
+ * demand intent. Anything unrecognized (incl. the legacy "WANTED"
+ * listing-type label, null, empty, or garbage) collapses onto the
+ * buy intent "SALE" — the safest default and the historical behavior
+ * (every prior WANTED row was, by construction, a buy-demand since the
+ * form never captured rent/service intent).
+ */
+export function normalizeDemandIntent(
+  transaction: string | null | undefined,
+): DemandIntent {
+  const normalized = String(transaction ?? "").trim().toUpperCase();
+  if (normalized === "RENT") return "RENT";
+  if (normalized === "SALE_AND_RENT") return "SALE_AND_RENT";
+  if (
+    normalized === "SERVICE_REQUEST" ||
+    normalized === "SERVICE" ||
+    normalized === "SERVICE_OFFER"
+  ) {
+    return "SERVICE_REQUEST";
+  }
+  // "SALE", "BUY", "WANTED", "", null, unknown → buy intent.
+  return "SALE";
+}
+
+/**
+ * Return the supply listing types that can satisfy the demand encoded
+ * in `transaction` (a raw BuyRequest.transaction value). Used by the
+ * matching engine to constrain the candidate query.
+ */
+export function compatibleSupplyTypesForTransaction(
+  transaction: string | null | undefined,
+): readonly string[] {
+  return DEMAND_INTENT_TO_SUPPLY_TYPES[normalizeDemandIntent(transaction)];
+}
+
 export function requiresListingImage(key: string): boolean {
   const normalized = String(key ?? "").trim().toUpperCase();
   return !["WANTED", "QUOTE", "SERVICE_REQUEST", "SERVICE_OFFER"].includes(normalized);

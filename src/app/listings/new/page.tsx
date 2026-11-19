@@ -124,6 +124,13 @@ export default function NewListingPage() {
     terms: "",
   });
   const [wanted, setWanted] = useState({
+    // Demand intent: what the buyer wants to do. SALE = buy (خرید),
+    // RENT = rent (اجاره), SALE_AND_RENT = flexible (خرید/اجاره),
+    // SERVICE_REQUEST = service demand (خدمات). Stored in
+    // BuyRequest.transaction and read by the matching engine to narrow
+    // supply candidates to compatible types. Default buy intent matches
+    // the historical WANTED behavior.
+    intent: "SALE" as "SALE" | "RENT" | "SALE_AND_RENT" | "SERVICE_REQUEST",
     quantity: "1",
     budgetMin: "",
     budgetMax: "",
@@ -455,6 +462,7 @@ export default function NewListingPage() {
       };
 
       if (transactionType === "WANTED") {
+        body.intent = wanted.intent;
         body.quantity = Number(wanted.quantity);
         body.budgetMin = wanted.budgetMin || undefined;
         body.budgetMax = wanted.budgetMax || undefined;
@@ -1073,6 +1081,27 @@ export default function NewListingPage() {
                         <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
                           <p className="mb-3 text-sm font-black text-amber-300">جزئیات درخواست خرید</p>
                           <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="sm:col-span-2">
+                              <label className={labelCls}>نوع تقاضا *</label>
+                              <div className="flex flex-wrap gap-2">
+                                {([
+                                  { v: "SALE", l: "خرید" },
+                                  { v: "RENT", l: "اجاره" },
+                                  { v: "SALE_AND_RENT", l: "خرید/اجاره" },
+                                  { v: "SERVICE_REQUEST", l: "خدمات" },
+                                ] as const).map((t) => (
+                                  <button
+                                    key={t.v}
+                                    type="button"
+                                    onClick={() => setWanted((v) => ({ ...v, intent: t.v }))}
+                                    className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${wanted.intent === t.v ? "border-amber-400 bg-amber-400/15 text-amber-200" : "border-white/10 bg-white/[0.03] text-white/60 hover:border-white/20"}`}
+                                  >
+                                    {t.l}
+                                  </button>
+                                ))}
+                              </div>
+                              <p className="mt-2 text-xs text-white/45">نوع تقاضا تعیین می‌کند این درخواست با کدام آگهی‌های عرضه تطبیق داده شود (خرید ← فروش/مزایده، اجاره ← اجاره، خدمات ← ارائه خدمت).</p>
+                            </div>
                             <div>
                               <label className={labelCls}>تعداد موردنیاز *</label>
                               <input value={wanted.quantity} onChange={(e) => setWanted((v) => ({ ...v, quantity: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />

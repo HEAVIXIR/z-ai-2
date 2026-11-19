@@ -142,6 +142,13 @@ export async function POST(req: Request) {
       brandId,
       modelId,
       attributeValues,
+      // Demand intent (BUY/RENT/SERVICE) — the canonical value stored in
+      // BuyRequest.transaction and read by the matching engine. Accepts
+      // the demand-intent vocabulary (SALE/RENT/SALE_AND_RENT/
+      // SERVICE_REQUEST). Legacy callers may still send `transactionType`
+      // (the listing-type label), which normalizeDemandIntent collapses
+      // onto the buy intent.
+      intent,
       transactionType,
       province,
       city,
@@ -203,6 +210,7 @@ export async function POST(req: Request) {
       brandId,
       modelId,
       attributeValues,
+      intent: intent ? String(intent) : null,
       transactionType,
       province: selectedProvince?.name ?? selectedCity?.province.name ?? (requestedProvinceId ? null : province),
       city: selectedCity?.name ?? (requestedCityId ? null : city),

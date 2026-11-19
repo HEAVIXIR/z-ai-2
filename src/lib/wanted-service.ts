@@ -56,6 +56,7 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { matchBuyRequest, BuyRequestMatchResult } from "@/lib/matching-service";
+import { normalizeDemandIntent } from "@/lib/transaction-type-routing";
 
 // ── Service error (maps to HTTP status in route handler) ──
 export class WantedServiceError extends Error {
@@ -189,6 +190,15 @@ export async function createWanted(params: {
   category?: string | null;
   brandId?: string | null;
   brandPref?: string | null;
+  /**
+   * Demand intent (BUY/RENT/SERVICE). When provided, this is the
+   * canonical value stored in BuyRequest.transaction and is what the
+   * matching engine uses to narrow the supply candidate pool. Accepts
+   * the demand-intent vocabulary (SALE/RENT/SALE_AND_RENT/
+   * SERVICE_REQUEST); legacy callers may still pass the listing-type
+   * label ("WANTED"), which normalizes to the buy intent (SALE).
+   */
+  intent?: string | null;
   transactionType?: string | null;
   province?: string | null;
   city?: string | null;
@@ -209,6 +219,7 @@ export async function createWanted(params: {
     category = null,
     brandId = null,
     brandPref = null,
+    intent = null,
     transactionType = null,
     province = null,
     city = null,
@@ -249,6 +260,18 @@ export async function createWanted(params: {
   const publishedAt = new Date();
   const expiresAt = parseDeadlineToExpiresAt(deadline);
 
+  // ── Demand intent ──
+  // `intent` is the canonical demand-side signal (BUY/RENT/SERVICE).
+  // It is stored in BuyRequest.transaction (no schema migration — the
+  // column is a free-text String) and is what the matching engine
+  // reads to narrow the supply candidate pool to compatible types.
+  // Prefer the explicit `intent` param; fall back to the legacy
+  // `transactionType` alias (which carried the listing-type label,
+  // e.g. "WANTED"). normalizeDemandIntent collapses legacy/unknown
+  // values onto the buy intent (SALE) so existing callers keep working
+  // and existing rows keep matching SALE + AUCTION supply.
+  const resolvedIntent = normalizeDemandIntent(intent ?? transactionType);
+
   // ── Persist ──
   const request = await db.buyRequest.create({
     data: {
@@ -256,7 +279,7 @@ export async function createWanted(params: {
       description: description ? String(description).slice(0, 2000) : null,
       category: categoryName ?? (category ? String(category).trim().slice(0, 120) : null),
       brandPref: brandName ?? (brandPref ? String(brandPref).trim().slice(0, 120) : null),
-      transaction: transactionType || "SALE",
+      transaction: resolvedIntent,
       budgetMin: toBigInt(budgetMin),
       budgetMax: toBigInt(budgetMax),
       city: city ? String(city).slice(0, 120) : null,
@@ -309,7 +332,14 @@ export async function createWanted(params: {
       // Structured attribute snapshots are audit-only until the BuyRequest
       // schema has a dedicated specification relation (migration gated).
       attributeValues: Array.isArray(attributeValues) ? attributeValues.slice(0, 100) : [],
-      transactionType: transactionType || "SALE",
+      // Demand intent: the canonical value stored in BuyRequest.transaction
+      // (resolvedIntent), plus the raw inputs the caller sent (intent /
+      // transactionType) so the audit trail records what was requested
+      // before normalization. The matching engine reads `resolvedIntent`
+      // to narrow supply candidates to compatible types.
+      intent: resolvedIntent,
+      intentRequested: intent ?? transactionType ?? null,
+      transactionType: resolvedIntent,
       province: province ?? null,
       city: city ?? null,
       // Lifecycle timestamps — recorded so the audit trail proves

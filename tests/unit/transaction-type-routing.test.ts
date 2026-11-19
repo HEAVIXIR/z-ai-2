@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   categoryLayerForTransactionType,
+  compatibleSupplyTypesForTransaction,
   isMarketplaceTransactionType,
   isRequestTransactionType,
   isServiceTransactionType,
+  normalizeDemandIntent,
   requiresListingImage,
   requiresListingPrice,
 } from "@/lib/transaction-type-routing";
@@ -40,5 +42,66 @@ describe("HEAVIX V1.1 transaction routing", () => {
     expect(requiresListingPrice("RENT")).toBe(true);
     expect(requiresListingImage("AUCTION")).toBe(true);
     expect(requiresListingPrice("AUCTION")).toBe(false);
+  });
+});
+
+describe("demand intent normalization and supply compatibility", () => {
+  it("normalizes the canonical demand-intent vocabulary unchanged", () => {
+    expect(normalizeDemandIntent("SALE")).toBe("SALE");
+    expect(normalizeDemandIntent("RENT")).toBe("RENT");
+    expect(normalizeDemandIntent("SALE_AND_RENT")).toBe("SALE_AND_RENT");
+    expect(normalizeDemandIntent("SERVICE_REQUEST")).toBe("SERVICE_REQUEST");
+  });
+
+  it("is case- and whitespace-insensitive", () => {
+    expect(normalizeDemandIntent("rent")).toBe("RENT");
+    expect(normalizeDemandIntent(" Sale_And_Rent ")).toBe("SALE_AND_RENT");
+    expect(normalizeDemandIntent("service")).toBe("SERVICE_REQUEST");
+  });
+
+  it("collapses the legacy WANTED listing-type label onto the buy intent", () => {
+    // The pre-intent wizard stored "WANTED" in BuyRequest.transaction.
+    // Those rows must keep matching SALE + AUCTION supply (buy intent),
+    // not be dropped or misrouted to rent/service candidates.
+    expect(normalizeDemandIntent("WANTED")).toBe("SALE");
+    expect(normalizeDemandIntent("QUOTE")).toBe("SALE");
+  });
+
+  it("defaults null / empty / unknown onto the buy intent (safest surface)", () => {
+    expect(normalizeDemandIntent(null)).toBe("SALE");
+    expect(normalizeDemandIntent(undefined)).toBe("SALE");
+    expect(normalizeDemandIntent("")).toBe("SALE");
+    expect(normalizeDemandIntent("GARBAGE")).toBe("SALE");
+    expect(normalizeDemandIntent("BUY")).toBe("SALE");
+  });
+
+  it("maps each intent to the supply types that can satisfy it", () => {
+    // Buy demand matches sale + auction (auctions are a sale mechanism).
+    expect(compatibleSupplyTypesForTransaction("SALE")).toEqual(["SALE", "AUCTION"]);
+    // Rent demand matches rent supply only — never sale or auction.
+    expect(compatibleSupplyTypesForTransaction("RENT")).toEqual(["RENT"]);
+    // Flexible demand matches sale, rent, and auction.
+    expect(compatibleSupplyTypesForTransaction("SALE_AND_RENT")).toEqual([
+      "SALE",
+      "RENT",
+      "AUCTION",
+    ]);
+    // Service demand matches service offers only.
+    expect(compatibleSupplyTypesForTransaction("SERVICE_REQUEST")).toEqual([
+      "SERVICE_OFFER",
+    ]);
+  });
+
+  it("never lets a rent-demand match a sale-supply (the core defect it fixes)", () => {
+    const rentCandidates = compatibleSupplyTypesForTransaction("RENT");
+    expect(rentCandidates).not.toContain("SALE");
+    expect(rentCandidates).not.toContain("AUCTION");
+    const saleCandidates = compatibleSupplyTypesForTransaction("SALE");
+    expect(saleCandidates).not.toContain("RENT");
+  });
+
+  it("treats the legacy WANTED transaction as buy-demand for matching", () => {
+    // Legacy rows stored "WANTED"; matching must still surface SALE + AUCTION.
+    expect(compatibleSupplyTypesForTransaction("WANTED")).toEqual(["SALE", "AUCTION"]);
   });
 });

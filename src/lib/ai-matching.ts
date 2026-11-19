@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { isBuyRequestMatchEligible } from "@/lib/wanted-eligibility";
-import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
+import { compatibleSupplyTypesForTransaction } from "@/lib/transaction-type-routing";
 
 /* ============================================================
    HEAVIX — AI Matching: BuyRequest ↔ Listing (FIX-GAPS-1)
@@ -192,6 +192,7 @@ export async function matchRequestToListings(
       city: true,
       province: true,
       status: true,
+      transaction: true,
       publishedAt: true,
       expiresAt: true,
     },
@@ -201,15 +202,20 @@ export async function matchRequestToListings(
     return { matches: [] };
   }
 
-  // Load PUBLISHED SUPPLY listings with their brand + category names.
-  // Only supply-side listing types (SALE, RENT, AUCTION, SERVICE_OFFER)
-  // are valid candidates for a BuyRequest. Demand-side listings (WANTED,
-  // QUOTE, SERVICE_REQUEST) are excluded so a demand post can never be
-  // matched against another demand post (demand/supply contamination).
+  // Intent-aware candidate selection: a demand request only matches
+  // supply listings whose type can satisfy the request's intent
+  // (buy-demand → SALE/AUCTION, rent-demand → RENT, service-demand →
+  // SERVICE_OFFER, flexible → all of the above). This prevents the
+  // demand/supply type mismatch where, e.g., a rent-demand would
+  // otherwise match a sale-supply. `compatibleSupplyTypesForTransaction`
+  // normalizes the raw BuyRequest.transaction value (incl. the legacy
+  // "WANTED" label) and returns the compatible supply-type list; the
+  // result is always a subset of SUPPLY_LISTING_TYPES.
+  const compatibleTypes = compatibleSupplyTypesForTransaction(req.transaction);
   const listings = await db.listing.findMany({
     where: {
       status: "PUBLISHED",
-      listingType: { in: [...SUPPLY_LISTING_TYPES] },
+      listingType: { in: [...compatibleTypes] },
     },
     select: {
       id: true,
