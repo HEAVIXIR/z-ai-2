@@ -730,3 +730,14 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - This independently reconfirms Issue #346's App Preview schema mismatch; the dedicated guarded workflow in PR #347 remains open/unmerged and has not been dispatched. No DB writes, migrations, Production/Store Preview operations, or paid provider use.
 - Issue #346 updated with exact CI/OpenNext and telemetry evidence. Next critical gate: normal review/merge of workflow-only PR #347 (requires ordinary repository approval), then manually dispatch only `APP_PREVIEW_ONLY` with the exact confirmation after checking environment secrets and workflow guards. Do not infer migration success before the workflow's backup, read-back, disposable restore, pre-apply identity recheck, deploy, and post-apply verification all pass.
 - Analytics actor spoofing fix remains on Integration, not Main/Production. Its final exact-head CI and OpenNext checks passed; the separate Preview deployment used an earlier SHA and is not accepted as end-to-end validation of final HEAD.
+
+
+## 2026-11-19 — WANTED privacy and lifecycle hardening
+
+- Issue #345 implementation continued on Integration only:
+  - `45ec87aa2ea57f64e2ecca158cda27e294c1da1c`: public list no longer selects/returns BuyRequest.userId; closeWanted enforces exact owner identity (null-owner legacy records are not closable by arbitrary authenticated users); close audit actorType corrected to USER.
+  - `1a4dc82eb7af815a56e6b67987f52e4171290241`: public detail response removes internal userId.
+  - `a3815dc1ac0adbb3f420ba1c530f3b687a6a1ba1`: legacy admin bulk delete action now maps to audited CLOSED soft-close; no destructive deleteMany.
+  - `0c0ba94f5af2652bc1235f9542b4c801ce9c001e` and `acb5667063e7ecec4f846c7f5eb036b3f748fcf4`: static security regression tests added and scoped to the public list projection.
+- Issue #345 updated with commit-level evidence. Exact final-head CI/OpenNext for `acb5667` pending/queued at the time of writing. Do not call these changes validated until exact SHA gates finish.
+- No schema changes, migrations, seeds, database writes, Main merges, Production deploys, or Store Preview changes.
