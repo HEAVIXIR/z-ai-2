@@ -163,23 +163,71 @@ model BuyRequest {
 model BuyRequestAttributeValue {
   id            String   @id @default(cuid())
   buyRequestId  String
-  attributeId   String           // → AttributeDefinition.id (or key)
+  attributeId   String
+  // ── H.2 rev2: REAL FK to AttributeDefinition (mirrors ListingAttributeValue). ──
+  // The first draft left attributeId as a bare String with a comment — that
+  // lost referential integrity, prevented Cascade-on-attribute-deletion, and
+  // made the "attribute belongs to this category/model" validation a best-
+  // effort join instead of an enforced relation. This now matches
+  // ListingAttributeValue.attribute exactly: onDelete: Cascade means deleting
+  // an AttributeDefinition cascades its BuyRequestAttributeValue rows (same
+  // behavior as for listings).
+  attribute     AttributeDefinition @relation("BuyRequestAttributeValueAttribute", fields: [attributeId], references: [id], onDelete: Cascade)
   textValue     String?
   numberValue   Float?
   booleanValue  Boolean?
   dateValue     DateTime?
-  optionId      String?          // → AttributeOption.id
-  sourceType    String?          // SELLER_INPUT | ADMIN
-  buyRequest    BuyRequest       @relation(fields: [buyRequestId], references: [id], onDelete: Cascade)
+  // ── H.2 rev2: REAL FK to AttributeOption (mirrors ListingAttributeValue.optionId). ──
+  // SetNull: deleting an option nulls the row's optionId instead of deleting
+  // the whole value (the buyer's typed text/number survives). A SELECT/MULTI_SELECT
+  // option that is removed mid-flight degrades gracefully to "no option".
+  optionId      String?
   option        AttributeOption?  @relation("BuyRequestAttributeValueOption", fields: [optionId], references: [id], onDelete: SetNull)
+  unit          String?           // captured at write time (AttributeDefinition.unit snapshot)
+  sourceType    String?           // SELLER_INPUT | ADMIN_VERIFIED | IMPORTED
+  confidence    Float?            // 0..1 (provenance, mirrors ListingAttributeValue)
+  sourceReference String?
+  verifiedAt    DateTime?
+  verifiedBy    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  buyRequest    BuyRequest       @relation(fields: [buyRequestId], references: [id], onDelete: Cascade)
 
   @@unique([buyRequestId, attributeId])
   @@index([buyRequestId])
+  @@index([attributeId])
 }
 ```
 
+**Deletion behavior matrix (mirrors ListingAttributeValue):**
+| Event | Effect on BuyRequestAttributeValue |
+|---|---|
+| BuyRequest deleted | `onDelete: Cascade` → all attribute-value rows deleted with the request |
+| AttributeDefinition deleted | `onDelete: Cascade` → all attribute-value rows for that attribute deleted (referential integrity preserved) |
+| AttributeOption deleted | `onDelete: SetNull` → the row's `optionId` is nulled; the typed text/number value survives |
+
+**Type-validation contract (mirrors `validateListingAttributeValues`):**
+At write time the service MUST enforce, per row, that the chosen typed slot
+matches `AttributeDefinition.type` (TEXT/LONG_TEXT/INTEGER/DECIMAL/BOOLEAN/
+SELECT/MULTI_SELECT/RANGE/YEAR/DATE/DATETIME/CURRENCY/UNIT/REFERENCE/LOCATION/
+FILE/IMAGE/COLOR/SIZE/WEIGHT/URL/PHONE):
+- TEXT/LONG_TEXT/URL/PHONE → `textValue` (string)
+- INTEGER/DECIMAL/YEAR/CURRENCY/UNIT/SIZE/WEIGHT → `numberValue` (number)
+- BOOLEAN → `booleanValue`
+- DATE/DATETIME → `dateValue`
+- SELECT → `optionId` must reference an `AttributeOption` whose `attributeId` === the row's `attributeId`
+- MULTI_SELECT → a parent `BuyRequestAttributeValue` row per selected option (each with the same `attributeId`, distinct `optionId`); the `@@unique([buyRequestId, attributeId])` constraint is therefore relaxed to `@@unique([buyRequestId, attributeId, optionId])` for the MULTI_SELECT case — see §3.1b
+- RANGE → two slots (`numberValue` min/max) OR a convention field; out of scope for the first migration
+
+**Category/model membership validation contract:**
+At write time the service MUST reject an attribute that does not belong to the
+request's selected `categoryId` (via `CategoryAttribute`) OR the selected
+`modelId` (via `ProductModelAttribute`). This mirrors the `outOfScope` filter
+in `src/lib/listing-attributes.ts:120`. An attribute not linked to either is
+rejected with 400.
+
 Back-relations must be added to `Category`, `Brand`, `ProductModel`,
-`ServiceType`, and `AttributeOption`:
+`ServiceType`, `AttributeDefinition`, and `AttributeOption`:
 ```prisma
 // Category
 buyRequests  BuyRequest[]  @relation("BuyRequestCategory")
@@ -189,6 +237,8 @@ buyRequests  BuyRequest[]  @relation("BuyRequestBrand")
 buyRequests  BuyRequest[]  @relation("BuyRequestModel")
 // ServiceType
 buyRequests  BuyRequest[]  @relation("BuyRequestService")
+// AttributeDefinition  ← H.2 rev2: required for the real FK
+buyRequestValues  BuyRequestAttributeValue[]  @relation("BuyRequestAttributeValueAttribute")
 // AttributeOption
 buyRequestValues  BuyRequestAttributeValue[]  @relation("BuyRequestAttributeValueOption")
 ```
@@ -230,32 +280,62 @@ CREATE INDEX "BuyRequest_modelId_idx"        ON "BuyRequest"("modelId");
 CREATE INDEX "BuyRequest_status_expiresAt_idx" ON "BuyRequest"("status", "expiresAt");
 CREATE INDEX "BuyRequest_userId_status_idx"   ON "BuyRequest"("userId", "status");
 
--- Typed attribute values relation (mirrors ListingAttributeValue).
+-- Typed attribute values relation (mirrors ListingAttributeValue exactly).
+-- H.2 rev2: attributeId is a REAL FK to AttributeDefinition (Cascade), not a
+-- bare String. optionId is a REAL FK to AttributeOption (SetNull).
 CREATE TABLE "BuyRequestAttributeValue" (
-  "id"            TEXT NOT NULL,
-  "buyRequestId"  TEXT NOT NULL,
-  "attributeId"   TEXT NOT NULL,
-  "textValue"     TEXT,
-  "numberValue"   DOUBLE PRECISION,
-  "booleanValue"  BOOLEAN,
-  "dateValue"     TIMESTAMP(3),
-  "optionId"      TEXT,
-  "sourceType"    TEXT,
+  "id"              TEXT NOT NULL,
+  "buyRequestId"    TEXT NOT NULL,
+  "attributeId"     TEXT NOT NULL,
+  "textValue"       TEXT,
+  "numberValue"     DOUBLE PRECISION,
+  "booleanValue"    BOOLEAN,
+  "dateValue"       TIMESTAMP(3),
+  "optionId"        TEXT,
+  "unit"            TEXT,
+  "sourceType"      TEXT,
+  "confidence"      DOUBLE PRECISION,
+  "sourceReference" TEXT,
+  "verifiedAt"      TIMESTAMP(3),
+  "verifiedBy"      TEXT,
+  "createdAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "BuyRequestAttributeValue_pkey" PRIMARY KEY ("id")
 );
 
+-- @@unique([buyRequestId, attributeId]) — NOTE: relaxed for MULTI_SELECT below.
 CREATE UNIQUE INDEX "BuyRequestAttributeValue_buyRequestId_attributeId_key"
-  ON "BuyRequestAttributeValue"("buyRequestId", "attributeId");
+  ON "BuyRequestAttributeValue"("buyRequestId", "attributeId")
+  WHERE "optionId" IS NULL;  -- single-valued attributes (one row per attribute)
+CREATE UNIQUE INDEX "BuyRequestAttributeValue_buyRequestId_attributeId_optionId_key"
+  ON "BuyRequestAttributeValue"("buyRequestId", "attributeId", "optionId")
+  WHERE "optionId" IS NOT NULL;  -- MULTI_SELECT (one row per selected option)
 CREATE INDEX "BuyRequestAttributeValue_buyRequestId_idx"
   ON "BuyRequestAttributeValue"("buyRequestId");
+CREATE INDEX "BuyRequestAttributeValue_attributeId_idx"
+  ON "BuyRequestAttributeValue"("attributeId");
 
 ALTER TABLE "BuyRequestAttributeValue"
   ADD CONSTRAINT "BuyRequestAttributeValue_buyRequestId_fkey"
   FOREIGN KEY ("buyRequestId") REFERENCES "BuyRequest"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "BuyRequestAttributeValue"
+  ADD CONSTRAINT "BuyRequestAttributeValue_attributeId_fkey"
+  FOREIGN KEY ("attributeId") REFERENCES "AttributeDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "BuyRequestAttributeValue"
   ADD CONSTRAINT "BuyRequestAttributeValue_optionId_fkey"
   FOREIGN KEY ("optionId") REFERENCES "AttributeOption"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ```
+
+### 3.1b MULTI_SELECT unique-constraint note
+
+`ListingAttributeValue` uses a single `@@unique([listingId, attributeId])` and
+stores MULTI_SELECT as a comma-separated `textValue` (lossy — cannot query by
+individual option). The `BuyRequestAttributeValue` design above improves on
+this: MULTI_SELECT stores one row per selected option, so each (request,
+attribute, option) tuple is unique and individually queryable. The partial
+unique indexes (`WHERE optionId IS NULL` / `WHERE optionId IS NOT NULL`)
+enforce: at most one single-valued row per (request, attribute), and at most
+one row per (request, attribute, option) for MULTI_SELECT.
 
 ### 3.3 Rollback SQL (recovery)
 
@@ -276,7 +356,40 @@ ALTER TABLE "BuyRequest" DROP COLUMN IF EXISTS "modelId";
 ALTER TABLE "BuyRequest" DROP COLUMN IF EXISTS "brandId";
 ALTER TABLE "BuyRequest" DROP COLUMN IF EXISTS "categoryId";
 ALTER TABLE "BuyRequest" DROP COLUMN IF EXISTS "quantity";
+-- BuyRequestAttributeValue table already dropped above; its indexes/constraints
+-- are dropped implicitly with the table.
 ```
+
+### 3.3b Concurrency-safe idempotency (recommended DB-level strengthening)
+
+The H.2 audit-log-backed idempotency (`src/lib/idempotency.ts` + the
+`Idempotency-Key` header) handles the **sequential-retry** case (the documented
+requirement): a client that resubmits after a network blip resolves to the
+prior result. It does **not** guarantee prevention of two **truly concurrent**
+submissions with the same key (a double-click that races before either request
+audits). The per-user rate limiter is the secondary throttle, but a strict
+DB-level guarantee requires a unique column on `BuyRequest`:
+
+```sql
+-- H.2 rev2: DB-enforced idempotency (eliminates the concurrent double-create gap).
+ALTER TABLE "BuyRequest" ADD COLUMN "idempotencyKey" TEXT;
+CREATE UNIQUE INDEX "BuyRequest_idempotencyKey_key" ON "BuyRequest"("idempotencyKey");
+```
+
+```prisma
+model BuyRequest {
+  // ...
+  idempotencyKey String? @unique
+  // ...
+}
+```
+
+With this column, `createWanted` catches `P2002` (unique violation) on a
+concurrent double-submit and returns the existing row (idempotent). The
+application already passes `idempotencyKey` through to `createWanted` (H.2.4e),
+so adding this column + the `catch P2002` branch is a ~10-line service change
+on top of this migration. **Recommended to include in the same migration** so
+both the structured storage and the DB-level idempotency land together.
 
 ### 3.4 Service-layer change (`createWanted`) — ready to apply post-migration
 

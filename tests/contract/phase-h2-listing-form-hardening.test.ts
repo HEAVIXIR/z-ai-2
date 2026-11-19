@@ -209,4 +209,48 @@ describe("PHASE H.2 — listing-form hardening contracts", () => {
       expect(single).toContain('body.action === "reject"');
     });
   });
+
+  // ── H.2 rev2: RFC structural-storage model precision ──
+  describe("H.2 rev2: BuyRequestAttributeValue RFC uses a REAL FK to AttributeDefinition", () => {
+    it("attributeId is a real relation (mirrors ListingAttributeValue), not a bare String", () => {
+      const rfc = read("docs/operations/RFC-WANTED-STRUCTURAL-STORAGE-H2.md");
+      // The real FK relation line MUST be present.
+      expect(rfc).toContain("attribute     AttributeDefinition @relation(\"BuyRequestAttributeValueAttribute\", fields: [attributeId], references: [id], onDelete: Cascade)");
+      // The old flawed bare-String declaration MUST be gone.
+      expect(rfc).not.toContain("attributeId   String           // → AttributeDefinition.id (or key)");
+      // The migration SQL adds the real FK constraint (Cascade).
+      expect(rfc).toContain('"BuyRequestAttributeValue_attributeId_fkey"');
+      expect(rfc).toContain('FOREIGN KEY ("attributeId") REFERENCES "AttributeDefinition"("id") ON DELETE CASCADE ON UPDATE CASCADE');
+    });
+    it("documents the deletion-behavior matrix (Cascade on request + attribute, SetNull on option)", () => {
+      const rfc = read("docs/operations/RFC-WANTED-STRUCTURAL-STORAGE-H2.md");
+      expect(rfc).toContain("BuyRequest deleted");
+      expect(rfc).toContain("AttributeDefinition deleted");
+      expect(rfc).toContain("AttributeOption deleted");
+      expect(rfc).toContain("onDelete: Cascade");
+      expect(rfc).toContain("onDelete: SetNull");
+    });
+    it("documents the type-validation contract (slot must match AttributeDefinition.type)", () => {
+      const rfc = read("docs/operations/RFC-WANTED-STRUCTURAL-STORAGE-H2.md");
+      expect(rfc).toContain("Type-validation contract");
+      expect(rfc).toContain("AttributeDefinition.type");
+      expect(rfc).toContain("INTEGER/DECIMAL/YEAR/CURRENCY/UNIT/SIZE/WEIGHT");
+    });
+    it("documents the category/model membership validation (mirrors listing-attributes outOfScope)", () => {
+      const rfc = read("docs/operations/RFC-WANTED-STRUCTURAL-STORAGE-H2.md");
+      expect(rfc).toContain("Category/model membership validation contract");
+      expect(rfc).toContain("CategoryAttribute");
+      expect(rfc).toContain("ProductModelAttribute");
+      expect(rfc).toContain("listing-attributes.ts:120");
+    });
+    it("documents the concurrent-idempotency limitation + the DB-level strengthening option", () => {
+      const rfc = read("docs/operations/RFC-WANTED-STRUCTURAL-STORAGE-H2.md");
+      expect(rfc).toContain("Concurrency-safe idempotency");
+      expect(rfc).toContain("sequential-retry");
+      expect(rfc).toContain("truly concurrent");
+      // The recommended BuyRequest.idempotencyKey @unique column is documented.
+      expect(rfc).toContain('idempotencyKey String? @unique');
+      expect(rfc).toContain("P2002");
+    });
+  });
 });
