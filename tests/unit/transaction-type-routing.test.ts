@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   categoryLayerForTransactionType,
   compatibleSupplyTypesForTransaction,
+  DEMAND_INTENTS,
   isMarketplaceTransactionType,
   isRequestTransactionType,
   isServiceTransactionType,
+  isValidDemandIntent,
   normalizeDemandIntent,
   requiresListingImage,
   requiresListingPrice,
@@ -103,5 +105,44 @@ describe("demand intent normalization and supply compatibility", () => {
   it("treats the legacy WANTED transaction as buy-demand for matching", () => {
     // Legacy rows stored "WANTED"; matching must still surface SALE + AUCTION.
     expect(compatibleSupplyTypesForTransaction("WANTED")).toEqual(["SALE", "AUCTION"]);
+  });
+});
+
+describe("fail-closed demand-intent validation (API boundary)", () => {
+  it("exposes a 4-value canonical allowlist", () => {
+    expect(DEMAND_INTENTS).toEqual([
+      "SALE",
+      "RENT",
+      "SALE_AND_RENT",
+      "SERVICE_REQUEST",
+    ]);
+  });
+
+  it("accepts the canonical intents (case- and whitespace-insensitive)", () => {
+    expect(isValidDemandIntent("SALE")).toBe(true);
+    expect(isValidDemandIntent("rent")).toBe(true);
+    expect(isValidDemandIntent(" Sale_And_Rent ")).toBe(true);
+    expect(isValidDemandIntent("SERVICE_REQUEST")).toBe(true);
+  });
+
+  it("rejects garbage, empty, null, and non-string values", () => {
+    expect(isValidDemandIntent("GARBAGE")).toBe(false);
+    expect(isValidDemandIntent("BUY")).toBe(false);
+    expect(isValidDemandIntent("WANTED")).toBe(false); // listing-type label, not an intent
+    expect(isValidDemandIntent("")).toBe(false);
+    expect(isValidDemandIntent(null)).toBe(false);
+    expect(isValidDemandIntent(undefined)).toBe(false);
+    expect(isValidDemandIntent(123)).toBe(false);
+    expect(isValidDemandIntent({})).toBe(false);
+  });
+
+  it("does NOT accept the legacy listing-type labels as valid intents", () => {
+    // The fail-closed boundary must distinguish a real intent (SALE)
+    // from the listing-type label (WANTED) that legacy callers stored
+    // in BuyRequest.transaction. normalizeDemandIntent handles legacy
+    // read-back; isValidDemandIntent guards new writes.
+    for (const legacy of ["WANTED", "QUOTE", "AUCTION", "SERVICE_OFFER"]) {
+      expect(isValidDemandIntent(legacy)).toBe(false);
+    }
   });
 });

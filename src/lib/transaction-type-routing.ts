@@ -86,6 +86,30 @@ export type DemandIntent =
   | "SERVICE_REQUEST";
 
 /**
+ * The canonical allowlist of demand intents. Used by the fail-closed
+ * validation at the createWanted API boundary: an explicitly-provided
+ * intent not in this set is rejected with 400 (a garbage intent must
+ * never silently create a buy request). normalizeDemandIntent stays
+ * permissive for read-back compatibility with legacy rows.
+ */
+export const DEMAND_INTENTS: readonly DemandIntent[] = [
+  "SALE",
+  "RENT",
+  "SALE_AND_RENT",
+  "SERVICE_REQUEST",
+];
+
+/**
+ * Type guard: is `value` a canonical demand intent (case-insensitive)?
+ * Used by createWanted's fail-closed validation.
+ */
+export function isValidDemandIntent(value: unknown): value is DemandIntent {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toUpperCase();
+  return (DEMAND_INTENTS as readonly string[]).includes(normalized);
+}
+
+/**
  * Map a demand intent → the supply listing types that can satisfy it.
  * This is the contract the matching engine enforces so that, e.g., a
  * rent-demand never matches a sale-supply (and vice versa).

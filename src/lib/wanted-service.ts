@@ -56,7 +56,7 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { matchBuyRequest, BuyRequestMatchResult } from "@/lib/matching-service";
-import { normalizeDemandIntent } from "@/lib/transaction-type-routing";
+import { normalizeDemandIntent, isValidDemandIntent } from "@/lib/transaction-type-routing";
 
 // ── Service error (maps to HTTP status in route handler) ──
 export class WantedServiceError extends Error {
@@ -243,6 +243,23 @@ export async function createWanted(params: {
   }
   if (!userId) {
     throw new WantedServiceError(400, "userId الزامی است");
+  }
+  // Fail-closed intent validation: an explicitly-provided `intent` that
+  // is NOT in the canonical allowlist is rejected with 400 — a garbage
+  // intent must never silently create a buy request (the historical
+  // fail-open default of SALE masked bad input). When `intent` is not
+  // provided (null/empty), we fall back to the legacy `transactionType`
+  // alias, which normalizeDemandIntent collapses onto the buy intent for
+  // legacy "WANTED" rows. This keeps the explicit-API boundary fail-closed
+  // while preserving read-back compatibility for existing rows + the
+  // legacy /api/requests caller.
+  if (intent !== null && intent !== undefined && String(intent).trim() !== "") {
+    if (!isValidDemandIntent(intent)) {
+      throw new WantedServiceError(
+        400,
+        "نوع تقاضا معتبر نیست. مقادیر مجاز: SALE, RENT, SALE_AND_RENT, SERVICE_REQUEST.",
+      );
+    }
   }
 
   // ── Resolve categoryId/brandId → category/brandPref names ──
