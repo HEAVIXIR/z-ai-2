@@ -530,6 +530,21 @@ export async function POST(req: Request) {
     // Image entitlements are resolved from the authenticated subscription.
     // Never trust client tier fields or silently truncate a submitted list.
     const imagePolicy = await getListingImagePolicy(user.id);
+    // Active listings include moderation-pending, published, and scheduled supply posts.
+    // WANTED requests are stored separately and never consume this Listing quota.
+    const activeListingWhere = {
+      sellerId: user.id,
+      status: { in: ["PENDING", "PUBLISHED", "SCHEDULED"] },
+    };
+    if (imagePolicy.maxListings > 0) {
+      const activeListingCount = await db.listing.count({ where: activeListingWhere });
+      if (activeListingCount >= imagePolicy.maxListings) {
+        return NextResponse.json(
+          { error: `سقف ${imagePolicy.maxListings} آگهی فعال پلن شما تکمیل شده است. برای ثبت آگهی جدید، ابتدا یکی از آگهی‌های فعال را ببندید یا پلن خود را ارتقا دهید.`, code: "ACTIVE_LISTING_LIMIT_REACHED", limit: imagePolicy.maxListings, current: activeListingCount },
+          { status: 403 },
+        );
+      }
+    }
     const rawImages = Array.isArray(body.images) ? body.images : [];
     const rawAssetIds = Array.isArray(body.assetIds) ? body.assetIds : [];
     if (
@@ -899,7 +914,12 @@ export async function POST(req: Request) {
 
     // Listing, optional machine passport, and image rows commit together.
     // This prevents orphan listings when nested media-row creation fails.
-    const listing = await db.$transaction(async (tx) => {
+    const listingResult = await db.$transaction(async (tx) => {
+      // Recheck within the write transaction to reduce races between parallel creates.
+      if (imagePolicy.maxListings > 0) {
+        const currentActiveCount = await tx.listing.count({ where: activeListingWhere });
+        if (currentActiveCount >= imagePolicy.maxListings) return null;
+      }
       const created = await tx.listing.create({
         data: {
           ...data,
@@ -937,6 +957,14 @@ export async function POST(req: Request) {
       }
       return created;
     });
+
+    if (!listingResult) {
+      return NextResponse.json(
+        { error: `سقف ${imagePolicy.maxListings} آگهی فعال پلن شما تکمیل شده است.`, code: "ACTIVE_LISTING_LIMIT_REACHED", limit: imagePolicy.maxListings },
+        { status: 403 },
+      );
+    }
+    const listing = listingResult;
 
     // H.2.4e: audit the listing create itself. Previously only the nested
     // RFQ/Auction children were audited, so a SALE/RENT/SERVICE listing
