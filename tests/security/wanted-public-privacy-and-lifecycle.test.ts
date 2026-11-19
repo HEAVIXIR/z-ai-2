@@ -112,7 +112,9 @@ describe("WANTED public privacy and lifecycle safety", () => {
 
   it("maps legacy admin bulk delete to audited soft-close, never hard delete", () => {
     const source = read("src/app/api/admin/requests/route.ts");
-    expect(source).toContain('data: { status: "CLOSED" }');
+    // P0-D: the legacy "delete" action delegates to bulkTransitionWanted("close")
+    // so the state machine applies. The audit records the closeMany action.
+    expect(source).toContain('bulkTransitionWanted("close"');
     expect(source).toContain("admin.buyRequests.closeMany");
     expect(source).not.toContain("db.buyRequest.deleteMany");
   });

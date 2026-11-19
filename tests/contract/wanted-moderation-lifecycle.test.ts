@@ -45,17 +45,20 @@ describe("WANTED moderation lifecycle contract", () => {
   it("exposes a publishWanted service function as the moderation gate", () => {
     expect(service).toContain("export async function publishWanted");
     expect(service).toContain("marketplace.wanted.publish");
-    // publishWanted must flip status → ACTIVE and set publishedAt → now.
-    expect(service).toContain("data: { status: STATUS_PUBLISHED, publishedAt }");
+    // P0-C: publishWanted uses compare-and-set (updateMany with status
+    // condition), not a blind update. The CAS data sets status + publishedAt.
+    expect(service).toContain("data: { status: targetStatus, publishedAt }");
   });
 
   it("publishWanted enforces a state machine — only PENDING can be approved", () => {
     // Terminal states (CLOSED/FULFILLED/REJECTED/EXPIRED) are rejected
-    // with 409 — they cannot be re-published.
-    expect(service).toContain('TERMINAL_STATUSES = new Set(["CLOSED", "FULFILLED", "REJECTED", "EXPIRED"])');
-    expect(service).toContain("WantedServiceError(\n      409");
-    // The only valid transition is PENDING → ACTIVE.
-    expect(service).toContain('before.status !== STATUS_PENDING');
+    // with 409 — they cannot be re-published. The state machine is a
+    // single canonical transition matrix.
+    expect(service).toContain('TERMINAL_STATUSES = new Set([');
+    expect(service).toContain("ALLOWED_TRANSITIONS");
+    expect(service).toContain("resolveTransitionTarget");
+    // The only valid approve transition is PENDING → ACTIVE.
+    expect(service).toContain('approve: STATUS_PUBLISHED');
   });
 
   it("publishWanted rejects expired requests in the moderation queue (P0-5)", () => {
@@ -64,9 +67,10 @@ describe("WANTED moderation lifecycle contract", () => {
     expect(service).toContain("منقضی شده است و قابل انتشار نیست");
   });
 
-  it("publishWanted repairs ACTIVE+null publishedAt rather than fabricating a timestamp (P0-6)", () => {
+  it("publishWanted repairs ACTIVE+null publishedAt via CAS (P0-6)", () => {
     expect(service).toContain("marketplace.wanted.publish.repair");
-    expect(service).toContain("data: { publishedAt: repairedAt }");
+    // P0-C: the repair uses CAS (updateMany with status=ACTIVE + publishedAt=null).
+    expect(service).toContain("where: { id, status: STATUS_PUBLISHED, publishedAt: null }");
   });
 
   it("admin single-row PATCH redirects legacy activate to the controlled publishWanted gate", () => {
@@ -87,14 +91,23 @@ describe("WANTED moderation lifecycle contract", () => {
     expect(adminBulk).toContain('CSRF check failed');
   });
 
-  it("admin bulk approve constrains to PENDING+unexpired and reports rejected ids (P0-4)", () => {
-    expect(adminBulk).toContain('case "approve"');
-    expect(adminBulk).toContain('status: "PENDING" as const');
-    expect(adminBulk).toContain("{ expiresAt: null }");
-    expect(adminBulk).toContain("{ expiresAt: { gt: approvedAt } }");
-    expect(adminBulk).toContain("approved: result.count");
-    expect(adminBulk).toContain("rejected: rejected.length");
-    expect(adminBulk).toContain("rejectedIds");
+  it("admin bulk approve delegates to bulkTransitionWanted (P0-B/C/D)", () => {
+    expect(adminBulk).toContain('import { bulkTransitionWanted');
+    expect(adminBulk).toContain('await bulkTransitionWanted(');
+    // P0-B: the response reports approved + rejected + rejectedIds.
+    expect(adminBulk).toContain("approved: result.approved");
+    expect(adminBulk).toContain("rejected: result.rejected.length");
+    expect(adminBulk).toContain("rejectedIds: result.rejected");
+    expect(adminBulk).toContain("requested: result.requested");
+  });
+
+  it("admin bulk also routes close/fulfill through the state machine (P0-D)", () => {
+    expect(adminBulk).toContain('case "close"');
+    expect(adminBulk).toContain('case "fulfill"');
+    // The three approve/close/fulfill cases share one block that delegates
+    // to bulkTransitionWanted with the resolved action.
+    expect(adminBulk).toContain("bulkTransitionWanted(");
+    expect(adminBulk).toContain('action as "approve" | "close" | "fulfill"');
   });
 
   it("the create audit records PENDING_REVIEW semantic status", () => {

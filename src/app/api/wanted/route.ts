@@ -34,6 +34,11 @@ import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
+import { readBoundedJson } from "@/lib/read-bounded-json";
+import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { rateLimitKey } from "@/lib/request-context";
+import { WANTED_CREATE } from "@/lib/rate-limit-presets";
 import {
   createWanted,
   listWanted,
@@ -42,6 +47,12 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// P0-A: body-size ceiling for the wanted-request endpoint. Wanted
+// requests carry title/description + optional structured-spec snapshot
+// (attributeValues). 256 KiB is generous for that payload while
+// blocking oversized bodies outright.
+const MAX_WANTED_REQUEST_BODY_BYTES = 256 * 1024;
 
 /* GET /api/wanted — list public wanted requests (paginated),
  * OR — when ?mine=true — list the current user's own requests
@@ -120,7 +131,15 @@ export async function GET(req: Request) {
 }
 
 /* POST /api/wanted — create a new wanted request (authenticated).
- * Delegates validation + persistence + audit to wanted-service. */
+ * Delegates validation + persistence + audit to wanted-service.
+ *
+ * P0-A security: CSRF check runs BEFORE the body is parsed (checkCsrf
+ * only reads headers). A bounded read caps the body size at
+ * MAX_WANTED_REQUEST_BODY_BYTES before JSON.parse, returning 413 on
+ * overflow. The parsed body is validated to be a plain object (not an
+ * array/primitive) — malformed input gets a 400. A user-scoped rate
+ * limit (WANTED_CREATE: 10/hour) caps duplicate-submit storms.
+ */
 export async function POST(req: Request) {
   try {
     const userId = await getCurrentUserId();
@@ -131,7 +150,44 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
+    // P0-A: CSRF — state-changing mutation, must be origin-checked.
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
+
+    // P0-A: rate limit — user-scoped, in-process (per-isolate).
+    // A distributed limiter is a tracked follow-up; this blocks the
+    // common duplicate-submit / low-effort spam case.
+    const rl = rateLimit({
+      key: rateLimitKey(userId, WANTED_CREATE.label),
+      limit: WANTED_CREATE.limit,
+      windowMs: WANTED_CREATE.windowMs,
+    });
+    if (!rl.ok) {
+      const retryAfter = retryAfterSeconds(rl.resetAt);
+      return NextResponse.json(
+        { error: "تعداد درخواست‌ها بیش از حد مجاز است. لطفاً بعداً تلاش کنید." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      );
+    }
+
+    // P0-A: bounded read BEFORE JSON.parse — caps body size, rejects
+    // oversized payloads with 413 rather than OOM-ing the parse.
+    const parsedBody = await readBoundedJson<Record<string, unknown>>(
+      req,
+      MAX_WANTED_REQUEST_BODY_BYTES,
+    );
+    if (!parsedBody.ok) {
+      return NextResponse.json(
+        { error: parsedBody.error },
+        { status: parsedBody.status },
+      );
+    }
+    const body = parsedBody.value;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "بدنه درخواست معتبر نیست." }, { status: 400 });
+    }
+
     const {
       title,
       description,
@@ -142,12 +198,6 @@ export async function POST(req: Request) {
       brandId,
       modelId,
       attributeValues,
-      // Demand intent (BUY/RENT/SERVICE) — the canonical value stored in
-      // BuyRequest.transaction and read by the matching engine. Accepts
-      // the demand-intent vocabulary (SALE/RENT/SALE_AND_RENT/
-      // SERVICE_REQUEST). Legacy callers may still send `transactionType`
-      // (the listing-type label), which normalizeDemandIntent collapses
-      // onto the buy intent.
       intent,
       transactionType,
       serviceTypeId,
@@ -156,7 +206,7 @@ export async function POST(req: Request) {
       provinceId,
       cityId,
       deadline,
-    } = body;
+    } = body as Record<string, unknown>;
 
     const requestedProvinceId = provinceId ? String(provinceId) : null;
     const requestedCityId = cityId ? String(cityId) : null;
@@ -225,20 +275,20 @@ export async function POST(req: Request) {
     }
 
     const created = await createWanted({
-      title,
-      description,
+      title: typeof title === "string" ? title : "",
+      description: description as string | null | undefined,
       quantity: normalizedQuantity,
-      budgetMin,
-      budgetMax,
-      categoryId,
-      brandId,
-      modelId,
-      attributeValues,
+      budgetMin: budgetMin as string | number | bigint | null | undefined,
+      budgetMax: budgetMax as string | number | bigint | null | undefined,
+      categoryId: categoryId as string | null | undefined,
+      brandId: brandId as string | null | undefined,
+      modelId: modelId as string | null | undefined,
+      attributeValues: attributeValues as unknown[] | null | undefined,
       intent: intentStr,
-      transactionType,
+      transactionType: transactionType as string | null | undefined,
       serviceTypeId: serviceTypeId ? String(serviceTypeId) : null,
-      province: selectedProvince?.name ?? selectedCity?.province.name ?? (requestedProvinceId ? null : province),
-      city: selectedCity?.name ?? (requestedCityId ? null : city),
+      province: selectedProvince?.name ?? selectedCity?.province.name ?? (requestedProvinceId ? null : (province as string | null | undefined)),
+      city: selectedCity?.name ?? (requestedCityId ? null : (city as string | null | undefined)),
       deadline: normalizedDeadline,
       userId,
     });

@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { checkCsrf } from "@/lib/csrf";
 import { hasPermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
-import { publishWanted, WantedServiceError } from "@/lib/wanted-service";
+import { publishWanted, fulfillWanted, closeWantedByAdmin, WantedServiceError } from "@/lib/wanted-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,8 +66,22 @@ export async function PATCH(req: Request, { params }: Params) {
     // Actions
     if (body.action === "verify") data.verified = true;
     else if (body.action === "unverify") data.verified = false;
-    else if (body.action === "close") data.status = "CLOSED";
-    else if (body.action === "fulfill") data.status = "FULFILLED";
+    // P0-D: close + fulfill go through the canonical service functions
+    // (state machine + CAS), NOT the generic update below.
+    else if (body.action === "close" || body.action === "fulfill") {
+      try {
+        const result = body.action === "close"
+          ? await closeWantedByAdmin(id, sessionUser.id)
+          : await fulfillWanted(id, sessionUser.id);
+        try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests/id] revalidateTag failed:', e); }
+        return NextResponse.json({ ok: true, request: result });
+      } catch (err: any) {
+        if (err instanceof WantedServiceError) {
+          return NextResponse.json({ error: err.message }, { status: err.status });
+        }
+        throw err;
+      }
+    }
 
     // Moderation gate: "approve" publishes a PENDING request (status →
     // ACTIVE + publishedAt → now) via the canonical service function,

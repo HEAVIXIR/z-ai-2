@@ -171,6 +171,20 @@ export const COMPANY_CREATE: RateLimitPreset = {
 };
 
 /**
+ * Wanted-request creation — 10 per hour per authenticated user.
+ * Protects against duplicate-submit storms (retry / double-click) and
+ * low-effort spam of the BuyRequest moderation queue. In-process,
+ * per-isolate (same caveat as the other presets — a distributed
+ * limiter is a follow-up).
+ */
+export const WANTED_CREATE: RateLimitPreset = {
+  limit: 10,
+  windowMs: HOUR,
+  scope: "user",
+  label: "wanted-create",
+};
+
+/**
  * Convenience map for runtime lookup by name (useful if a future
  * dispatcher selects presets dynamically).
  */
@@ -192,6 +206,7 @@ export const RATE_LIMIT_PRESETS = {
   COMPANY_INVITATION,
   COMPANY_INVITATION_ACCEPT,
   COMPANY_CREATE,
+  WANTED_CREATE,
 } as const;
 
 export type RateLimitPresetName = keyof typeof RATE_LIMIT_PRESETS;

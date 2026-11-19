@@ -70,16 +70,63 @@ export class WantedServiceError extends Error {
 }
 
 // ── Lifecycle statuses ──────────────────────────────────────
-// The BuyRequest schema uses a free-text String status. The
-// public marketplace feed uses ACTIVE; the task spec for
-// createWanted mandates PUBLISHED. Both coexist (the public
-// list route filters on ACTIVE; we publish to ACTIVE so the
-// public list shows the new request immediately, and the audit
-// records `status: PUBLISHED` so the intent — "this is a
-// published wanted request" — is preserved in the trail).
+// The BuyRequest schema uses a free-text String status. The moderation
+// lifecycle is: PENDING (created, awaiting admin review) → ACTIVE
+// (approved + published, visible on the public feed + matchable) →
+// CLOSED/FULFILLED (terminal). Terminal states cannot be re-published
+// or re-closed without a separate reopen action.
+//
+// createWanted creates PENDING (status=PENDING, publishedAt=null). The
+// public list filters on ACTIVE; public detail rejects status!=ACTIVE;
+// matching eligibility (isBuyRequestMatchEligible) rejects non-ACTIVE
+// AND non-published AND expired. So a PENDING request is invisible
+// everywhere except the owner's ?mine=true list and the admin review
+// queue until an admin approves (publishWanted → ACTIVE + publishedAt).
 const STATUS_PUBLISHED = "ACTIVE"; // schema-active = publicly visible
 const STATUS_PENDING = "PENDING"; // awaiting admin review before publication
 const STATUS_CLOSED = "CLOSED";
+const STATUS_FULFILLED = "FULFILLED";
+
+// ── State-machine (P0-C, P0-D) ──────────────────────────────────
+// A single canonical transition map. Every status mutation in this
+// service (publishWanted, closeWanted, fulfillWanted) MUST go through
+// the CAS helper and only the transitions listed here are allowed.
+// Terminal states (CLOSED, FULFILLED) cannot be re-published or
+// re-closed; reopening is intentionally NOT in this matrix (it would
+// be a separate action with its own permission + audit).
+const TERMINAL_STATUSES = new Set([
+  STATUS_CLOSED,
+  STATUS_FULFILLED,
+  "REJECTED",
+  "EXPIRED",
+]);
+
+/**
+ * The canonical transition matrix. Key = current status, value = the
+ * set of statuses that status may transition TO via the named action.
+ * Any transition not listed here is rejected with 409.
+ */
+const ALLOWED_TRANSITIONS: Record<string, Record<string, string>> = {
+  PENDING: { approve: STATUS_PUBLISHED, close: STATUS_CLOSED, fulfill: STATUS_FULFILLED },
+  ACTIVE: { close: STATUS_CLOSED, fulfill: STATUS_FULFILLED },
+  // Terminal states: no outbound transitions.
+  CLOSED: {},
+  FULFILLED: {},
+  REJECTED: {},
+  EXPIRED: {},
+};
+
+/**
+ * Resolve the target status for an action given the current status.
+ * Returns the target status string if the transition is allowed, or
+ * null if it is not. This is the single source of truth for "can this
+ * action be applied to this row".
+ */
+function resolveTransitionTarget(currentStatus: string, action: "approve" | "close" | "fulfill"): string | null {
+  const allowed = ALLOWED_TRANSITIONS[currentStatus];
+  if (!allowed) return null;
+  return allowed[action] ?? null;
+}
 
 // ── Helpers ──────────────────────────────────────────────────
 /**
@@ -573,7 +620,15 @@ export async function getWanted(id: string): Promise<{
  * the closer. Closing an already-CLOSED request is idempotent
  * (no-op — returns the current state without re-auditing).
  *
+ * P0-D: uses the canonical state machine (ALLOWED_TRANSITIONS) + CAS
+ * (updateMany constrained by { id, status: before.status }) so a
+ * concurrent transition cannot be clobbered. Terminal states (CLOSED/
+ * FULFILLED) are rejected with 409 — they cannot be re-closed.
+ *
  * @throws WantedServiceError(404) when the request doesn't exist.
+ * @throws WantedServiceError(403) when the caller is not the owner.
+ * @throws WantedServiceError(409) when the request is in a terminal
+ *   state that cannot transition to CLOSED.
  */
 export async function closeWanted(
   id: string,
@@ -593,19 +648,44 @@ export async function closeWanted(
   if (!before) {
     throw new WantedServiceError(404, "درخواست خرید یافت نشد");
   }
-  // Idempotent — already closed.
+  // Owner check.
   if (before.userId !== userId) {
     throw new WantedServiceError(403, "اجازه بستن این درخواست را ندارید");
   }
+  // Idempotent — already closed.
   if (before.status === STATUS_CLOSED) {
     return { id: before.id, status: before.status };
   }
 
-  const after = await db.buyRequest.update({
-    where: { id },
-    data: { status: STATUS_CLOSED },
-    select: { id: true, status: true },
+  // P0-D: state machine — resolve the target via the transition matrix.
+  const targetStatus = resolveTransitionTarget(before.status, "close");
+  if (!targetStatus) {
+    throw new WantedServiceError(
+      409,
+      `درخواست در وضعیت نهایی «${before.status}» است و قابل بستن نیست.`,
+    );
+  }
+
+  // P0-C: compare-and-set — only update if the status hasn't changed
+  // since our read. A concurrent transition (e.g. admin approved it)
+  // results in 0 affected rows → re-read + respond correctly.
+  const casResult = await db.buyRequest.updateMany({
+    where: { id, status: before.status },
+    data: { status: targetStatus },
   });
+  if (casResult.count === 0) {
+    const current = await db.buyRequest.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (current && current.status === STATUS_CLOSED) {
+      return { id, status: current.status };
+    }
+    throw new WantedServiceError(
+      409,
+      `وضعیت درخواست در حین بستن به «${current?.status ?? "?"}» تغییر کرد. دوباره تلاش کنید.`,
+    );
+  }
 
   await logAudit({
     actorId: userId,
@@ -614,11 +694,294 @@ export async function closeWanted(
     entityType: "BuyRequest",
     entityId: id,
     before: { status: before.status },
-    after: { status: after.status },
+    after: { status: targetStatus },
     reason: `بستن درخواست خرید ${id} — ${before.title ?? ""}`,
   });
 
-  return { id: after.id, status: after.status };
+  return { id, status: targetStatus };
+}
+
+// ── fulfillWanted (P0-D) ───────────────────────────────────────
+/**
+ * Mark a wanted request as fulfilled (status → FULFILLED). Audited as
+ * `marketplace.wanted.fulfill` (actorType: ADMIN). Idempotent on
+ * already-FULFILLED. Uses the canonical state machine + CAS (same
+ * pattern as publishWanted/closeWanted). Terminal states (CLOSED/
+ * FULFILLED) are rejected with 409.
+ *
+ * @throws WantedServiceError(404) when the request doesn't exist.
+ * @throws WantedServiceError(400) when id or adminUserId is empty.
+ * @throws WantedServiceError(409) when the request is in a terminal
+ *   state that cannot transition to FULFILLED.
+ */
+export async function fulfillWanted(
+  id: string,
+  adminUserId: string,
+): Promise<{ id: string; status: string }> {
+  if (!id) {
+    throw new WantedServiceError(400, "id الزامی است");
+  }
+  if (!adminUserId) {
+    throw new WantedServiceError(400, "adminUserId الزامی است");
+  }
+
+  const before = await db.buyRequest.findUnique({
+    where: { id },
+    select: { id: true, status: true, title: true },
+  });
+  if (!before) {
+    throw new WantedServiceError(404, "درخواست خرید یافت نشد");
+  }
+  if (before.status === STATUS_FULFILLED) {
+    return { id: before.id, status: before.status };
+  }
+
+  const targetStatus = resolveTransitionTarget(before.status, "fulfill");
+  if (!targetStatus) {
+    throw new WantedServiceError(
+      409,
+      `درخواست در وضعیت نهایی «${before.status}» است و قابل تکمیل نیست.`,
+    );
+  }
+
+  const casResult = await db.buyRequest.updateMany({
+    where: { id, status: before.status },
+    data: { status: targetStatus },
+  });
+  if (casResult.count === 0) {
+    const current = await db.buyRequest.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (current && current.status === STATUS_FULFILLED) {
+      return { id, status: current.status };
+    }
+    throw new WantedServiceError(
+      409,
+      `وضعیت درخواست در حین تکمیل به «${current?.status ?? "?"}» تغییر کرد. دوباره تلاش کنید.`,
+    );
+  }
+
+  await logAudit({
+    actorId: adminUserId,
+    actorType: "ADMIN",
+    action: "marketplace.wanted.fulfill",
+    entityType: "BuyRequest",
+    entityId: id,
+    before: { status: before.status },
+    after: { status: targetStatus },
+    reason: `تکمیل درخواست خرید ${id} — ${before.title ?? ""}`,
+  });
+
+  return { id, status: targetStatus };
+}
+
+/**
+ * Admin-initiated close (P0-D). Mirrors closeWanted but with ADMIN
+ * actorType + no owner check (the admin can close any request).
+ * Uses the same state machine + CAS as closeWanted.
+ */
+export async function closeWantedByAdmin(
+  id: string,
+  adminUserId: string,
+): Promise<{ id: string; status: string }> {
+  if (!id) {
+    throw new WantedServiceError(400, "id الزامی است");
+  }
+  if (!adminUserId) {
+    throw new WantedServiceError(400, "adminUserId الزامی است");
+  }
+
+  const before = await db.buyRequest.findUnique({
+    where: { id },
+    select: { id: true, status: true, title: true },
+  });
+  if (!before) {
+    throw new WantedServiceError(404, "درخواست خرید یافت نشد");
+  }
+  if (before.status === STATUS_CLOSED) {
+    return { id: before.id, status: before.status };
+  }
+
+  const targetStatus = resolveTransitionTarget(before.status, "close");
+  if (!targetStatus) {
+    throw new WantedServiceError(
+      409,
+      `درخواست در وضعیت نهایی «${before.status}» است و قابل بستن نیست.`,
+    );
+  }
+
+  const casResult = await db.buyRequest.updateMany({
+    where: { id, status: before.status },
+    data: { status: targetStatus },
+  });
+  if (casResult.count === 0) {
+    const current = await db.buyRequest.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (current && current.status === STATUS_CLOSED) {
+      return { id, status: current.status };
+    }
+    throw new WantedServiceError(
+      409,
+      `وضعیت درخواست در حین بستن به «${current?.status ?? "?"}» تغییر کرد. دوباره تلاش کنید.`,
+    );
+  }
+
+  await logAudit({
+    actorId: adminUserId,
+    actorType: "ADMIN",
+    action: "marketplace.wanted.close",
+    entityType: "BuyRequest",
+    entityId: id,
+    before: { status: before.status },
+    after: { status: targetStatus },
+    reason: `بستن درخواست خرید ${id} توسط مدیر — ${before.title ?? ""}`,
+  });
+
+  return { id, status: targetStatus };
+}
+
+/**
+ * Bulk transition wanted requests with a compare-and-set that is
+ * concurrency-safe per-row. Used by the admin bulk approve/close/fulfill
+ * actions. Returns the approved (transitioned) count + the rejected ids
+ * (with their current status) so the admin sees which rows were skipped.
+ *
+ * P0-B: the rejected computation reads the eligible set BEFORE the
+ * update (not after), so just-transitioned rows are NOT misclassified
+ * as rejected.
+ *
+ * P0-D: the action is validated against the transition matrix; only
+ * rows whose current status allows the transition are affected.
+ *
+ * @param action — "approve" | "close" | "fulfill"
+ * @param ids — deduplicated, validated, capped at 100.
+ */
+export async function bulkTransitionWanted(
+  action: "approve" | "close" | "fulfill",
+  rawIds: string[],
+  adminUserId: string,
+): Promise<{
+  approved: number;
+  rejected: Array<{ id: string; status: string }>;
+  requested: number;
+}> {
+  if (!adminUserId) {
+    throw new WantedServiceError(400, "adminUserId الزامی است");
+  }
+  // P0-B: deduplicate + validate + cap at 100.
+  const uniqueIds = Array.from(new Set(rawIds.map((id) => String(id).trim()).filter(Boolean)));
+  if (uniqueIds.length === 0) {
+    return { approved: 0, rejected: [], requested: 0 };
+  }
+  if (uniqueIds.length > 100) {
+    throw new WantedServiceError(400, "حداکثر ۱۰۰ درخواست در هر عملیات گروهی مجاز است.");
+  }
+
+  // P0-B: read the eligible set BEFORE the update. For "approve", the
+  // eligible rows are PENDING + unexpired. For close/fulfill, the
+  // eligible rows are those whose status allows the transition.
+  const now = new Date();
+  const rows = await db.buyRequest.findMany({
+    where: { id: { in: uniqueIds } },
+    select: { id: true, status: true, expiresAt: true },
+  });
+  const rowById = new Map(rows.map((r) => [r.id, r]));
+
+  const eligibleIds: string[] = [];
+  const rejected: Array<{ id: string; status: string }> = [];
+
+  for (const id of uniqueIds) {
+    const row = rowById.get(id);
+    if (!row) {
+      // P0-B: nonexistent id — rejected with status "NOT_FOUND".
+      rejected.push({ id, status: "NOT_FOUND" });
+      continue;
+    }
+    const target = resolveTransitionTarget(row.status, action);
+    if (!target) {
+      // Transition not allowed from this status.
+      rejected.push({ id, status: row.status });
+      continue;
+    }
+    // For approve, also check expiry.
+    if (action === "approve") {
+      const isExpired =
+        row.expiresAt instanceof Date &&
+        Number.isFinite(row.expiresAt.getTime()) &&
+        row.expiresAt.getTime() <= now.getTime();
+      if (isExpired) {
+        rejected.push({ id, status: row.status });
+        continue;
+      }
+    }
+    eligibleIds.push(id);
+  }
+
+  if (eligibleIds.length === 0) {
+    return { approved: 0, rejected, requested: uniqueIds.length };
+  }
+
+  // P0-C: compare-and-set bulk update. Constrain by the set of
+  // (id, currentStatus) pairs we just read. We group eligible ids by
+  // their current status so the CAS where-clause matches exactly.
+  // For approve, also constrain by expiry.
+  let approvedCount = 0;
+  const targetStatus = resolveTransitionTarget("PENDING", action); // same target for all eligible
+  const publishedAt = action === "approve" ? now : undefined;
+
+  // Group eligible ids by their current status for an accurate CAS.
+  const idsByStatus = new Map<string, string[]>();
+  for (const id of eligibleIds) {
+    const row = rowById.get(id)!;
+    const list = idsByStatus.get(row.status) ?? [];
+    list.push(id);
+    idsByStatus.set(row.status, list);
+  }
+
+  for (const [currentStatus, ids] of idsByStatus) {
+    const target = resolveTransitionTarget(currentStatus, action);
+    if (!target) continue; // shouldn't happen (we checked above)
+    const where: Record<string, unknown> = {
+      id: { in: ids },
+      status: currentStatus,
+    };
+    if (action === "approve") {
+      where.OR = [{ expiresAt: null }, { expiresAt: { gt: now } }];
+    }
+    const data: Record<string, unknown> = { status: target };
+    if (publishedAt) data.publishedAt = publishedAt;
+    const result = await db.buyRequest.updateMany({ where, data });
+    approvedCount += result.count;
+  }
+
+  // P0-B: the rejected list is already accurate (computed before the
+  // update from the pre-read state). Rows that were eligible but whose
+  // CAS matched 0 (concurrent transition) are NOT in rejected — they
+  // simply don't count as approved. We don't re-read them here; the
+  // admin can re-run to see the new state.
+  await logAudit({
+    actorId: adminUserId,
+    actorType: "ADMIN",
+    action: action === "approve"
+      ? "marketplace.wanted.publishMany"
+      : action === "close"
+        ? "marketplace.wanted.closeMany"
+        : "marketplace.wanted.fulfillMany",
+    entityType: "BuyRequest",
+    entityId: null,
+    before: { requestedAction: action, requestedCount: uniqueIds.length },
+    after: {
+      approvedCount,
+      rejectedCount: rejected.length,
+      rejectedIds: rejected,
+    },
+    reason: `Bulk ${action} of wanted requests via admin API`,
+  });
+
+  return { approved: approvedCount, rejected, requested: uniqueIds.length };
 }
 
 // ── publishWanted ─────────────────────────────────────────────
@@ -629,20 +992,27 @@ export async function closeWanted(
  * feed and eligible for matching. Audited as `marketplace.wanted.publish`
  * (actorType: ADMIN).
  *
- * STATE MACHINE (P0-3): only a PENDING request can be approved. Terminal
- * states (CLOSED, FULFILLED, REJECTED, EXPIRED) are rejected with 409 —
- * reopening a closed/fulfilled request is a separate action requiring its
- * own permission + audit (not implemented here). An already-ACTIVE request
- * is an idempotent no-op.
+ * COMPARE-AND-SET (P0-C): the read-then-update race is closed. The
+ * transition is performed with updateMany constrained by
+ * { id, status: PENDING, OR: [expiresAt null, expiresAt > now] } —
+ * if a concurrent request closes/fulfills/expires the row between the
+ * read and the write, the updateMany affects 0 rows and we re-read to
+ * determine the correct response (409 terminal, 409 expired, or
+ * idempotent ACTIVE). A terminal state is NEVER overwritten.
  *
- * EXPIRY (P0-5): an expired request in the moderation queue (expiresAt <=
- * now) MUST NOT be published — it would be immediately un-matchable and
- * mislead the buyer. Such a request is rejected with 409.
+ * STATE MACHINE (P0-D): the transition matrix (ALLOWED_TRANSITIONS)
+ * is the single source of truth. Only PENDING→ACTIVE(approve) is
+ * valid here. Terminal states (CLOSED/FULFILLED/REJECTED/EXPIRED) are
+ * rejected with 409.
+ *
+ * EXPIRY (P0-5): an expired PENDING request in the moderation queue is
+ * rejected with 409 (publishing it would make it immediately un-matchable).
  *
  * REPAIR (P0-6): if a request is ACTIVE but publishedAt is null (legacy
- * data inconsistency), the function REPAIRS the record (sets publishedAt =
- * now in the DB) rather than returning a fake timestamp. The repair is
- * audited as `marketplace.wanted.publish.repair`.
+ * inconsistency), the function REPAIRS the record via a CAS update
+ * constrained by { id, status: ACTIVE, publishedAt: null } — persisting
+ * publishedAt=now rather than returning a fake timestamp. Audited as
+ * `marketplace.wanted.publish.repair`.
  *
  * @throws WantedServiceError(404) when the request doesn't exist.
  * @throws WantedServiceError(400) when id or adminUserId is empty.
@@ -669,17 +1039,20 @@ export async function publishWanted(
   }
 
   const now = new Date();
+  const isExpired =
+    before.expiresAt instanceof Date &&
+    Number.isFinite(before.expiresAt.getTime()) &&
+    before.expiresAt.getTime() <= now.getTime();
 
   // P0-5: expired requests cannot be published, even if still PENDING.
-  if (before.expiresAt instanceof Date && Number.isFinite(before.expiresAt.getTime()) && before.expiresAt.getTime() <= now.getTime()) {
+  if (isExpired) {
     throw new WantedServiceError(
       409,
       "این درخواست منقضی شده است و قابل انتشار نیست. برای بازگشایی باید اکشن مستقل بازگشایی استفاده شود.",
     );
   }
 
-  // P0-3: state machine — terminal states are rejected.
-  const TERMINAL_STATUSES = new Set(["CLOSED", "FULFILLED", "REJECTED", "EXPIRED"]);
+  // P0-D: state machine — terminal states are rejected (no CAS needed).
   if (TERMINAL_STATUSES.has(before.status)) {
     throw new WantedServiceError(
       409,
@@ -688,7 +1061,11 @@ export async function publishWanted(
   }
 
   // Idempotent — already published (ACTIVE with a real publishedAt).
-  if (before.status === STATUS_PUBLISHED && before.publishedAt instanceof Date && Number.isFinite(before.publishedAt.getTime())) {
+  if (
+    before.status === STATUS_PUBLISHED &&
+    before.publishedAt instanceof Date &&
+    Number.isFinite(before.publishedAt.getTime())
+  ) {
     return {
       id: before.id,
       status: before.status,
@@ -696,17 +1073,28 @@ export async function publishWanted(
     };
   }
 
-  // P0-6: repair — ACTIVE with null/invalid publishedAt (legacy
-  // inconsistency). Persist publishedAt=now rather than returning a
-  // fabricated timestamp. Audited as a repair so the trail records the
-  // fix separately from a normal publish.
+  // P0-6: repair — ACTIVE with null/invalid publishedAt. CAS update
+  // constrained by { id, status: ACTIVE, publishedAt: null } so a
+  // concurrent transition cannot be clobbered.
   if (before.status === STATUS_PUBLISHED) {
     const repairedAt = new Date();
-    const after = await db.buyRequest.update({
-      where: { id },
+    const repairResult = await db.buyRequest.updateMany({
+      where: { id, status: STATUS_PUBLISHED, publishedAt: null },
       data: { publishedAt: repairedAt },
-      select: { id: true, status: true, publishedAt: true },
     });
+    if (repairResult.count === 0) {
+      // A concurrent transition changed the row between our read and
+      // the CAS write. Re-read to determine the correct response —
+      // do NOT blindly overwrite the new state.
+      const current = await db.buyRequest.findUnique({
+        where: { id },
+        select: { status: true, publishedAt: true },
+      });
+      if (current && current.status === STATUS_PUBLISHED && current.publishedAt instanceof Date) {
+        return { id, status: current.status, publishedAt: current.publishedAt.toISOString() };
+      }
+      throw new WantedServiceError(409, "وضعیت درخواست در حین انتشار تغییر کرد. دوباره تلاش کنید.");
+    }
     await logAudit({
       actorId: adminUserId,
       actorType: "ADMIN",
@@ -714,18 +1102,20 @@ export async function publishWanted(
       entityType: "BuyRequest",
       entityId: id,
       before: { status: before.status, publishedAt: null },
-      after: { status: after.status, publishedAt: repairedAt.toISOString() },
+      after: { status: STATUS_PUBLISHED, publishedAt: repairedAt.toISOString() },
       reason: `تعمیر تاریخ انتشار درخواست ${id} — ${before.title ?? ""}`,
     });
-    return {
-      id: after.id,
-      status: after.status,
-      publishedAt: after.publishedAt instanceof Date ? after.publishedAt.toISOString() : repairedAt.toISOString(),
-    };
+    return { id, status: STATUS_PUBLISHED, publishedAt: repairedAt.toISOString() };
   }
 
-  // P0-3: the only valid transition is PENDING → ACTIVE.
-  if (before.status !== STATUS_PENDING) {
+  // P0-D + P0-C: state machine + compare-and-set. The transition is
+  // valid (PENDING→ACTIVE per ALLOWED_TRANSITIONS); the updateMany is
+  // constrained by { id, status: PENDING, unexpired } so a concurrent
+  // close/fulfill/expire that changes the row between our read and
+  // write results in 0 affected rows. We then re-read and respond
+  // correctly (409 / idempotent) — the terminal state is NEVER overwritten.
+  const targetStatus = resolveTransitionTarget(before.status, "approve");
+  if (!targetStatus) {
     throw new WantedServiceError(
       409,
       `وضعیت «${before.status}» قابل انتشار نیست. فقط درخواست‌های در انتظار بررسی (PENDING) قابل تأیید هستند.`,
@@ -733,11 +1123,35 @@ export async function publishWanted(
   }
 
   const publishedAt = new Date();
-  const after = await db.buyRequest.update({
-    where: { id },
-    data: { status: STATUS_PUBLISHED, publishedAt },
-    select: { id: true, status: true, publishedAt: true },
+  const casResult = await db.buyRequest.updateMany({
+    where: {
+      id,
+      status: before.status,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    data: { status: targetStatus, publishedAt },
   });
+
+  if (casResult.count === 0) {
+    // P0-C: the row changed between our read and the CAS write.
+    // Re-read to determine the correct response — do NOT overwrite.
+    const current = await db.buyRequest.findUnique({
+      where: { id },
+      select: { status: true, publishedAt: true, expiresAt: true },
+    });
+    if (!current) {
+      throw new WantedServiceError(404, "درخواست خرید یافت نشد");
+    }
+    // Idempotent: another admin already published it.
+    if (current.status === STATUS_PUBLISHED && current.publishedAt instanceof Date) {
+      return { id, status: current.status, publishedAt: current.publishedAt.toISOString() };
+    }
+    // Terminal or expired now — 409 with the actual current state.
+    throw new WantedServiceError(
+      409,
+      `وضعیت درخواست در حین انتشار به «${current.status}» تغییر کرد. دوباره تلاش کنید.`,
+    );
+  }
 
   await logAudit({
     actorId: adminUserId,
@@ -746,15 +1160,11 @@ export async function publishWanted(
     entityType: "BuyRequest",
     entityId: id,
     before: { status: before.status },
-    after: { status: after.status, publishedAt: publishedAt.toISOString() },
+    after: { status: targetStatus, publishedAt: publishedAt.toISOString() },
     reason: `انتشار درخواست خرید ${id} — ${before.title ?? ""}`,
   });
 
-  return {
-    id: after.id,
-    status: after.status,
-    publishedAt: after.publishedAt instanceof Date ? after.publishedAt.toISOString() : publishedAt.toISOString(),
-  };
+  return { id, status: targetStatus, publishedAt: publishedAt.toISOString() };
 }
 
 // ── getWantedMatches ─────────────────────────────────────────
