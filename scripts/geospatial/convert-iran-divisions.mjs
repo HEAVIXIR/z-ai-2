@@ -53,6 +53,20 @@ export function convertIranDivisionsCsv(csvText) {
     byId.set(id, { ...row, Id: id, DivisionType: type });
   }
 
+  const expectedParentType = new Map([[1, 0], [2, 1], [3, 2], [4, 3], [5, 3], [6, 4], [7, 5]]);
+  for (const row of byId.values()) {
+    if (row.DivisionType === TYPES.country) {
+      if (nonempty(row.ParentCountryDivisionId)) throw new Error(`Country ${row.Id} must not have a parent`);
+      continue;
+    }
+    const parentId = nonempty(row.ParentCountryDivisionId);
+    const parent = byId.get(parentId);
+    if (!parent) throw new Error(`Source row ${row.Id} has missing parent ${parentId || "(empty)"}`);
+    if (parent.DivisionType !== expectedParentType.get(row.DivisionType)) {
+      throw new Error(`Source row ${row.Id} has invalid parent type ${parent.DivisionType} for DivisionType ${row.DivisionType}`);
+    }
+  }
+
   const countries = [], provinces = [], cities = [];
   const countryById = new Map(), provinceById = new Map();
   for (const row of byId.values()) {
@@ -136,7 +150,6 @@ async function main() {
     rightsReviewStatus: "PENDING",
     commercialUseAllowed: false,
     sha256: createHash("sha256").update(datasetBytes).digest("hex"),
-    generatedAt: new Date().toISOString(),
   };
   await mkdir(outputDir, { recursive: true });
   await Promise.all([
