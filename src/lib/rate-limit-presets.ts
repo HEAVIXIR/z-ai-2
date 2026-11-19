@@ -81,6 +81,14 @@ export const AI: RateLimitPreset = {
   label: "ai-gateway",
 };
 
+/** POST /api/inspections — 5 requests per hour per authenticated user. */
+export const INSPECTION_CREATE: RateLimitPreset = {
+  limit: 5,
+  windowMs: HOUR,
+  scope: "user",
+  label: "inspection-create",
+};
+
 /** Messaging endpoints (offers / messages / contact-seller) — 30/h/user. */
 export const MESSAGING: RateLimitPreset = {
   limit: 30,
@@ -101,6 +109,7 @@ export const RATE_LIMIT_PRESETS = {
   UPLOAD,
   AI,
   MESSAGING,
+  INSPECTION_CREATE,
 } as const;
 
 export type RateLimitPresetName = keyof typeof RATE_LIMIT_PRESETS;
