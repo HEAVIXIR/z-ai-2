@@ -21,6 +21,36 @@ describe("listing image subscription policy", () => {
     expect(seed).not.toContain("۳۲ تصویر برای هر آگهی");
   });
 
+  it("defines the approved active-listing and monthly featured quotas for all tiers", () => {
+    const seed = read("prisma/seed-phase6-7-automation-monetization.ts");
+    const shared = read("src/lib/listing-image-policy-shared.ts");
+    const resolver = read("src/lib/listing-image-policy.ts");
+    const adminComparison = read("src/app/admin/subscriptions/page.tsx");
+    expect(shared).toContain("maxListings: 4");
+    expect(shared).toContain("maxListings: 10");
+    expect(seed).toContain("maxListings: 4");
+    expect(seed).toContain("maxListings: 10");
+    expect(seed).toContain("maxListings: 20");
+    expect(seed).toContain("featuredCredits: 0");
+    expect(seed).toContain("featuredCredits: 2");
+    expect(seed).toContain("featuredCredits: 5");
+    expect(seed).toContain("دسترسی به هوش مصنوعی");
+    expect(seed).toContain("سرنخ‌های اولویت‌دار");
+    expect(resolver).toContain("maxListings: true");
+    expect(resolver).toContain("plan?.maxListings");
+    expect(adminComparison).toContain("تا ۴ آگهی فعال");
+    expect(adminComparison).toContain("تا ۱۰ آگهی فعال");
+    expect(adminComparison).toContain("تا ۲۰ آگهی فعال");
+  });
+
+  it("enforces active listing caps at the authenticated listing API boundary", () => {
+    const route = read("src/app/api/listings/route.ts");
+    expect(route).toContain('status: { in: ["PENDING", "PUBLISHED", "SCHEDULED"] }');
+    expect(route).toContain("db.listing.count({ where: activeListingWhere })");
+    expect(route).toContain("tx.listing.count({ where: activeListingWhere })");
+    expect(route).toContain("ACTIVE_LISTING_LIMIT_REACHED");
+  });
+
   it("derives paid status only from an active, non-expired, configured paid subscription", () => {
     const resolver = read("src/lib/listing-image-policy.ts");
     expect(resolver).toContain("db.premiumSubscription.findUnique");
