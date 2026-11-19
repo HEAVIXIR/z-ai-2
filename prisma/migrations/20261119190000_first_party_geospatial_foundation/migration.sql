@@ -51,3 +51,28 @@ CREATE INDEX "Listing_countryId_provinceId_cityId_idx" ON "Listing"("countryId",
 CREATE INDEX "Listing_locationLatitude_locationLongitude_idx" ON "Listing"("locationLatitude", "locationLongitude");
 CREATE INDEX "BuyRequest_countryId_provinceId_cityId_idx" ON "BuyRequest"("countryId", "provinceId", "cityId");
 CREATE INDEX "BuyRequest_locationLatitude_locationLongitude_idx" ON "BuyRequest"("locationLatitude", "locationLongitude");
+
+-- Guard malformed or partial coordinates at the database boundary.
+ALTER TABLE "Listing"
+  ADD CONSTRAINT "Listing_location_coordinates_valid_check"
+  CHECK (
+    ("locationLatitude" IS NULL AND "locationLongitude" IS NULL)
+    OR (
+      "locationLatitude" BETWEEN -90 AND 90
+      AND "locationLongitude" BETWEEN -180 AND 180
+    )
+  ),
+  ADD CONSTRAINT "Listing_location_accuracy_nonnegative_check"
+  CHECK ("locationAccuracyMeters" IS NULL OR "locationAccuracyMeters" >= 0);
+
+ALTER TABLE "BuyRequest"
+  ADD CONSTRAINT "BuyRequest_location_coordinates_valid_check"
+  CHECK (
+    ("locationLatitude" IS NULL AND "locationLongitude" IS NULL)
+    OR (
+      "locationLatitude" BETWEEN -90 AND 90
+      AND "locationLongitude" BETWEEN -180 AND 180
+    )
+  ),
+  ADD CONSTRAINT "BuyRequest_location_accuracy_nonnegative_check"
+  CHECK ("locationAccuracyMeters" IS NULL OR "locationAccuracyMeters" >= 0);
