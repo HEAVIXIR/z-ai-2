@@ -1598,7 +1598,10 @@ export default function NewListingPage() {
                       {transactionType === "WANTED" && (
                         <>
                           <ReviewRow label="تعداد موردنیاز" value={wanted.quantity || "—"} />
-                          <ReviewRow label="بازه بودجه" value={[wanted.budgetMin, wanted.budgetMax].filter(Boolean).join(" تا ") || "توافقی"} />
+                          <ReviewRow
+                            label="بازه بودجه"
+                            value={[wanted.budgetMin, wanted.budgetMax].filter(Boolean).join(" تا ") || (form.price.trim() ? `${Number(form.price).toLocaleString("fa-IR")} تومان · قیمت دقیق` : "توافقی")}
+                          />
                           <ReviewRow label="مهلت درخواست" value={wanted.deadline || "—"} />
                         </>
                       )}
@@ -1627,7 +1630,7 @@ export default function NewListingPage() {
                       <ReviewRow label="وضعیت" value={{ NEW: "نو", USED: "کارکرده", REFURBISHED: "بازسازی‌شده", FOR_PARTS: "قطعات" }[form.condition] ?? "—"} />
                       <ReviewRow label="سال ساخت" value={form.year || "—"} />
                       <ReviewRow label="ساعت کارکرد" value={form.hours ? `${form.hours} ساعت` : "—"} />
-                      <ReviewRow label="قیمت" value={form.price ? `${Number(form.price).toLocaleString("fa-IR")} تومان` : "—"} />
+                      {!isRequestFlow && <ReviewRow label="قیمت" value={form.price ? `${Number(form.price).toLocaleString("fa-IR")} تومان` : "—"} />}
                       {isRent && (
                         <ReviewRow
                           label="دوره اجاره"
