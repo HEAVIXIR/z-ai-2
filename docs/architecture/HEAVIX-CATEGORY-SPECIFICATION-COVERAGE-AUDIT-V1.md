@@ -8,12 +8,13 @@ The current branch contains:
 - 104 L3 variants.
 - **271 selectable terminal machine categories** (167 terminal L2 + 104 L3).
 - `prisma/seed-category-specific-attributes.ts` defines 258 unique templates across the audited catalog roots.
-- **183 of the 271 machine terminal categories have direct templates; 88 remain uncovered** in the current static tree/template comparison.
+- **271 of 271 machine terminal categories now have direct templates** after adding 88 subtype-specific leaf forms.
+- The complete static coverage is enforced by `tests/unit/machine-leaf-form-coverage.test.ts`; it fails on missing or duplicate leaf templates.
+- The form registry now contains 346 unique template slugs across the broader configured catalog roots (including the 88 generated machine leaf templates).
 
-The 88 missing machine terminal forms are:
-`excavator-long-reach, excavator-mining, excavator-demolition, excavator-material-handling, excavator-spider, excavator-zero-tail-swing, excavator-long-radius, excavator-telescopic, excavator-special, compact-loader, industrial-loader, underground-loader, multi-purpose-loader, compact-grader, heavy-grader, mining-grader, quarry-grader, gps-grader, backhoe-4wd, backhoe-center-mount, backhoe-side-shift, compact-backhoe, industrial-backhoe, motor-scraper, towed-scraper, open-bowl-scraper, elevating-scraper, twin-engine-scraper, mining-scraper, soil-roller, asphalt-roller, combination-roller, mining-shovel, front-shovel, backhoe-shovel, mining-loader-machine, diesel-lhd, electric-lhd, battery-lhd, low-profile-lhd, dth-drill, top-hammer-drill, water-well-drill, crushing-line, mobile-processing-line, truck-mounted-pump, trailer-pump, line-pump, boom-pump, stationary-pump, shotcrete, concrete-production, concrete-placing, track-paver, wheel-paver, mini-paver, highway-paver, telescopic-crane, rough-terrain-crane, industrial-crane, stackers, telehandler, container-handler, site-dump-truck, haul-truck, off-highway-truck, mining-truck, port-reach-stacker, empty-container-handler, port-crane, mobile-harbor-crane, sorting-machine, recycling-plant, asphalt-recycling-machine, tunnel-jumbo, underground-lhd, underground-truck-machine, diesel-generator, gas-generator, natural-gas-generator, bi-fuel-generator, hybrid-generator, mobile-generator, silent-generator, containerized-generator, trailer-generator, industrial-welding, industrial-hvac`.
+The 88 additions cover excavator, loader, grader, backhoe, scraper, roller, mining shovel/LHD, drilling, crushing, concrete/asphalt, crane, material handling, haulage, port, recycling, tunnel and generator subtypes. Each added leaf template has a required primary technical field and keeps family-level fields inherited from its parent category.
 
-These counts are a static comparison of the checked-in machine TREE and explicit template slugs. The seed's runtime preflight is stricter and evaluates active terminal categories across its five configured CATALOG roots in the target database. It remains fail-closed and must not be run against Preview or Production as part of this work. The prior 198-missing count and its old matrix are stale and must not be used as current status.
+These counts are a static comparison of the checked-in machine TREE and template registry. The seed's runtime preflight is stricter and evaluates active terminal categories across its five configured CATALOG roots in the target database. It remains fail-closed and must not be run against Preview or Production as part of this work. The previous 198-missing and 88-missing snapshots are historical and must not be used as current status.
 
 ## Taxonomy source reconciliation
 
@@ -113,8 +114,7 @@ For L2 families with L3 children, the intended implementation is a complete fami
 
 ## Next acceptance gate
 
-1. Add the 88 missing direct leaf templates listed in the current static re-audit, with subtype-appropriate fields and no unsupported fabricated specifications.
-2. Add a pure static contract test comparing every terminal slug in the machine TREE with template slugs; fail CI on missing/duplicate templates.
-3. Validate field-key type/unit consistency, required-field coverage, option definitions and composed parent/leaf inheritance.
-4. Reconcile broader V1.1 roots and service/mineral taxonomy with the definitive machine subtree.
-5. Read-only verify actual Preview category rows and attribute links before any separately approved Preview seed.
+1. Validate the new 88 leaf templates against manufacturer technical references and refine labels/options/units where authoritative specifications are available.
+2. Extend static tests to validate field-key type/unit consistency, option definitions, and composed parent/leaf inheritance.
+3. Reconcile broader V1.1 roots and service/mineral taxonomy with the definitive machine subtree.
+4. Read-only verify actual Preview category rows and attribute links before any separately approved Preview seed.
