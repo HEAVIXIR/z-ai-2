@@ -37,7 +37,7 @@ license attached to all copies and derivatives.
 
 - Country: `IR`
 - Province: `IR-PROV-{sourceId}`
-- City: `IR-CITY-{provinceSourceId}-{normalizedPersianName}`
+- City: `IR-CITY-{provinceSourceId}-{unicodeCodePointSequence}`
 
 City identifiers are deterministic for this source snapshot. Names and source
 IDs are preserved; missing English names and coordinates remain null/absent
