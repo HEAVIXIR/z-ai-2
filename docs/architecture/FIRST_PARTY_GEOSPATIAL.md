@@ -89,3 +89,25 @@ projection must not be mistaken for 1,672 distinct real urban cities.
 The separate coordinate enrichment in that project comes from GeoNames under
 CC BY 4.0 and requires attribution; it is not an official boundary or city
 centroid source. Do not treat it as precise equipment-location data.
+
+## Basemap licensing and ownership boundary
+
+MapLibre GL JS is the renderer, not a map-data API. It is open source under
+BSD-3-Clause and can render a style and vector tiles served by HEAVIX.
+
+The preferred self-hosted delivery path is a versioned regional PMTiles archive
+generated from a licensed OpenStreetMap PBF extract, stored in HEAVIX-controlled
+object storage and served from a HEAVIX-owned hostname with HTTP range support.
+The alternative is a HEAVIX-operated vector tile server such as TileServer GL
+or Martin. Both options remove third-party tile API calls from the runtime.
+
+OpenStreetMap data is ODbL, not proprietary HEAVIX-owned data. Public maps must
+display readable attribution and link the data license. If HEAVIX distributes
+a derivative database, ODbL share-alike obligations need legal review. The
+renderer and HEAVIX-authored styles/services remain separately licensed.
+If exclusive/proprietary map data is a requirement, use a separately licensed
+commercial dataset or HEAVIX-collected data instead of assuming OSM data can
+be made exclusive.
+
+No OSM public tile endpoint, public Nominatim endpoint, MapTiler-hosted tile
+service, or Maptoolkit-hosted tile service is a production runtime dependency.
