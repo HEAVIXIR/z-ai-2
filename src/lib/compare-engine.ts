@@ -736,8 +736,11 @@ export async function getSessionByShareToken(
  * The summary is persisted on the session (aiSummary + aiSummaryAt)
  * so subsequent reads of the same session don't re-bill the LLM.
  */
-export async function generateAISummary(sessionId: string): Promise<string> {
-  const data = await getComparisonData(sessionId);
+export async function generateAISummary(
+  sessionId: string,
+  dataOverride?: ComparisonData,
+): Promise<string> {
+  const data = dataOverride ?? await getComparisonData(sessionId);
   if (data.items.length < 2) {
     return "حداقل دو مورد برای خلاصه‌سازی لازم است.";
   }

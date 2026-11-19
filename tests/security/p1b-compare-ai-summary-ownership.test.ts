@@ -17,7 +17,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 let mockCurrentUser: { id: string } | null = null;
 let mockIsAdminResult = false;
-let mockSession: { id: string; userId: string | null } | null = null;
+let mockSession: {
+  id: string;
+  userId: string | null;
+  aiSummary?: string | null;
+  aiSummaryAt?: Date | null;
+} | null = null;
 
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: async () => mockCurrentUser,
@@ -30,10 +35,31 @@ vi.mock("@/lib/db", () => ({
     comparisonSession: {
       findUnique: vi.fn(async () => mockSession),
     },
+    aIGatewayLog: {
+      create: vi.fn(async () => ({})),
+    },
   },
 }));
 vi.mock("@/lib/compare-engine", () => ({
   generateAISummary: vi.fn(async () => "خلاصه تستی"),
+  getComparisonData: vi.fn(async () => ({
+    items: [
+      { title: "ماشین اول", type: "MACHINE", brandName: null, modelName: null, categoryName: null, year: null },
+      { title: "ماشین دوم", type: "MACHINE", brandName: "Brand", modelName: null, categoryName: null, year: null },
+    ],
+    rows: [],
+    attributes: [],
+    differences: [],
+    crossCategoryWarning: false,
+    categories: [],
+  })),
+}));
+vi.mock("@/lib/ai-policy", () => ({
+  preflightAIRequest: vi.fn(async () => ({
+    ok: true,
+    policy: { costCeilingUsd: 0.02, model: "default" },
+  })),
+  recordAICost: vi.fn(async () => {}),
 }));
 
 const { POST } = await import("@/app/api/compare/[id]/ai-summary/route");
@@ -67,7 +93,7 @@ describe("P1-B: POST /api/compare/[id]/ai-summary — session ownership", () => 
   it("NEGATIVE: authenticated non-owner → 403 (IDOR fix)", async () => {
     mockCurrentUser = { id: "user-A" };
     mockIsAdminResult = false;
-    mockSession = { id: "s1", userId: "user-B" }; // owned by another user
+    mockSession = { id: "s1", userId: "user-B", aiSummary: null, aiSummaryAt: null }; // owned by another user
     const res = await POST(makeReq("http://localhost/api/compare/s1/ai-summary"), ARGS("s1"));
     expect(res.status).toBe(403);
   });
@@ -75,7 +101,7 @@ describe("P1-B: POST /api/compare/[id]/ai-summary — session ownership", () => 
   it("POSITIVE: owner → passes (summary generated)", async () => {
     mockCurrentUser = { id: "user-A" };
     mockIsAdminResult = false;
-    mockSession = { id: "s1", userId: "user-A" }; // owner
+    mockSession = { id: "s1", userId: "user-A", aiSummary: null, aiSummaryAt: null }; // owner
     const res = await POST(makeReq("http://localhost/api/compare/s1/ai-summary"), ARGS("s1"));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -93,7 +119,7 @@ describe("P1-B: POST /api/compare/[id]/ai-summary — session ownership", () => 
   it("EDGE: session with null userId (anonymous-created session) → non-owner 403, admin 200", async () => {
     mockCurrentUser = { id: "user-A" };
     mockIsAdminResult = false;
-    mockSession = { id: "s1", userId: null }; // no owner
+    mockSession = { id: "s1", userId: null, aiSummary: null, aiSummaryAt: null }; // no owner
     const res = await POST(makeReq("http://localhost/api/compare/s1/ai-summary"), ARGS("s1"));
     // user-A is not the owner (userId is null) and not admin → 403
     expect(res.status).toBe(403);

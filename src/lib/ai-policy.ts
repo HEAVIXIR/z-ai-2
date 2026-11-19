@@ -434,7 +434,19 @@ export async function preflightAIRequest(params: {
     return { ok: false, statusCode: 429, reason: "سهمیه شما تمام شده." };
   }
 
-  // 4. Global budget (auto-resets windows first).
+  // 4. Validate input size BEFORE reserving any global budget.
+  // Invalid requests must not consume the atomic cost reservation.
+  if (!Number.isSafeInteger(inputLength) || inputLength < 0 || inputLength > policy.maxInputChars) {
+    return {
+      ok: false,
+      statusCode: 400,
+      reason: "ورودی بیش از حد طولانی یا نامعتبر است.",
+    };
+  }
+
+  // 5. Global budget (auto-resets windows first).
+  // checkAIBudget atomically reserves the per-call ceiling; this is
+  // intentionally the final preflight gate immediately before the LLM.
   const budget = await getAIBudget();
   const budgetCheck = await checkAIBudget(policy.costCeilingUsd, budget);
   if (!budgetCheck.ok) {
@@ -442,15 +454,6 @@ export async function preflightAIRequest(params: {
       ok: false,
       statusCode: 429,
       reason: "بودجه هوش مصنوعی روزانه/ماهانه تمام شده.",
-    };
-  }
-
-  // 5. Input size — enforced here too so the route stays simple.
-  if (inputLength > policy.maxInputChars) {
-    return {
-      ok: false,
-      statusCode: 400,
-      reason: "ورودی بیش از حد طولانی.",
     };
   }
 

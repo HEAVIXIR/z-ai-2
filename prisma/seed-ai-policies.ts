@@ -121,6 +121,17 @@ const POLICIES: PolicySeed[] = [
     timeoutMs: 15000,
     costCeilingUsd: 0.01,
   },
+  {
+    taskType: "COMPARE_SUMMARY",
+    allowedRoles: "ADMIN,BUYER,SELLER",
+    hourlyLimit: 10,
+    dailyLimit: 30,
+    maxInputChars: 15000,
+    maxOutputTokens: 1200,
+    model: "default",
+    timeoutMs: 20000,
+    costCeilingUsd: 0.02,
+  },
   // ── STEP 11.44 Phase 3: Admin AI route policies ──
   {
     taskType: "CONTENT_FACTORY",
