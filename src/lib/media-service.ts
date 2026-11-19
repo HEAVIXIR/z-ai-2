@@ -6,11 +6,11 @@
    "Do NOT create a Media model in the schema. Use the filesystem
     + a JSON metadata file or a simple in-memory/DB approach."
 
-   This module implements an asset store on top of the existing
-   /public/uploads/ directory. Each uploaded asset is persisted
-   as a binary file plus a sidecar `<filename>.meta.json` file
-   containing the asset metadata (id, alt, entityType, entityId,
-   uploader, mime, size, timestamps).
+   Public binaries remain under /public/uploads/. Private metadata
+   sidecars are stored outside public/ in .heavix-media-metadata/
+   and are keyed by the same relative asset path. Legacy sidecars
+   beside public binaries remain readable during rollout, but the
+   middleware denies their URLs; mutations privatize or remove them.
 
    Sidecars are intentionally tiny (<1KB) so listing + filtering
    is a fast recursive walk + JSON.parse per sidecar.
@@ -28,7 +28,7 @@
      • media.attach
    ============================================================ */
 
-import { promises as fs } from "node:fs";
+import { constants as fsConstants, promises as fs } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import {
@@ -41,6 +41,9 @@ import { logAudit } from "@/lib/audit";
 /* ── Constants ──────────────────────────────────────────────── */
 
 const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads");
+// Sidecar metadata is private application state and must never live in public/.
+const MEDIA_METADATA_ROOT = path.join(process.cwd(), ".heavix-media-metadata");
+const SIDECAR_SUFFIX = ".meta.json";
 
 const ALLOWED_ENTITY_TYPES = new Set([
   "Listing",
@@ -90,8 +93,75 @@ interface AssetSidecar {
 
 /* ── Helpers ───────────────────────────────────────────────── */
 
+function normalizeUploadRelativePath(relativePath: string): string | null {
+  if (typeof relativePath !== "string" || relativePath.length === 0) return null;
+  const normalized = relativePath.replace(/\\/g, "/");
+  if (
+    normalized.startsWith("/") ||
+    normalized.split("/").some((segment) =>
+      segment.length === 0 || segment === "." || segment === "..",
+    )
+  ) {
+    return null;
+  }
+  const root = path.resolve(UPLOAD_ROOT);
+  const resolved = path.resolve(root, ...normalized.split("/"));
+  if (!resolved.startsWith(root + path.sep)) return null;
+  return normalized;
+}
+
+async function ensurePrivateMetadataDirectory(dir: string): Promise<void> {
+  const root = path.resolve(MEDIA_METADATA_ROOT);
+  const target = path.resolve(dir);
+  if (target !== root && !target.startsWith(root + path.sep)) {
+    throw new Error("Private media metadata directory escaped its root.");
+  }
+
+  await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  const relative = path.relative(root, target);
+  let current = root;
+  const directories = [root, ...relative.split(path.sep).filter(Boolean).map((part) => {
+    current = path.join(current, part);
+    return current;
+  })];
+
+  for (const directory of directories) {
+    try {
+      await fs.mkdir(directory, { mode: 0o700 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const stat = await fs.lstat(directory);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error("Private media metadata path contains a non-directory or symlink.");
+    }
+    await fs.chmod(directory, 0o700);
+  }
+}
+
+async function hardenPrivateMetadataTree(dir: string): Promise<void> {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) {
+      throw new Error("Private media metadata tree contains a symlink.");
+    }
+    if (entry.isDirectory()) {
+      await fs.chmod(full, 0o700);
+      await hardenPrivateMetadataTree(full);
+    } else if (entry.isFile()) {
+      await fs.chmod(full, 0o600);
+    }
+  }
+}
+
 function sidecarPathFor(assetRelativePathWithExt: string): string {
-  return `${assetRelativePathWithExt}.meta.json`;
+  const safeRelativePath = normalizeUploadRelativePath(assetRelativePathWithExt);
+  if (!safeRelativePath) throw new Error("Invalid media asset relative path.");
+  return path.join(
+    MEDIA_METADATA_ROOT,
+    ...safeRelativePath.split("/"),
+  ) + SIDECAR_SUFFIX;
 }
 
 /** Walk a directory recursively, returning every regular file. */
@@ -117,31 +187,69 @@ async function walkFiles(
   return acc;
 }
 
-/** Read a sidecar JSON; returns null if missing/corrupt. */
+/** Read a sidecar JSON and bind it to the path discovered on disk. */
 async function readSidecar(
   sidecarFullPath: string,
+  expectedRelativePath: string,
 ): Promise<AssetSidecar | null> {
   try {
+    const safeExpectedPath = normalizeUploadRelativePath(expectedRelativePath);
+    if (!safeExpectedPath) return null;
     const raw = await fs.readFile(sidecarFullPath, "utf8");
     const parsed = JSON.parse(raw) as AssetSidecar;
-    if (!parsed || typeof parsed.id !== "string") return null;
+    if (
+      !parsed ||
+      typeof parsed.id !== "string" ||
+      !/^[a-f0-9]{24}$/i.test(parsed.id) ||
+      parsed.relativePath !== safeExpectedPath ||
+      parsed.filename !== path.posix.basename(safeExpectedPath) ||
+      parsed.url !== `/uploads/${safeExpectedPath}` ||
+      !Number.isSafeInteger(parsed.size) ||
+      parsed.size <= 0 ||
+      typeof parsed.uploadedAt !== "string"
+    ) {
+      return null;
+    }
     return parsed;
   } catch {
     return null;
   }
 }
 
-/** Walk /public/uploads/ and return all assets (newest first). */
+/** Read private sidecars first, then legacy public sidecars for compatibility. */
 async function readAllAssets(): Promise<MediaAsset[]> {
   await fs.mkdir(UPLOAD_ROOT, { recursive: true }).catch(() => {});
-  const rels = await walkFiles(UPLOAD_ROOT, UPLOAD_ROOT);
-  const sidecars: AssetSidecar[] = [];
-  for (const rel of rels) {
-    if (!rel.endsWith(".meta.json")) continue;
-    const full = path.join(UPLOAD_ROOT, rel);
-    const sc = await readSidecar(full);
-    if (sc) sidecars.push(sc);
+  await ensurePrivateMetadataDirectory(MEDIA_METADATA_ROOT);
+  await hardenPrivateMetadataTree(MEDIA_METADATA_ROOT);
+
+  const [privateRels, legacyRels] = await Promise.all([
+    walkFiles(MEDIA_METADATA_ROOT, MEDIA_METADATA_ROOT),
+    walkFiles(UPLOAD_ROOT, UPLOAD_ROOT),
+  ]);
+  const sidecarsByPath = new Map<string, AssetSidecar>();
+
+  for (const rel of privateRels) {
+    if (!rel.endsWith(SIDECAR_SUFFIX)) continue;
+    const assetRelativePath = rel.slice(0, -SIDECAR_SUFFIX.length);
+    const full = path.join(MEDIA_METADATA_ROOT, ...rel.split("/"));
+    const sc = await readSidecar(full, assetRelativePath);
+    if (sc) sidecarsByPath.set(assetRelativePath, sc);
   }
+
+  // Legacy sidecars remain readable during rollout, but middleware blocks
+  // their public URLs. A successful attach/delete moves or removes them.
+  // A dedicated migration script handles bulk relocation after old instances
+  // have been drained; listing must never mutate existing media state.
+  for (const rel of legacyRels) {
+    if (!rel.endsWith(SIDECAR_SUFFIX)) continue;
+    const assetRelativePath = rel.slice(0, -SIDECAR_SUFFIX.length);
+    if (sidecarsByPath.has(assetRelativePath)) continue;
+    const full = path.join(UPLOAD_ROOT, ...rel.split("/"));
+    const sc = await readSidecar(full, assetRelativePath);
+    if (sc) sidecarsByPath.set(assetRelativePath, sc);
+  }
+
+  const sidecars = [...sidecarsByPath.values()];
   sidecars.sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : a.uploadedAt > b.uploadedAt ? -1 : 0));
   return sidecars.map((s) => ({ ...s }));
 }
@@ -257,10 +365,15 @@ export async function uploadAsset(
     altText: input.altText ?? null,
   };
 
-  // 5. Persist sidecar
-  const sidecarDiskPath = path.join(targetDir, sidecarPathFor(safeName));
+  // 5. Persist private sidecar metadata outside the public asset tree.
+  const sidecarDiskPath = sidecarPathFor(relPath);
   try {
-    await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), "utf8");
+    await ensurePrivateMetadataDirectory(path.dirname(sidecarDiskPath));
+    await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
   } catch (err) {
     // Best-effort cleanup of orphaned binary if sidecar write failed
     await fs.unlink(fullDiskPath).catch(() => {});
@@ -338,8 +451,12 @@ export async function deleteAsset(
   if (!asset) {
     return { ok: false, error: "رسانه یافت نشد." };
   }
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
-  const sidecarPath = `${binaryPath}.meta.json`;
+  const safeRelativePath = normalizeUploadRelativePath(asset.relativePath);
+  if (!safeRelativePath) {
+    return { ok: false, error: "مسیر رسانه نامعتبر است." };
+  }
+  const binaryPath = path.join(UPLOAD_ROOT, ...safeRelativePath.split("/"));
+  const sidecarPath = sidecarPathFor(safeRelativePath);
 
   // Remove binary file
   try {
@@ -350,12 +467,15 @@ export async function deleteAsset(
       return { ok: false, error: `حذف فایل ناموفق بود: ${(err as Error).message}` };
     }
   }
-  // Remove sidecar
-  try {
-    await fs.unlink(sidecarPath);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      return { ok: false, error: `حذف متادیتا ناموفق بود: ${(err as Error).message}` };
+  // Remove both private and legacy-public sidecars.
+  const legacySidecarPath = `${binaryPath}${SIDECAR_SUFFIX}`;
+  for (const metadataPath of [sidecarPath, legacySidecarPath]) {
+    try {
+      await fs.unlink(metadataPath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        return { ok: false, error: `حذف متادیتا ناموفق بود: ${(err as Error).message}` };
+      }
     }
   }
 
@@ -393,8 +513,12 @@ export async function attachAsset(
     return { ok: false, error: "رسانه یافت نشد." };
   }
 
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
-  const sidecarPath = `${binaryPath}.meta.json`;
+  const safeRelativePath = normalizeUploadRelativePath(asset.relativePath);
+  if (!safeRelativePath) {
+    return { ok: false, error: "مسیر رسانه نامعتبر است." };
+  }
+  const binaryPath = path.join(UPLOAD_ROOT, ...safeRelativePath.split("/"));
+  const sidecarPath = sidecarPathFor(safeRelativePath);
   const before = { entityType: asset.entityType, entityId: asset.entityId };
   const updated: AssetSidecar = {
     id: asset.id,
@@ -411,13 +535,22 @@ export async function attachAsset(
     altText: asset.altText,
   };
   try {
-    await fs.writeFile(sidecarPath, JSON.stringify(updated, null, 2), "utf8");
+    await ensurePrivateMetadataDirectory(path.dirname(sidecarPath));
+    await fs.writeFile(sidecarPath, JSON.stringify(updated, null, 2), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    await fs.chmod(sidecarPath, 0o600);
   } catch (err) {
     return {
       ok: false,
       error: `به‌روزرسانی متادیتا ناموفق بود: ${(err as Error).message}`,
     };
   }
+
+  // The private copy is authoritative now. Remove the old public sidecar;
+  // if unlink fails, the HTTP middleware still denies direct access.
+  await fs.unlink(`${binaryPath}${SIDECAR_SUFFIX}`).catch(() => {});
 
   await logAudit({
     actorId: userId ?? null,

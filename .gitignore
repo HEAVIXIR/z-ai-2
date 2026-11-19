@@ -93,3 +93,6 @@ public/uploads/articles/test-article-*.png
 # STEP 15.88: local real-TLS PostgreSQL infrastructure (binaries, certs, cluster data)
 .tls-pg/
 src/lib/generated/
+
+# Private media metadata sidecars (must never be committed or served publicly)
+.heavix-media-metadata/
