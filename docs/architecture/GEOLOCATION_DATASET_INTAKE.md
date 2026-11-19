@@ -65,3 +65,31 @@ README or a file's public availability.
 No importer, database write, seed, migration, or production action is included
 in this stage. A future importer must be separately reviewed, idempotent,
 transactional, rollback-capable, and run only after explicit approval.
+
+
+## Iran 1404 source conversion (no import)
+
+The deterministic converter accepts the source repository's five-column CSV
+(`Id`, `ParentCountryDivisionId`, `Name`, `Code`, `DivisionType`) and
+resolves each City through its County and District ancestors to Province.
+It preserves source IDs, raw codes, division type, and ancestry. Urban zones,
+villages, and other administrative levels are counted in source metadata but
+are not reclassified as City.
+
+Run after obtaining the exact source CSV from
+`Hameds/IranCountryDivisions/data/1404/iran.csv`:
+
+```sh
+node scripts/geospatial/convert-iran-divisions.mjs \
+  ./iran.csv ./build/iran-1404 2025-03-21
+node scripts/geospatial/validate-location-dataset.mjs \
+  ./build/iran-1404/dataset.json ./build/iran-1404/manifest.json
+```
+
+The converter refuses unexpected hierarchy counts (1 country, 31 provinces,
+1,481 cities), duplicate IDs/codes, orphan ancestry, and malformed CSV. The
+source date is an explicit argument and must be confirmed from the publisher
+metadata before use. It emits a dataset SHA-256 and a separate source-file
+SHA-256. Rights status remains `PENDING` and commercial use remains disabled;
+conversion does not imply approval. Output is a local review artifact only:
+there is no database, Preview, or Production write path.
