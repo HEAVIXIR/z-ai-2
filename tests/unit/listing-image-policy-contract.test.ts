@@ -45,6 +45,10 @@ describe("listing image subscription policy", () => {
     expect(adminComparison).toContain("تا ۴ آگهی فعال");
     expect(adminComparison).toContain("تا ۱۰ آگهی فعال");
     expect(adminComparison).toContain("تا ۲۰ آگهی فعال");
+    expect(adminComparison).toContain("db.subscriptionPlan.findMany");
+    expect(adminComparison).toContain("planPriceByCode");
+    expect(adminComparison).not.toContain("۴۹۹٬۰۰۰ تومان / ماه");
+    expect(adminComparison).not.toContain("۱٬۴۹۹٬۰۰۰ تومان / ماه");
   });
 
   it("enforces active listing caps at the authenticated listing API boundary", () => {
