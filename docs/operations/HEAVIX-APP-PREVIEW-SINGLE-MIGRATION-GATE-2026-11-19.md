@@ -50,3 +50,18 @@ Do not substitute or run the paired backup/migration workflows. If any preflight
 
 ---
 Append-only execution gate. No migration or database write is implied by this document.
+
+
+## Append-only continuation — PR exposure and checksum correction (2026-11-19)
+
+- Dedicated workflow-only PR: https://github.com/HEAVIXIR/z-ai-2/pull/347
+- PR base: `main` at `e49327ee94c2c1a618a4c0bcdcf79f73edb73367`.
+- PR head after correction: `4b68a33fa501ebb1a8308718a594a9f02b74f07a`.
+- PR remains Draft, open and unmerged. It contains exactly one changed path: `.github/workflows/app-preview-single-migration.yml`; no Integration application code is included.
+- Initial PR checks on commit `55ec3bede68b4812a30ac4064c063f4f2c83142c`: six checks succeeded and `Legacy archive inventory (read-only)` was skipped. These results do not validate the subsequent correction.
+- Static review found that checksum manifests used absolute file paths, while read-back/restore verification runs from a different directory. This would cause checksum verification to target the original runner path rather than the downloaded/restored file.
+- Corrected both checksum-generation commands to execute from the backup working directory and store relative filenames. The manifest and B2 read-back verification now resolve filenames relative to their verification directories.
+- Correction commit: `4b68a33fa501ebb1a8308718a594a9f02b74f07a`.
+- CI run for the corrected commit was observed queued at run `44484268815`; no result has yet been verified.
+- No workflow dispatch, backup, B2 upload, restore, database migration, Store operation or Production operation was performed in this continuation.
+- Branch protection prevents treating the PR as mergeable solely from successful checks; review/required gates remain. Do not bypass protection or merge without explicit approval.
