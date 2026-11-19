@@ -65,3 +65,14 @@ Append-only execution gate. No migration or database write is implied by this do
 - CI run for the corrected commit was observed queued at run `44484268815`; no result has yet been verified.
 - No workflow dispatch, backup, B2 upload, restore, database migration, Store operation or Production operation was performed in this continuation.
 - Branch protection prevents treating the PR as mergeable solely from successful checks; review/required gates remain. Do not bypass protection or merge without explicit approval.
+
+
+## Append-only CI completion — corrected workflow commit (2026-11-19)
+
+- CI run `44484268815` for `4b68a33fa501ebb1a8308718a594a9f02b74f07a` completed with conclusion `success`.
+- Successful jobs: `verify`, `phase-tests`, `audit-transaction`, `tls-proof`, `docker-build-proof`, and Cloudflare compatibility (report-only).
+- `Legacy archive inventory (read-only)` was skipped; this is not a failure but remains a skipped check, not a passed execution.
+- PR #347 remains Draft/open/unmerged and contains exactly one changed file: `.github/workflows/app-preview-single-migration.yml`.
+- A PR conversation comment records this CI outcome and reiterates that no database workflow has been dispatched.
+- No backup, B2 upload, restore, migration, Store Preview operation, Production operation, or Main update occurred.
+- Next gate: owner review/decision on making PR #347 ready for normal protected-branch review. Do not merge or bypass protections without explicit authorization.
