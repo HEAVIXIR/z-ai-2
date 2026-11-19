@@ -72,7 +72,7 @@ describe("Listing wizard seven-step source contract", () => {
   });
 
   it("submits through the authenticated listing API with server-side transaction and attribute validation", () => {
-    expect(wizard).toContain('const endpoint = transactionType === "WANTED" ? "/api/wanted" : "/api/listings"');
+    expect(wizard).toContain('const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings"');
     expect(wizard).toContain("fetch(endpoint");
     expect(createListingApi).toContain("getCurrentUser()");
     expect(createListingApi).toContain("checkCsrf(req)");
