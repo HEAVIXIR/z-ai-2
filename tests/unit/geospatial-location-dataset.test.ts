@@ -26,6 +26,21 @@ describe("first-party geospatial dataset validation", () => {
     expect(result.counts).toEqual({ countries: 1, provinces: 1, cities: 1 });
   });
 
+  it("never marks a dataset import-eligible without hashing the exact source bytes", () => {
+    const result = validateLocationDataset(dataset, manifest);
+    expect(result.structurallyValid).toBe(false);
+    expect(result.importEligible).toBe(false);
+    expect(result.errors.some((e) => e.message.includes("actual SHA-256"))).toBe(true);
+  });
+
+  it("rejects empty administrative levels", () => {
+    const empty = { countries: [], provinces: [], cities: [] };
+    const hash = createHash("sha256").update(JSON.stringify(empty)).digest("hex");
+    const result = validateLocationDataset(empty, { ...manifest, sha256: hash }, hash);
+    expect(result.structurallyValid).toBe(false);
+    expect(result.importEligible).toBe(false);
+  });
+
   it("blocks import eligibility when licensing has not been approved", () => {
     const result = validateLocationDataset(dataset, { ...manifest, rightsReviewStatus: "PENDING" }, manifest.sha256);
     expect(result.structurallyValid).toBe(true);
