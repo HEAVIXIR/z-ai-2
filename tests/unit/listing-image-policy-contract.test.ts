@@ -56,6 +56,8 @@ describe("listing image subscription policy", () => {
     expect(route).toContain('status: { in: ["PENDING", "PUBLISHED", "SCHEDULED"] }');
     expect(route).toContain("db.listing.count({ where: activeListingWhere })");
     expect(route).toContain("tx.listing.count({ where: activeListingWhere })");
+    expect(route).toContain("Prisma.TransactionIsolationLevel.Serializable");
+    expect(route).toContain('err?.code === "P2034"');
     expect(route).toContain("ACTIVE_LISTING_LIMIT_REACHED");
   });
 
