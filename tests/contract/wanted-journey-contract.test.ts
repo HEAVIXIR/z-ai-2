@@ -35,8 +35,9 @@ const read = (file: string) =>
 describe("WANTED journey source-contract (NOT behavioral E2E)", () => {
   it("wizard sends WANTED to /api/wanted with intent + quantity + budget + deadline", () => {
     const page = read("src/app/listings/new/page.tsx");
-    expect(page).toContain('transactionType === "WANTED" ? "/api/wanted" : "/api/listings"');
-    expect(page).toContain("body.intent = wanted.intent");
+    expect(page).toContain('const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST"');
+    expect(page).toContain('const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings"');
+    expect(page).toContain('body.intent = transactionType === "SERVICE_REQUEST" ? "SERVICE_REQUEST" : wanted.intent');
     expect(page).toContain("body.quantity = Number(wanted.quantity)");
     expect(page).toContain("body.budgetMin = wanted.budgetMin");
     expect(page).toContain("sellerName: form.sellerName || undefined");
