@@ -1199,3 +1199,48 @@ The B2 media infrastructure is robust:
 
 ### Invariants held
 - No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 open/unmerged. No paid services. Token not leaked.
+
+## 2026-11-19 — PHASE G: intent selector to Step 1 + review completeness + #346 root cause (exact-SHA green)
+
+- Branch: `integration/preview-readiness-workerd-2026-11-15`. Follows the master execution directive. P0-A (intent selector moved to Step 1), P0-B (review screen completeness), Phase K (#346 root cause analysis + regression). Code-validated HEAD: `0d06d65`. CI `44541446341` SUCCESS (7 jobs green, 2 skipped — NOT counted as pass). OpenNext `44541446304` SUCCESS.
+
+### P0-A — WANTED intent selector MOVED to Step 1 (commit 781b694)
+- The intent selector (SALE/RENT/SALE_AND_RENT/SERVICE_REQUEST) is now rendered in Step 1, immediately after the TransactionTypePicker, when transactionType === "WANTED".
+- `canProceed` for Step 1 now requires the intent to be selected before the user can proceed to Step 2 (category).
+- This ensures the taxonomy routing (serviceRoots vs marketplaceRoots) is correct BEFORE the user picks a category — eliminating the mismatch where a MARKETPLACE category was paired with a SERVICE_REQUEST intent.
+- Step 6 now shows a READ-ONLY badge of the selected intent (label: "انتخاب‌شده در مرحله ۱") instead of the interactive selector. The quantity/budget/deadline fields remain in Step 6 (transaction details).
+
+### P0-B — Review screen completeness (commit 781b694)
+- **Location shown as human-readable names** (countryLabel/provinceLabel/cityLabel) instead of raw cuid IDs. LocationValue type extended with optional label fields; LocationPicker populates them on select onChange by looking up the selected item's name from its internal list.
+- **Created listing id + slug captured** in state (createdId/createdSlug) and exposed in the success screen as "مشاهده آگهی ثبت‌شده" (for SALE/RENT/AUCTION/QUOTE/SERVICE) or "مشاهده درخواست ثبت‌شده" (for WANTED) links.
+- **Added review rows**: shortDesc, description (truncated to 100 chars), sellerName, sellerPhone, RENT availabilityStart/End, QUOTE terms (truncated), WANTED intent label.
+- `handleTransactionTypeChange` now also clears createdId/createdSlug.
+
+### Phase K — Preview #346 root cause analysis (commit 0d06d65)
+- **Root cause identified**: the Integration Preview HTTP 500 is caused by a schema drift. The migration `20261118152000_link_listing_service_rfq` (additive: ADD COLUMN serviceTypeId on Listing + listingId on RFQ + indexes + FKs) EXISTS as a file but has NOT been applied to the App Preview DB. When the homepage queries Listing rows, Prisma selects serviceTypeId (per the generated client) and PostgreSQL returns SQLSTATE 42703 (column not found).
+- **Evidence**: Preview run 44537044487 (on 8493bc0): HEAVIX_PREVIEW_ROOT_HTTP=500, HEAVIX_PREVIEW_HEALTH_HTTP=503 (was 200 before — broader DB/Worker issues), error code 1102 (Cloudflare Worker error).
+- **Fix path (BLOCKED)**: requires PR #347 merge (guarded workflow) + workflow dispatch (confirm=APPLY_APP_PREVIEW_20261118152000) + backup/restore gate (environment: preview-backup, requires dellk00k approval).
+- **Regression test**: 7 new contract tests (`preview-346-schema-drift.test.ts`) pin the migration's existence, additive-only nature, schema alignment, and the guarded workflow's confirmation string.
+
+### Per-criterion status
+| # | Directive item | Status |
+|---|---|---|
+| P0-A | Intent selector in Step 1 (before category) | ✅ DONE |
+| P0-B | Review screen completeness (names, created id, rows) | ✅ DONE |
+| Phase K | Preview #346 root cause | ✅ DONE (schema drift; BLOCKED on PR #347 + backup/restore gate) |
+| P0-C | Server-side validation hardening (P2 #11-21) | ⏳ NEXT PASS |
+| P0-D | WANTED structured storage | ⏳ RFC READY (blocked on backup/restore gate) |
+
+### Verification (single SHA `0d06d65`)
+- typecheck:worker EXIT 0. ESLint clean. 280+ non-DB tests pass (18 files), incl. 10 new wizard-intent-and-review contract tests + 7 new preview-346-schema-drift regression tests.
+- CI 44541446341 SUCCESS: verify, docker-build-proof, phase-tests, audit-transaction, tls-proof, Workerd smoke, Cloudflare compat. 2 skipped NOT counted as pass.
+- OpenNext 44541446304 SUCCESS.
+
+### Remaining (NOT closed — tracked on #345 + #346)
+- **WANTED structured persistence** (quantity/modelId/serviceTypeId/attributeValues): RFC corrected; migration blocked on backup/restore gate.
+- **Server-side validation hardening** (P2 #11-21): RENT/AUCTION/WANTED validation gaps.
+- **Behavioral E2E with real DB**: blocked by #346.
+- **Preview acceptance**: still blocked by #346 (schema drift — migration not applied to Preview DB).
+
+### Invariants held
+- No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 open/unmerged. No paid services. Token not leaked.
