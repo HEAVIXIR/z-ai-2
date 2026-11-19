@@ -728,7 +728,7 @@ export default function NewListingPage() {
             <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/[0.06] p-10 text-center">
               <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-emerald-400" />
               <h1 className="text-2xl font-black text-white">
-                {transactionType === "WANTED" ? "درخواست خرید شما ثبت شد!" : "آگهی شما ثبت شد!"}
+                {transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? "درخواست شما ثبت شد!" : "آگهی شما ثبت شد!"}
               </h1>
               {/* H.1: show the created id + status so the user can verify */}
               {createdId && (
@@ -739,8 +739,8 @@ export default function NewListingPage() {
                 </p>
               )}
               <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-white/55">
-                {transactionType === "WANTED"
-                  ? "درخواست شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. پس از تأیید، در فهرست درخواست‌های خرید فعال نمایش داده می‌شود و برای تطبیق با آگهی‌های عرضه مناسب در دسترس قرار می‌گیرد."
+                {transactionType === "WANTED" || transactionType === "SERVICE_REQUEST"
+                  ? "درخواست شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. پس از تأیید، در فهرست درخواست‌های شما نمایش داده می‌شود و برای تطبیق با عرضه‌های مرتبط در دسترس قرار می‌گیرد."
                   : "آگهی شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. در صورت تأیید، در صفحهٔ آگهی‌ها نمایش داده می‌شود و وارد کمپین «فروش در ۷ روز» می‌گردد."}
               </p>
               {mediaWarning && (
@@ -778,7 +778,7 @@ export default function NewListingPage() {
                     مشاهده آگهی ثبت‌شده
                   </Link>
                 )}
-                {createdId && transactionType === "WANTED" && (
+                {createdId && (transactionType === "WANTED" || transactionType === "SERVICE_REQUEST") && (
                   <Link
                     href="/dashboard/wanted"
                     className="rounded-xl bg-[#F58220] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
