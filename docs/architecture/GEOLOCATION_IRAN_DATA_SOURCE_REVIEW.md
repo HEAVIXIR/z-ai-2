@@ -54,3 +54,38 @@ The HEAVIX location selector currently targets Country → Province → City. A 
 - No Prisma migration, seed, deploy, or merge was performed.
 - Next technical stage: build a deterministic converter/validator for the 1404 source export, verify the 1,481 city rows and parent ancestry, then commit the normalized intake artifact and its manifest to a dedicated review branch.
 - The data source is for the canonical location catalog only. It is not a source of precise listing/equipment coordinates.
+
+
+## Existing bundled source and generated HEAVIX catalog (2026-11-20)
+
+Repository inspection found an existing bundled snapshot at
+`prisma/data/iran-cities-1404.json`, with its own source README and GPL-3.0
+license file. That file is published from `sajaddp/list-of-cities-in-Iran`
+release 3.1.2 and already contains the 31-province / 1,479-distinct-city
+projection. Its metadata reports 1,481 source real-city records and two
+same-province duplicate-name records collapsed for the current
+`(provinceId, name)` database uniqueness rule.
+
+To meet the Country → Province → City requirement without adding county,
+district, or village entities, a normalized catalog was generated from that
+existing file:
+
+- `prisma/data/iran-locations-1404.json`
+- `prisma/data/iran-locations-1404.manifest.json`
+- `prisma/data/README-iran-locations.md`
+
+The generated catalog contains 1 country, 31 provinces, and 1,479 distinct
+city entries. It uses deterministic source codes, preserves the source year,
+release, count discrepancy, and source provenance. English names and city
+coordinates are not present in the source snapshot and have not been invented.
+
+**Important:** the existing bundled source declares GPL-3.0. The generated
+catalog therefore retains GPL-3.0 provenance; it is not relabeled MIT or
+treated as rights-cleared. Its manifest remains `rightsReviewStatus: PENDING`
+and `commercialUseAllowed: false`. A fail-closed seed preflight prevents
+database seeding until the manifest is explicitly approved. No database import
+or seed execution has been performed.
+
+The previously reviewed Hameds/IranCountryDivisions source remains a separate
+candidate and was not used to generate this current catalog. Its availability
+does not alter the provenance of the already-bundled sajaddp-derived data.
