@@ -4,7 +4,7 @@ export interface ListingImagePolicy {
   tier: ListingImageTier;
   maxImages: number;
   maxImageBytes: number;
-  /** Maximum simultaneously active supply listings; 0 means unlimited. */
+  /** Maximum simultaneously active supply listings for this plan. */
   maxListings: number;
 }
 
