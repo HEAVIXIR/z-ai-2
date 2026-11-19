@@ -90,4 +90,37 @@ describe("/api/admin/media permission separation", () => {
     expect(mocks.uploadAsset).not.toHaveBeenCalled();
   });
 
+  it("does not emit a second upload audit event after the media service records it", async () => {
+    mocks.uploadAsset.mockImplementation(async () => {
+      await mocks.logAudit({ action: "media.upload", entityId: "asset-1" });
+      return {
+        ok: true,
+        asset: {
+          id: "asset-1",
+          filename: "opaque.jpg",
+          url: "/uploads/2026/11/opaque.jpg",
+        },
+      };
+    });
+    const file = new File([new Uint8Array([1, 2, 3])], "image.jpg", {
+      type: "image/jpeg",
+    });
+    const formData = {
+      get: (name: string) => (name === "file" ? file : null),
+    } as FormData;
+    const request = {
+      headers: new Headers(),
+      formData: vi.fn().mockResolvedValue(formData),
+    } as unknown as Request;
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(mocks.logAudit).toHaveBeenCalledTimes(1);
+    expect(mocks.logAudit).toHaveBeenCalledWith({
+      action: "media.upload",
+      entityId: "asset-1",
+    });
+  });
+
 });

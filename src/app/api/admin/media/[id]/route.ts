@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-guard";
-import { logAudit } from "@/lib/audit";
 import { deleteAsset, getAsset } from "@/lib/media-service";
 
 export const runtime = "nodejs";
@@ -51,15 +50,6 @@ export async function DELETE(_req: Request, { params }: Params) {
         { status: 400 },
       );
     }
-
-    await logAudit({
-      actorId: user?.id ?? null,
-      actorType: 'ADMIN',
-      action: 'media.delete',
-      entityType: 'MediaAsset',
-      entityId: id,
-      reason: 'Media asset deleted via admin API',
-    });
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {

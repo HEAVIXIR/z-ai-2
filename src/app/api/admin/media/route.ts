@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-guard";
-import { logAudit } from "@/lib/audit";
 import { listAssets, uploadAsset } from "@/lib/media-service";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload-security";
 
@@ -110,21 +109,6 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-
-    await logAudit({
-      actorId: user?.id ?? null,
-      actorType: "ADMIN",
-      action: "media.upload",
-      entityType: "MediaAsset",
-      entityId: result.asset.id,
-      after: {
-        filename: result.asset.filename,
-        altText: result.asset.altText,
-        entityType: result.asset.entityType,
-        entityId: result.asset.entityId,
-      },
-      reason: "Media asset uploaded via admin API",
-    });
 
     return NextResponse.json({ ok: true, asset: result.asset });
   } catch (err: any) {
