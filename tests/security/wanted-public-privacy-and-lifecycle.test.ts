@@ -74,7 +74,10 @@ describe("WANTED public privacy and lifecycle safety", () => {
     const route = read("src/app/api/wanted/route.ts");
     expect(route).toContain("normalizedDeadline");
     expect(route).toContain("deadline: normalizedDeadline");
-    expect(route).toContain("selectedProvince?.name");
+    expect(route).toContain("resolvedProvince?.name");
+    expect(route).toContain("countryId: resolvedCountryId");
+    expect(route).toContain("provinceId: resolvedProvince?.id ?? null");
+    expect(route).toContain("cityId: selectedCity?.id ?? null");
     expect(route).toContain("selectedCity?.name");
   });
 
