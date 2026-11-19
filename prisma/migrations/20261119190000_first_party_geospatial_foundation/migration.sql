@@ -28,7 +28,7 @@ CREATE TABLE "GeoZone" (
   "name" TEXT NOT NULL,
   "slug" TEXT NOT NULL,
   "level" TEXT NOT NULL,
-  "boundaryGeoJson" JSONB NOT NULL,
+  "boundaryGeoJson" TEXT NOT NULL,
   "centerLatitude" DOUBLE PRECISION,
   "centerLongitude" DOUBLE PRECISION,
   "countryId" TEXT,
