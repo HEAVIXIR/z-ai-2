@@ -194,6 +194,14 @@ export async function DELETE(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true, action: "close" });
   } catch (err: any) {
+    // E.1.1: map WantedServiceError to its HTTP status (404/409/400),
+    // NOT a blanket 500. The service throws 409 for terminal states
+    // (CLOSED/FULFILLED cannot be re-closed), 404 for missing, 400 for
+    // empty id — the route must preserve these so the admin UI can
+    // show the correct error + the row stays in its real state.
+    if (err instanceof WantedServiceError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
       { status: 500 },

@@ -274,6 +274,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "نوع تقاضا (intent) الزامی است. مقادیر مجاز: SALE, RENT, SALE_AND_RENT, SERVICE_REQUEST." }, { status: 400 });
     }
 
+    // P0 #3: server-side budget range validation. The client enforces
+    // (canProceed) but a direct API caller can bypass. Mirror the QUOTE
+    // checks from /api/listings/route.ts:689-696.
+    {
+      const parseBudget = (v: unknown): bigint | null => {
+        if (v === null || v === undefined || v === "") return null;
+        const s = String(v).replace(/[^\d-]/g, "");
+        if (!s || s === "-") return null;
+        try { return BigInt(s); } catch { return null; }
+      };
+      const bMin = parseBudget(budgetMin);
+      const bMax = parseBudget(budgetMax);
+      if (bMin !== null && bMin < 0n) {
+        return NextResponse.json({ error: "حداقل بودجه نمی‌تواند منفی باشد." }, { status: 400 });
+      }
+      if (bMax !== null && bMax < 0n) {
+        return NextResponse.json({ error: "حداکثر بودجه نمی‌تواند منفی باشد." }, { status: 400 });
+      }
+      if (bMin !== null && bMax !== null && bMin > bMax) {
+        return NextResponse.json({ error: "حداقل بودجه نباید بیش از حداکثر بودجه باشد." }, { status: 400 });
+      }
+    }
+
     const created = await createWanted({
       title: typeof title === "string" ? title : "",
       description: description as string | null | undefined,

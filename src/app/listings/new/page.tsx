@@ -356,6 +356,32 @@ export default function NewListingPage() {
   const isRequestFlow = isRequestTransactionType(transactionType);
   const categoryRoots = isServiceFlow ? serviceRoots : isMarketplaceFlow ? marketplaceRoots : catalogRoots;
 
+  // P0 #1: when the WANTED intent changes, the category taxonomy may
+  // change (e.g. intent=SERVICE_REQUEST → serviceRoots vs marketplaceRoots).
+  // If the user already picked a category at Step 2 with a different
+  // intent, the category is now mismatched. Clear categoryId + related
+  // state so the user re-selects with the correct taxonomy roots.
+  const handleWantedIntentChange = (nextIntent: "SALE" | "RENT" | "SALE_AND_RENT" | "SERVICE_REQUEST") => {
+    if (wanted.intent === nextIntent) return;
+    setWanted((v) => ({ ...v, intent: nextIntent }));
+    // Only clear if a category was already chosen (avoid spurious clears
+    // when the user is just toggling before selecting a category).
+    if (categoryId || categoryPath.length > 0) {
+      setCategoryId("");
+      setCategoryPath([]);
+      setBrandId("");
+      setBrandQuery("");
+      setBrandResults([]);
+      setBrandOpen(false);
+      setModelId("");
+      setModels([]);
+      setAttributes({});
+      setAttributeDefs([]);
+      setAttributesLoaded(false);
+      setAttrErrors({});
+    }
+  };
+
   const handleTransactionTypeChange = (nextType: string) => {
     if (nextType === transactionType) return;
     setTransactionType(nextType);
@@ -375,6 +401,18 @@ export default function NewListingPage() {
     setAttributeDefs([]);
     setAttributesLoaded(false);
     setAttrErrors({});
+    // P1 #4-#7: clear transaction-type-specific state that leaked across
+    // switches. Images, rental fields, form fields, and transient UI flags
+    // must not persist when the user picks a different transaction type.
+    setImages([]);
+    setImagesUploading(false);
+    setRental({ deposit: "", minimumRentalPeriod: "", operatorIncluded: false, fuelIncluded: false, transportIncluded: false, availabilityStart: "", availabilityEnd: "" });
+    setForm({ brandLabel: "", title: "", shortDesc: "", description: "", condition: "USED", year: "", hours: "", price: "", priceType: "NEGOTIABLE", rentalPeriod: "", serialNumber: "", sellerName: "", sellerPhone: "" });
+    setSubmitError(null);
+    setAttributeWarning(null);
+    setMediaWarning(null);
+    setMediaRepairListingId(null);
+    setSubmitting(false);
   };
 
   const canProceed = () => {
@@ -1098,7 +1136,7 @@ export default function NewListingPage() {
                                   <button
                                     key={t.v}
                                     type="button"
-                                    onClick={() => setWanted((v) => ({ ...v, intent: t.v }))}
+                                    onClick={() => handleWantedIntentChange(t.v)}
                                     className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${wanted.intent === t.v ? "border-amber-400 bg-amber-400/15 text-amber-200" : "border-white/10 bg-white/[0.03] text-white/60 hover:border-white/20"}`}
                                   >
                                     {t.l}

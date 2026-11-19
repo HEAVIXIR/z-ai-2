@@ -63,7 +63,12 @@ export default function RequestsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ids: [id] }),
       });
-      if (!res.ok) throw new Error("عملیات ناموفق بود.");
+      // E.1.2: show the real server error message (e.g. 409 terminal state,
+      // 403 forbidden) rather than a generic "عملیات ناموفق بود".
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "عملیات ناموفق بود.");
+      }
       setList(
         list.map((r) => {
           if (r.id !== id) return r;
@@ -110,7 +115,10 @@ export default function RequestsClient({
           adminNotes: r.adminNotes,
         }),
       });
-      if (!res.ok) throw new Error("ذخیره ناموفق بود.");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "ذخیره ناموفق بود.");
+      }
       setList(list.map((x) => (x.id === r.id ? r : x)));
       setEditing(null);
     } catch (e: any) {
@@ -122,11 +130,36 @@ export default function RequestsClient({
 
   const remove = async (id: string) => {
     if (!confirm("آیا از حذف این درخواست مطمئن هستید؟")) return;
+    setLoading(true);
+    setError(null);
     try {
-      await fetch(`/api/admin/requests/${id}`, { method: "DELETE" });
-      setList(list.filter((x) => x.id !== id));
-    } catch {
-      setError("حذف ناموفق بود.");
+      // E.1.2: check response.ok — the DELETE endpoint now soft-closes
+      // via closeWantedByAdmin (state machine + CAS). A 409 means the
+      // request was in a terminal state (FULFILLED) and cannot be closed;
+      // a 404 means it was already gone. In BOTH cases the row must NOT
+      // be removed from the local list — the server rejected the action.
+      const res = await fetch(`/api/admin/requests/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setError(err?.error ?? "حذف ناموفق بود. درخواست ممکن است در وضعیت نهایی باشد.");
+        // Do NOT remove the row — refresh to show the real server state.
+        // The server may have partially transitioned or rejected entirely.
+        // Reload the list from the server so the UI matches reality.
+        try {
+          const refresh = await fetch("/api/admin/requests");
+          const json = await refresh.json();
+          if (json.success) setList(json.data ?? []);
+        } catch {}
+        return;
+      }
+      // Success: the row was soft-closed (status → CLOSED). Update the
+      // local list to reflect the new status rather than removing the row,
+      // so the admin sees the transition + can audit it.
+      setList(list.map((x) => (x.id === id ? { ...x, status: "CLOSED" } : x)));
+    } catch (e: any) {
+      setError(e?.message ?? "حذف ناموفق بود. خطای شبکه.");
+    } finally {
+      setLoading(false);
     }
   };
 
