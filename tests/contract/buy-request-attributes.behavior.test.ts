@@ -144,7 +144,7 @@ describe("validateBuyRequestAttributeValues — behavioral contracts", () => {
   it("treats boolean false as a present value for a required BOOLEAN attribute", async () => {
     const result = await validateBuyRequestAttributeValues(
       fakeDb({
-        categoryLinks: [category],
+        categoryLinks: [{ ...category, required: true }],
         attributes: [{ id: "attr-1", type: "BOOLEAN", unit: null, options: [] }],
       }),
       { categoryId: "cat-1" },
