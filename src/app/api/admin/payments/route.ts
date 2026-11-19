@@ -1,18 +1,37 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { parseBig } from "@/lib/api-helpers";
-import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 import { hasPermission } from "@/lib/rbac";
+import { parseManualPaymentAmount } from "@/lib/payments/manual-payment-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function serialize(p: any) {
+  // Keep provider references and idempotency keys out of list responses.
   return {
-    ...p,
-    amount: p.amount ? p.amount.toString() : null,
+    id: p.id,
+    amount: p.amount == null ? null : p.amount.toString(),
+    currency: p.currency,
+    type: p.type,
+    status: p.status,
+    gateway: p.gateway,
+    trackingCode: p.trackingCode,
+    paidAt: p.paidAt,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    ...(p.user
+      ? {
+          user: {
+            id: p.user.id,
+            firstName: p.user.firstName,
+            lastName: p.user.lastName,
+            mobile: p.user.mobile,
+            email: p.user.email,
+          },
+        }
+      : {}),
   };
 }
 
@@ -38,18 +57,40 @@ export async function GET(req: Request) {
   }
   try {
     const url = new URL(req.url);
-    const take = Math.min(
-      500,
-      Math.max(1, Number(url.searchParams.get("take") ?? 100)),
-    );
-    const status = url.searchParams.get("status");
-    const type = url.searchParams.get("type");
-    const userId = url.searchParams.get("userId");
+    const rawTake = url.searchParams.get("take");
+    const take = rawTake === null ? 100 : Number(rawTake);
+    if (!Number.isSafeInteger(take) || take < 1 || take > 500) {
+      return NextResponse.json(
+        { error: "take must be an integer between 1 and 500" },
+        { status: 400 },
+      );
+    }
+
+    const status = url.searchParams.get("status")?.trim().toUpperCase() || null;
+    const type = url.searchParams.get("type")?.trim().toUpperCase() || null;
+    const userId = url.searchParams.get("userId")?.trim() || null;
+    const allowedStatuses = new Set(["PENDING", "PAID", "FAILED", "REFUNDED"]);
+    const allowedTypes = new Set([
+      "SUBSCRIPTION",
+      "FEATURED_LISTING",
+      "PROMOTION",
+      "LEAD_FEE",
+      "INSPECTION_FEE",
+    ]);
+    if (status && !allowedStatuses.has(status)) {
+      return NextResponse.json({ error: "Invalid payment status filter" }, { status: 400 });
+    }
+    if (type && !allowedTypes.has(type)) {
+      return NextResponse.json({ error: "Invalid payment type filter" }, { status: 400 });
+    }
+    if (userId && userId.length > 128) {
+      return NextResponse.json({ error: "userId filter is too long" }, { status: 400 });
+    }
 
     const where: any = {};
-    if (status) where.status = String(status).toUpperCase();
-    if (type) where.type = String(type).toUpperCase();
-    if (userId) where.userId = String(userId);
+    if (status) where.status = status;
+    if (type) where.type = type;
+    if (userId) where.userId = userId;
 
     const [items, total, stats] = await Promise.all([
       db.payment.findMany({
@@ -89,7 +130,7 @@ export async function GET(req: Request) {
   } catch (err: any) {
     trackError(err, { endpoint: "GET /api/admin/payments" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to load payments" },
       { status: 500 },
     );
   }
@@ -98,12 +139,12 @@ export async function GET(req: Request) {
 /* POST /api/admin/payments
    --------------------------------
    Admin-only. Creates a MANUAL payment row on behalf of a user
-   (for offline / cash / bank-transfer payments). Body:
+   (for offline / cash / bank-transfer payments). Subscription payment creation is disabled
+   until plan amount, currency, and billing term are server-derived. Body:
      {
        userId:        string  (required)
        amount:        string|number  (required, IRR)
-       type:          "SUBSCRIPTION" | "FEATURED_LISTING" | ...
-       subscriptionId?: string
+       type:          "FEATURED_LISTING" | "PROMOTION" | "LEAD_FEE" | "INSPECTION_FEE"
        gateway?:      "MANUAL" (default)
        trackingCode?: string  (e.g. bank receipt number)
        markPaid?:     boolean (default true — admin is creating
@@ -126,93 +167,121 @@ export async function POST(req: Request) {
       { status: 403 },
     );
   }
+
   try {
-    const body = await req.json().catch(() => ({}));
-    const userId = String(body.userId ?? "");
-    if (!userId) {
-      return NextResponse.json({ error: "userId is required" }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
     }
-    const amount = parseBig(body.amount);
-    if (!amount || amount <= 0n) {
-      return NextResponse.json({ error: "amount is required" }, { status: 400 });
+
+    const type = String(body.type ?? "").toUpperCase();
+    if (type === "SUBSCRIPTION") {
+      return NextResponse.json(
+        {
+          error: "Manual subscription payments are unavailable until canonical plan amount, currency, and term snapshots are implemented",
+          code: "SUBSCRIPTION_BILLING_UNAVAILABLE",
+        },
+        { status: 409 },
+      );
     }
-    const type = String(body.type ?? "SUBSCRIPTION").toUpperCase();
-    const ALLOWED = [
-      "SUBSCRIPTION",
-      "FEATURED_LISTING",
-      "PROMOTION",
-      "LEAD_FEE",
-      "INSPECTION_FEE",
-    ];
+    const ALLOWED = ["FEATURED_LISTING", "PROMOTION", "LEAD_FEE", "INSPECTION_FEE"];
     if (!ALLOWED.includes(type)) {
       return NextResponse.json(
-        { error: `type must be one of: ${ALLOWED.join(", ")}` },
+        { error: "type must be one of: " + ALLOWED.join(", ") },
         { status: 400 },
       );
     }
-    const markPaid = body.markPaid !== false; // default true
-
-    const user = await db.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (body.subscriptionId !== undefined && body.subscriptionId !== null && String(body.subscriptionId).trim()) {
+      return NextResponse.json(
+        { error: "subscriptionId cannot be supplied for non-subscription payment types" },
+        { status: 400 },
+      );
     }
 
-    const payment = await db.payment.create({
-      data: {
-        userId,
-        subscriptionId: body.subscriptionId
-          ? String(body.subscriptionId)
-          : null,
-        amount,
-        currency: body.currency ?? "IRR",
-        type,
-        status: markPaid ? "PAID" : "PENDING",
-        gateway: body.gateway ? String(body.gateway).toUpperCase() : "MANUAL",
-        trackingCode: body.trackingCode ? String(body.trackingCode) : null,
-        paidAt: markPaid ? new Date() : null,
-      },
-    });
+    const userId = String(body.userId ?? "").trim();
+    if (!userId) {
+      return NextResponse.json({ error: "userId is required" }, { status: 400 });
+    }
+    const amount = parseManualPaymentAmount(body.amount);
+    if (amount === null) {
+      return NextResponse.json(
+        { error: "amount must be a positive whole number of IRR within the supported range" },
+        { status: 400 },
+      );
+    }
+    const currency = String(body.currency ?? "IRR").toUpperCase();
+    if (currency !== "IRR") {
+      return NextResponse.json({ error: "Manual payments currently support IRR only" }, { status: 400 });
+    }
+    const reason = String(body.reason ?? "").trim();
+    if (reason.length < 5 || reason.length > 500) {
+      return NextResponse.json({ error: "A reason of 5–500 characters is required" }, { status: 400 });
+    }
+    const markPaid = body.markPaid !== false;
 
-    // On markPaid + SUBSCRIPTION type + linked subscriptionId,
-    // activate the subscription so plan features unlock
-    // immediately.
-    if (
-      markPaid &&
-      type === "SUBSCRIPTION" &&
-      payment.subscriptionId
-    ) {
-      try {
-        await db.premiumSubscription.update({
-          where: { id: payment.subscriptionId },
-          data: { status: "ACTIVE", paymentRef: payment.id },
-        });
-      } catch (subErr: any) {
-        console.error(
-          "[admin.payments] sub activation failed:",
-          subErr?.message ?? subErr,
-        );
-      }
+    const gateway = body.gateway ? String(body.gateway).toUpperCase() : "MANUAL";
+    if (gateway !== "MANUAL") {
+      return NextResponse.json(
+        { error: "This endpoint records offline/manual payments only; online gateways require verified provider callbacks" },
+        { status: 400 },
+      );
+    }
+    const trackingCode = body.trackingCode ? String(body.trackingCode).trim() : null;
+    if (trackingCode && trackingCode.length > 100) {
+      return NextResponse.json({ error: "trackingCode is too long" }, { status: 400 });
     }
 
-    await logAudit({
-      actorType: "ADMIN",
-      action: "payment.create_manual",
-      entityType: "Payment",
-      entityId: payment.id,
-      after: {
-        userId,
-        amount: amount.toString(),
-        type,
-        gateway: payment.gateway,
-        status: payment.status,
-      },
+    const payment = await db.$transaction(async (tx) => {
+      const targetUser = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!targetUser) throw new Error("PAYMENT_USER_NOT_FOUND");
+
+      const created = await tx.payment.create({
+        data: {
+          userId,
+          subscriptionId: null,
+          amount,
+          currency,
+          type,
+          status: markPaid ? "PAID" : "PENDING",
+          gateway,
+          trackingCode,
+          paidAt: markPaid ? new Date() : null,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "payment.create_manual",
+          entityType: "Payment",
+          entityId: created.id,
+          afterJson: JSON.stringify({
+            userId,
+            amount: amount.toString(),
+            type,
+            gateway,
+            status: created.status,
+            subscriptionId: null,
+          }),
+          reason,
+          ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+          userAgent: req.headers.get("user-agent"),
+        },
+      });
+
+      return created;
     });
 
     return NextResponse.json({ ok: true, payment: serialize(payment) });
   } catch (err: any) {
+    if (err?.message === "PAYMENT_USER_NOT_FOUND") {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
     trackError(err, { endpoint: "POST /api/admin/payments" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Manual payment creation failed" },
       { status: 500 },
     );
   }

@@ -2,40 +2,41 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* POST /api/payments/[id]/verify
-   --------------------------------
-   Admin-only. Marks a payment as PAID (or FAILED / REFUNDED).
-   Body:
-     {
-       status: "PAID" | "FAILED" | "REFUNDED"  (default "PAID")
-       trackingCode?: string
-       reason?: string
-     }
+const ALLOWED_STATUSES = new Set(["PAID", "FAILED"]);
+const MAX_TRACKING_CODE_LENGTH = 100;
+const MAX_REASON_LENGTH = 500;
 
-   On PAID, sets paidAt = now. If the payment has a subscriptionId
-   and the type is SUBSCRIPTION, also flips the linked
-   PremiumSubscription.status to ACTIVE (so a manual verify
-   immediately unlocks the plan features).
+class PaymentNotFoundError extends Error {}
+class PaymentStateConflictError extends Error {}
+class SubscriptionBillingUnavailableError extends Error {}
 
-   STEP 11.37 P1 FIX: previously used isAuthenticated() (any
-   logged-in user) as the sole gate. Any BUYER could mark payments
-   as PAID and activate premium subscriptions. Now requires
-   payment.manage permission (RBAC). */
+/**
+ * POST /api/payments/[id]/verify
+ *
+ * Privileged manual reconciliation only. This is NOT a public gateway
+ * callback. Gateway callbacks must use provider-side verification.
+ *
+ * Financial invariants:
+ * - Only PENDING payments may transition through this endpoint.
+ * - PAID + audit record commit atomically for non-subscription payments.
+ * - Subscription payments fail closed until canonical amount/term snapshots exist.
+ * - Conditional updateMany is the authoritative concurrency/CAS guard.
+ * - Refunds are unavailable until an evidence-backed refund workflow exists.
+ */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  // STEP 11.37 P1 FIX: require payment.manage permission (RBAC).
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
   try {
     await requirePermission(user.id, "payment.manage");
   } catch {
@@ -44,81 +45,130 @@ export async function POST(
       { status: 403 },
     );
   }
+
   try {
     const { id } = await params;
-    if (!id) {
-      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    if (!id || id.length > 128) {
+      return NextResponse.json({ error: "Invalid payment id" }, { status: 400 });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const status = String(body.status ?? "PAID").toUpperCase();
-    const ALLOWED = ["PAID", "FAILED", "REFUNDED"];
-    if (!ALLOWED.includes(status)) {
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
+    }
+
+    const payload = body as Record<string, unknown>;
+    const status = typeof payload.status === "string" ? payload.status.toUpperCase() : "";
+    if (!ALLOWED_STATUSES.has(status)) {
       return NextResponse.json(
-        { error: `status must be one of: ${ALLOWED.join(", ")}` },
+        { error: "status must be PAID or FAILED; refunds are currently unavailable pending evidence-backed reconciliation" },
         { status: 400 },
       );
     }
 
-    const before = await db.payment.findUnique({ where: { id } });
-    if (!before) {
-      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
-    }
-
-    const data: any = {
-      status,
-      ...(body.trackingCode
-        ? { trackingCode: String(body.trackingCode) }
-        : {}),
-    };
-    if (status === "PAID") {
-      data.paidAt = new Date();
-    }
-
-    const after = await db.payment.update({ where: { id }, data });
-
-    // Auto-activate the linked subscription on PAID SUBSCRIPTION
-    // payments so the admin's verify click is the single action
-    // needed to unlock plan features for a manual/offline payment.
     if (
-      status === "PAID" &&
-      before.type === "SUBSCRIPTION" &&
-      before.subscriptionId
+      payload.trackingCode !== undefined &&
+      payload.trackingCode !== null &&
+      typeof payload.trackingCode !== "string"
     ) {
-      try {
-        await db.premiumSubscription.update({
-          where: { id: before.subscriptionId },
-          data: { status: "ACTIVE", paymentRef: id },
-        });
-      } catch (subErr: any) {
-        // Don't fail the verify just because the sub activation
-        // failed (e.g. orphaned subscriptionId) — log + continue.
-        console.error(
-          "[payments.verify] sub activation failed:",
-          subErr?.message ?? subErr,
+      return NextResponse.json({ error: "trackingCode must be a string" }, { status: 400 });
+    }
+    const trackingCode =
+      payload.trackingCode === undefined || payload.trackingCode === null
+        ? undefined
+        : payload.trackingCode.trim();
+    if (trackingCode !== undefined && trackingCode.length > MAX_TRACKING_CODE_LENGTH) {
+      return NextResponse.json({ error: "trackingCode is too long" }, { status: 400 });
+    }
+
+    const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+    if (reason.length < 5 || reason.length > MAX_REASON_LENGTH) {
+      return NextResponse.json({ error: "A reason of 5–500 characters is required" }, { status: 400 });
+    }
+
+    const result = await db.$transaction(async (tx) => {
+      const before = await tx.payment.findUnique({ where: { id } });
+      if (!before) throw new PaymentNotFoundError("Payment not found");
+      if (before.status !== "PENDING") {
+        throw new PaymentStateConflictError(
+          `Payment cannot transition from ${before.status}; only PENDING is eligible`,
         );
       }
-    }
 
-    await logAudit({
-      actorType: "ADMIN",
-      action: "payment.verify",
-      entityType: "Payment",
-      entityId: id,
-      before: { ...before, amount: before.amount.toString() },
-      after: { ...after, amount: after.amount.toString() },
-      reason: body.reason ? String(body.reason) : `Marked ${status}`,
+      if (status === "PAID" && before.type === "SUBSCRIPTION") {
+        throw new SubscriptionBillingUnavailableError(
+          "Subscription payment verification is unavailable until canonical billing and term snapshots are implemented",
+        );
+      }
+
+      const transition = await tx.payment.updateMany({
+        where: { id, status: "PENDING" },
+        data: {
+          status,
+          ...(status === "PAID" ? { paidAt: new Date() } : {}),
+          ...(trackingCode !== undefined ? { trackingCode } : {}),
+        },
+      });
+      if (transition.count !== 1) {
+        throw new PaymentStateConflictError("Payment was changed by another request");
+      }
+
+      const after = await tx.payment.findUnique({ where: { id } });
+      if (!after) throw new PaymentNotFoundError("Payment disappeared during verification");
+
+      // Critical payment audit is part of the same transaction. If audit
+      // persistence fails, payment state and its audit record roll back.
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "payment.verify",
+          entityType: "Payment",
+          entityId: id,
+          beforeJson: JSON.stringify({
+            status: before.status,
+            type: before.type,
+            userId: before.userId,
+            amount: before.amount.toString(),
+            subscriptionId: before.subscriptionId,
+          }),
+          afterJson: JSON.stringify({
+            status: after.status,
+            type: after.type,
+            userId: after.userId,
+            amount: after.amount.toString(),
+            subscriptionId: after.subscriptionId,
+            paidAt: after.paidAt?.toISOString() ?? null,
+          }),
+          reason,
+          ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+          userAgent: req.headers.get("user-agent"),
+        },
+      });
+
+      return after;
     });
 
     return NextResponse.json({
       ok: true,
-      payment: { ...after, amount: after.amount.toString() },
+      payment: { ...result, amount: result.amount.toString() },
     });
-  } catch (err: any) {
-    trackError(err, { endpoint: "POST /api/payments/[id]/verify" });
-    return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 },
-    );
+  } catch (err: unknown) {
+    if (err instanceof PaymentNotFoundError) {
+      return NextResponse.json({ error: err.message }, { status: 404 });
+    }
+    if (
+      err instanceof PaymentStateConflictError ||
+      err instanceof SubscriptionBillingUnavailableError
+    ) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    trackError(err, { endpoint: "POST /api/payments/[id]/verify", userId: user.id });
+    return NextResponse.json({ error: "Payment verification failed" }, { status: 500 });
   }
 }
