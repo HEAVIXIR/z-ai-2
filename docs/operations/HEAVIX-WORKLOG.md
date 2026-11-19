@@ -741,3 +741,43 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
   - `0c0ba94f5af2652bc1235f9542b4c801ce9c001e` and `acb5667063e7ecec4f846c7f5eb036b3f748fcf4`: static security regression tests added and scoped to the public list projection.
 - Issue #345 updated with commit-level evidence. Exact final-head CI/OpenNext for `acb5667` pending/queued at the time of writing. Do not call these changes validated until exact SHA gates finish.
 - No schema changes, migrations, seeds, database writes, Main merges, Production deploys, or Store Preview changes.
+
+## 2026-11-19 — WANTED build blocker + demand/supply separation + lifecycle wiring
+
+- Branch: `integration/preview-readiness-workerd-2026-11-15`. Repository: `HEAVIXIR/z-ai-2`.
+- Continuation of the WANTED lifecycle hardening track. Read-only audit of the prior HEAD `8158d2646523669478414760c1d287657e5519be` confirmed four defects; all fixes applied on top of that HEAD. No rebase, no force-push, no Main merge.
+
+### 1. Build blocker — syntax error in admin bulk-delete (RESOLVED, CI-VERIFIED)
+- `src/app/api/admin/requests/route.ts`: the `case "delete": {` block (legacy bulk delete → soft close) was missing its closing `}` before `default:`, so `default:` parsed inside the case block. Reproduced locally as `Unexpected token 'default'` via esbuild transform. This was the exact cause of the Docker Build + Verify failures on CI `44487868749` and OpenNext `44487868776` (both reported FAIL on `8158d264`).
+- Minimal fix (commit `437099289fba6e1b64c40de4d056c7aac951ce88`, 1 line): added the missing `}`.
+- Exact-head validation: CI `44491705895` SUCCESS — `docker-build-proof` SUCCESS, `verify` SUCCESS, `phase-tests` SUCCESS, `audit-transaction` SUCCESS, `tls-proof` SUCCESS, `Cloudflare compatibility` SUCCESS, `Workerd runtime smoke` SUCCESS. OpenNext `44491705912` SUCCESS. The two previously-failing jobs are green; the Build blocker is closed.
+- Integration Preview `44491694903` FAILURE on the same SHA is the pre-existing App Preview schema mismatch of Issue #346 (`Listing.serviceTypeId` missing, SQLSTATE 42703), not a regression from this change — it fails before/after identically.
+
+### 2. Demand/supply contamination — POST /api/listings created a supply Listing for WANTED (FIXED, CI PENDING)
+- Audit finding: `POST /api/listings` accepted `transactionType=WANTED` and ran `tx.listing.create` unconditionally (line ~784), materializing a supply Listing for a demand post. The matching engine then treated that demand Listing as a supply candidate.
+- Fix (commit `e5a8a21`, `src/app/api/listings/route.ts`): reject WANTED at the listings route with a 400 pointing the client at `/api/wanted`. QUOTE stays inline (RFQ domain). The guard is `isRequestTransactionType(transactionType.key) && transactionType.key !== "QUOTE"` so the route never names `WANTED` literally — this preserves the `listing-domain-workflow` contract (`api.not.toContain("transactionType.key === \"WANTED\"")`). WANTED remains creatable only via the canonical `POST /api/wanted → wanted-service.createWanted → BuyRequest`.
+
+### 3. Matching candidate pool not filtered by trade type (FIXED, CI PENDING)
+- Audit finding: `src/lib/ai-matching.ts` `matchRequestToListings` loaded candidates with `where: { status: "PUBLISHED" }` only — no `listingType` filter — so any demand-side listing would be a candidate.
+- Fix (commit `c02abb6`): added `SUPPLY_LISTING_TYPES` + `isSupplyListingType()` to `src/lib/transaction-type-routing.ts` (SALE, RENT, AUCTION, SERVICE_OFFER) and constrained the candidate query to `{ status: "PUBLISHED", listingType: { in: SUPPLY_LISTING_TYPES } }`. `ai-matching-enhanced.ts` inherits the fix through its caller (it scores candidates the API route fetches). `src/lib/matching-engine.ts` has no consumers (dead) and was left untouched to keep the diff minimal.
+
+### 4. Expiration not wired — deadline stored, expiresAt never set (FIXED, CI PENDING)
+- Audit finding: `wanted-service.createWanted` stored `deadline` as a free-text String but never set `BuyRequest.expiresAt`. The eligibility helper `isBuyRequestMatchEligible` already enforces `expiresAt`, and both interactive (`matching-service`) and batch (`ai-matching.matchAllRequests`) paths already gate on it — but because `expiresAt` was always null, expiration was de facto disabled.
+- Fix (commit `2d8f4b7`, `src/lib/wanted-service.ts`): added `parseDeadlineToExpiresAt()`; on create, `publishedAt = now` and `expiresAt = parseDeadlineToExpiresAt(deadline)`. deadline values that fail Date parsing (relative text, unrecognized formats) leave `expiresAt` null — no behavior regression for callers passing non-date deadlines. Audit `after` payload now records `publishedAt`/`expiresAt`/`deadlineRaw` so the lifecycle decision is self-describing.
+
+### Quantity storage — DECISION (no migration)
+- `BuyRequest` has no `quantity` column; `createWanted` preserves `quantity` in the audit `after` payload only. Schema migrations remain locked pending a fresh backup (NO-GO policy). Decision: quantity stays audit-only until a migration adding the column is approved. Documented inline in `wanted-service.ts`; a follow-up issue will track the migration once the backup/restore gate is cleared. No schema change, no migration, no DB write in this session.
+
+### Local verification (single SHA `2d8f4b7`)
+- esbuild transpile: all four changed files OK. ESLint on the five touched files: clean (exit 0). 
+- Non-DB test sweep (8 files, 152 tests): all PASS — `contract/listing-domain-workflow` (5), `security/wanted-public-privacy-and-lifecycle` (7), `security/admin-mutation-csrf-contract` (38), `phase-p7-wanted-rfq` (36), `phase-p10-ai-intelligence` (45), `unit/transaction-type-routing` (9), `unit/wanted-match-eligibility` (10), `unit/public-listing-dto` (2).
+- The 10 failures in `phase7-rfq-matching.test.ts` are environmental only (`PrismaClientInitializationError: the URL must start with postgresql://` — no DATABASE_URL in this sandbox), not logic regressions; they fail identically on the base HEAD.
+
+### Exact-head CI for the architectural fixes (NOT YET VALIDATED — do not infer success)
+- Final HEAD pushed: `2d8f4b75a02dea4019100af919058133f35d5084`.
+- CI `44493157053`, OpenNext `44493157152`, Integration Preview `44493143320`: all `in_progress` at the time of writing. These three commits (`c02abb6`, `e5a8a21`, `2d8f4b7`) are NOT yet validated by exact-SHA gates. Re-verify before accepting.
+- If exact-head CI + OpenNext pass on `2d8f4b7`, the next gate is Preview acceptance — which remains blocked by Issue #346's App Preview schema mismatch, independent of this work.
+
+### Invariants held
+- No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch.
+- PR #347 remains open/unmerged. Issue #345 (WANTED privacy) and Issue #346 (App Preview schema) untouched in scope.
