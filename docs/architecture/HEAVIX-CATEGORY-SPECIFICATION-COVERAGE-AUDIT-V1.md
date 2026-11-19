@@ -16,6 +16,13 @@ The current branch contains:
 
 The 88 machine additions cover excavator, loader, grader, backhoe, scraper, roller, mining shovel/LHD, drilling, crushing, concrete/asphalt, crane, material handling, haulage, port, recycling, tunnel and generator subtypes. A further 16 direct forms cover general spare parts plus engine, transmission, hydraulic, electrical, undercarriage, pump, valve, final-drive, swing-motor, filter, cooling, wear-part, tire/track, bearing and other-parts categories. Each generated leaf template has a required primary technical field and keeps family-level fields inherited from its parent category. Existing direct templates cover the other 72 terminal categories across vehicles, attachments, agriculture, industrial equipment and parts.
 
+## Service and mineral form coverage
+
+- 26 supplemental service leaves in the dedicated service taxonomy have explicit forms.
+- 19 legacy terminal service categories in the V1.1 service tree have generated forms.
+- 22 terminal material categories (13 direct material categories plus 9 iron-ore/copper/coal product leaves) have generated product forms.
+- `tests/unit/service-mineral-form-coverage.test.ts` enforces all 26 + 19 + 22 mappings and verifies the shared mineral attributes are inherited from the material root.
+
 These counts are a static comparison of the checked-in machine TREE and template registry. The seed's runtime preflight is stricter and evaluates active terminal categories across its five configured CATALOG roots in the target database. It remains fail-closed and must not be run against Preview or Production as part of this work. The previous 198-missing and 88-missing snapshots are historical and must not be used as current status.
 
 ## Taxonomy source reconciliation
