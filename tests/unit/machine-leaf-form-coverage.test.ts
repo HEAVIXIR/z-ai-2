@@ -102,5 +102,8 @@ describe("definitive machine terminal form coverage", () => {
     expect(formSeed).toContain("templates.push(...missingTerminalLeafForms)");
     expect(formSeed).toContain('const coverageRootSlugs = ["machinery", "vehicles", "attachments", "agriculture", "industrial-equipment", "parts"];');
     expect(formSeed).toContain("if (duplicateAddedLeafSlugs.length)");
+    expect(formSeed).toContain("const partsLeafForms: Template[] = [");
+    expect(formSeed).toContain("templates.push(...partsLeafForms)");
+    expect(formSeed).toContain("if (duplicatePartsLeafSlugs.length)");
   });
 });
