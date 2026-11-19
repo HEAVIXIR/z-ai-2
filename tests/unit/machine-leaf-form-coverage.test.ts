@@ -91,8 +91,8 @@ describe("definitive machine terminal form coverage", () => {
     const templateSet = new Set([...literal, ...generated]);
     const missing = terminalSlugs.filter((slug) => !templateSet.has(slug));
 
-    expect(terminalSlugs).toHaveLength(72);
-    expect(new Set(terminalSlugs).size).toBe(72);
+    expect(terminalSlugs).toHaveLength(73);
+    expect(new Set(terminalSlugs).size).toBe(73);
     expect(missing).toEqual([]);
   });
 
