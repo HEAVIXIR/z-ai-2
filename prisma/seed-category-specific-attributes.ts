@@ -2772,9 +2772,500 @@ templates.push(
     f("starting_method", "روش راه‌اندازی", "Starting Method", "SELECT", { options: ["مستقیم", "ستاره-مثلث", "سافت‌استارتر", "درایو فرکانس متغیر"] }),
   ]},
 
-);
+];
 
-// AttributeDefinition.key is globally unique. Preserve an existing compatible
+// Dedicated leaf-level additions for the current definitive 16-group machine tree.
+// Parent-family attributes remain inherited; these fields capture the subtype-specific
+// engineering distinction. First field in each template is required.
+type LeafFieldSpec = {
+  key: string; fa: string; en: string; type: AttrType;
+  unit?: string; options?: string[]; filterable?: boolean; card?: boolean;
+};
+const leafForm = (slug: string, label: string, specs: LeafFieldSpec[]): Template => {
+  const prefix = slug.replace(/-/g, "_");
+  const fields = specs.map((spec) => f(
+    `${prefix}_${spec.key}`, spec.fa, spec.en, spec.type,
+    {
+      ...(spec.unit ? { unit: spec.unit } : {}),
+      ...(spec.options ? { options: spec.options } : {}),
+      ...(spec.filterable ? { filterable: true } : {}),
+      ...(spec.card ? { card: true } : {}),
+    },
+  ));
+  return { slug, label, required: fields.length ? [fields[0].key] : [], fields };
+};
+
+const missingTerminalLeafForms: Template[] = [
+  // Excavator configurations
+  leafForm("excavator-long-reach", "بیل مکانیکی شعاع بلند", [
+    { key: "max_reach_m", fa: "حداکثر دسترسی افقی", en: "Maximum Horizontal Reach", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "max_dig_depth_m", fa: "حداکثر عمق حفاری", en: "Maximum Digging Depth", type: "DECIMAL", unit: "M" },
+    { key: "boom_stick_configuration", fa: "پیکربندی بوم و استیک", en: "Boom and Stick Configuration", type: "TEXT" },
+  ]),
+  leafForm("excavator-mining", "بیل مکانیکی معدنی", [
+    { key: "bucket_capacity_m3", fa: "ظرفیت باکت", en: "Bucket Capacity", type: "DECIMAL", unit: "M3", filterable: true, card: true },
+    { key: "operating_weight_ton", fa: "وزن عملیاتی", en: "Operating Weight", type: "DECIMAL", unit: "TON" },
+    { key: "undercarriage_class", fa: "کلاس زیربندی", en: "Undercarriage Class", type: "TEXT" },
+  ]),
+  leafForm("excavator-demolition", "بیل مکانیکی تخریب", [
+    { key: "max_demolition_height_m", fa: "حداکثر ارتفاع تخریب", en: "Maximum Demolition Height", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "front_protection", fa: "حفاظت ویژه جلو دستگاه", en: "Front Protection", type: "BOOLEAN" },
+    { key: "attachment_circuit", fa: "مدار هیدرولیک متعلقات", en: "Attachment Hydraulic Circuit", type: "TEXT" },
+  ]),
+  leafForm("excavator-material-handling", "بیل مکانیکی جابه‌جایی مواد", [
+    { key: "max_lift_capacity_kg", fa: "ظرفیت بلندکردن بار", en: "Maximum Lift Capacity", type: "DECIMAL", unit: "KG", filterable: true },
+    { key: "working_radius_m", fa: "شعاع کاری", en: "Working Radius", type: "DECIMAL", unit: "M" },
+    { key: "grapple_type", fa: "نوع گرپل", en: "Grapple Type", type: "SELECT", options: ["چنگکی", "چندشاخه", "چوب‌گیر", "ضایعات"] },
+  ]),
+  leafForm("excavator-spider", "بیل مکانیکی عنکبوتی", [
+    { key: "max_slope_percent", fa: "حداکثر شیب قابل کار", en: "Maximum Working Slope", type: "DECIMAL", unit: "%", filterable: true },
+    { key: "leg_configuration", fa: "آرایش پایه‌های تثبیت", en: "Leg Configuration", type: "SELECT", options: ["چهارپایه مستقل", "پایه تلسکوپی", "ترکیبی"] },
+    { key: "working_reach_m", fa: "دسترسی کاری", en: "Working Reach", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("excavator-zero-tail-swing", "بیل مکانیکی زیرو تیل", [
+    { key: "tail_swing_radius_mm", fa: "شعاع گردش انتهای بدنه", en: "Tail Swing Radius", type: "DECIMAL", unit: "MM", filterable: true },
+    { key: "operating_weight_ton", fa: "وزن عملیاتی", en: "Operating Weight", type: "DECIMAL", unit: "TON" },
+    { key: "overall_width_mm", fa: "عرض کلی", en: "Overall Width", type: "DECIMAL", unit: "MM" },
+  ]),
+  leafForm("excavator-long-radius", "بیل مکانیکی شعاع کاری بلند", [
+    { key: "maximum_working_radius_m", fa: "حداکثر شعاع کاری", en: "Maximum Working Radius", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "maximum_dig_depth_m", fa: "حداکثر عمق حفاری", en: "Maximum Digging Depth", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("excavator-telescopic", "بیل مکانیکی تلسکوپی", [
+    { key: "telescopic_stick_length_m", fa: "طول استیک تلسکوپی", en: "Telescopic Stick Length", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "maximum_dig_depth_m", fa: "حداکثر عمق حفاری", en: "Maximum Digging Depth", type: "DECIMAL", unit: "M" },
+    { key: "extension_stages", fa: "تعداد مراحل بازشدن", en: "Extension Stages", type: "INTEGER" },
+  ]),
+  leafForm("excavator-special", "بیل مکانیکی تخصصی", [
+    { key: "special_application", fa: "کاربری تخصصی", en: "Special Application", type: "SELECT", options: ["زیرآبی", "تخریب", "لایروبی", "کار در ارتفاع", "محیط محدود", "سایر"] },
+    { key: "working_depth_m", fa: "عمق کاری", en: "Working Depth", type: "DECIMAL", unit: "M" },
+    { key: "special_configuration", fa: "شرح پیکربندی ویژه", en: "Special Configuration", type: "LONG_TEXT" },
+  ]),
+
+  // Loader variants
+  leafForm("compact-loader", "لودر کامپکت", [
+    { key: "rated_operating_capacity_kg", fa: "ظرفیت عملیاتی نامی", en: "Rated Operating Capacity", type: "DECIMAL", unit: "KG", filterable: true, card: true },
+    { key: "bucket_capacity_m3", fa: "ظرفیت باکت", en: "Bucket Capacity", type: "DECIMAL", unit: "M3" },
+  ]),
+  leafForm("industrial-loader", "لودر صنعتی", [
+    { key: "rated_payload_ton", fa: "ظرفیت بار نامی", en: "Rated Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "bucket_capacity_m3", fa: "ظرفیت باکت", en: "Bucket Capacity", type: "DECIMAL", unit: "M3" },
+    { key: "tire_type", fa: "نوع تایر صنعتی", en: "Industrial Tire Type", type: "TEXT" },
+  ]),
+  leafForm("underground-loader", "لودر زیرزمینی", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "overall_width_mm", fa: "عرض کلی", en: "Overall Width", type: "DECIMAL", unit: "MM" },
+    { key: "fire_suppression", fa: "سامانه اطفای حریق", en: "Fire Suppression System", type: "BOOLEAN" },
+  ]),
+  leafForm("multi-purpose-loader", "لودر چندمنظوره", [
+    { key: "rated_capacity_kg", fa: "ظرفیت نامی", en: "Rated Capacity", type: "DECIMAL", unit: "KG", filterable: true },
+    { key: "attachment_interface", fa: "استاندارد اتصال متعلقات", en: "Attachment Interface", type: "TEXT" },
+    { key: "hydraulic_auxiliary_flow_lpm", fa: "دبی هیدرولیک کمکی", en: "Auxiliary Hydraulic Flow", type: "DECIMAL", unit: "LPM" },
+  ]),
+
+  // Grader variants
+  leafForm("compact-grader", "گریدر کامپکت", [
+    { key: "moldboard_width_m", fa: "عرض تیغه", en: "Moldboard Width", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "operating_weight_ton", fa: "وزن عملیاتی", en: "Operating Weight", type: "DECIMAL", unit: "TON" },
+  ]),
+  leafForm("heavy-grader", "گریدر سنگین", [
+    { key: "moldboard_width_m", fa: "عرض تیغه", en: "Moldboard Width", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "engine_power_kw", fa: "توان موتور", en: "Engine Power", type: "DECIMAL", unit: "KW" },
+    { key: "operating_weight_ton", fa: "وزن عملیاتی", en: "Operating Weight", type: "DECIMAL", unit: "TON" },
+  ]),
+  leafForm("mining-grader", "گریدر معدنی", [
+    { key: "moldboard_width_m", fa: "عرض تیغه", en: "Moldboard Width", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "blade_down_pressure_kn", fa: "فشار رو به پایین تیغه", en: "Blade Down Pressure", type: "DECIMAL", unit: "KN" },
+    { key: "engine_power_kw", fa: "توان موتور", en: "Engine Power", type: "DECIMAL", unit: "KW" },
+  ]),
+  leafForm("quarry-grader", "گریدر معدن روباز و معدن سنگ", [
+    { key: "moldboard_width_m", fa: "عرض تیغه", en: "Moldboard Width", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "operating_weight_ton", fa: "وزن عملیاتی", en: "Operating Weight", type: "DECIMAL", unit: "TON" },
+    { key: "reinforced_frame", fa: "شاسی تقویت‌شده", en: "Reinforced Frame", type: "BOOLEAN" },
+  ]),
+  leafForm("gps-grader", "گریدر مجهز به کنترل شیب GPS", [
+    { key: "grade_control_system", fa: "سامانه کنترل شیب", en: "Grade Control System", type: "SELECT", options: ["GPS", "GNSS", "لیزر", "ترکیبی"] },
+    { key: "receiver_count", fa: "تعداد گیرنده", en: "Receiver Count", type: "INTEGER" },
+    { key: "blade_control_axis", fa: "محورهای کنترل تیغه", en: "Blade Control Axes", type: "INTEGER" },
+  ]),
+
+  // Backhoe configurations
+  leafForm("backhoe-4wd", "بکهو لودر چهارچرخ محرک", [
+    { key: "drive_configuration", fa: "آرایش انتقال قدرت", en: "Drive Configuration", type: "SELECT", options: ["4WD", "4WD با محور جلو درگیرشونده", "سایر"] },
+    { key: "digging_depth_m", fa: "عمق حفاری", en: "Digging Depth", type: "DECIMAL", unit: "M", filterable: true },
+  ]),
+  leafForm("backhoe-center-mount", "بکهو لودر سنترمانت", [
+    { key: "backhoe_mount", fa: "آرایش نصب بکهو", en: "Backhoe Mounting", type: "SELECT", options: ["مرکزی", "قابل جابه‌جایی"] },
+    { key: "digging_depth_m", fa: "عمق حفاری", en: "Digging Depth", type: "DECIMAL", unit: "M", filterable: true },
+  ]),
+  leafForm("backhoe-side-shift", "بکهو لودر سایدشیفت", [
+    { key: "side_shift_travel_mm", fa: "میزان جابه‌جایی جانبی", en: "Side Shift Travel", type: "DECIMAL", unit: "MM", filterable: true },
+    { key: "digging_depth_m", fa: "عمق حفاری", en: "Digging Depth", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("compact-backhoe", "بکهو لودر کامپکت", [
+    { key: "operating_weight_ton", fa: "وزن عملیاتی", en: "Operating Weight", type: "DECIMAL", unit: "TON", filterable: true },
+    { key: "digging_depth_m", fa: "عمق حفاری", en: "Digging Depth", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("industrial-backhoe", "بکهو لودر صنعتی", [
+    { key: "loader_capacity_m3", fa: "ظرفیت باکت لودر", en: "Loader Bucket Capacity", type: "DECIMAL", unit: "M3", filterable: true },
+    { key: "backhoe_digging_depth_m", fa: "عمق حفاری بکهو", en: "Backhoe Digging Depth", type: "DECIMAL", unit: "M" },
+  ]),
+
+  // Scrapers
+  leafForm("motor-scraper", "اسکریپر موتوری", [
+    { key: "bowl_capacity_m3", fa: "ظرفیت جام", en: "Bowl Capacity", type: "DECIMAL", unit: "M3", filterable: true, card: true },
+    { key: "rated_payload_ton", fa: "بار مفید نامی", en: "Rated Payload", type: "DECIMAL", unit: "TON" },
+    { key: "engine_power_kw", fa: "توان موتور", en: "Engine Power", type: "DECIMAL", unit: "KW" },
+  ]),
+  leafForm("towed-scraper", "اسکریپر کششی", [
+    { key: "bowl_capacity_m3", fa: "ظرفیت جام", en: "Bowl Capacity", type: "DECIMAL", unit: "M3", filterable: true },
+    { key: "tractor_power_requirement_kw", fa: "توان موردنیاز تراکتور", en: "Required Tractor Power", type: "DECIMAL", unit: "KW" },
+  ]),
+  leafForm("open-bowl-scraper", "اسکریپر جام باز", [
+    { key: "bowl_capacity_m3", fa: "ظرفیت جام", en: "Bowl Capacity", type: "DECIMAL", unit: "M3", filterable: true },
+    { key: "cutting_width_m", fa: "عرض برش", en: "Cutting Width", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("elevating-scraper", "اسکریپر الواتوری", [
+    { key: "bowl_capacity_m3", fa: "ظرفیت جام", en: "Bowl Capacity", type: "DECIMAL", unit: "M3", filterable: true },
+    { key: "elevator_type", fa: "نوع الواتور", en: "Elevator Type", type: "SELECT", options: ["زنجیری", "پره‌ای", "سایر"] },
+  ]),
+  leafForm("twin-engine-scraper", "اسکریپر دوموتوره", [
+    { key: "combined_engine_power_kw", fa: "توان مجموع موتورها", en: "Combined Engine Power", type: "DECIMAL", unit: "KW", filterable: true },
+    { key: "bowl_capacity_m3", fa: "ظرفیت جام", en: "Bowl Capacity", type: "DECIMAL", unit: "M3" },
+  ]),
+  leafForm("mining-scraper", "اسکریپر معدنی", [
+    { key: "bowl_capacity_m3", fa: "ظرفیت جام", en: "Bowl Capacity", type: "DECIMAL", unit: "M3", filterable: true },
+    { key: "abrasion_protection", fa: "حفاظت ضدسایش", en: "Abrasion Protection", type: "TEXT" },
+    { key: "mine_gradeability_percent", fa: "قابلیت عبور از شیب معدن", en: "Mine Gradeability", type: "DECIMAL", unit: "%" },
+  ]),
+
+  // Road rollers
+  leafForm("soil-roller", "غلطک خاک", [
+    { key: "drum_width_mm", fa: "عرض درام", en: "Drum Width", type: "DECIMAL", unit: "MM", filterable: true },
+    { key: "static_linear_load_kg_cm", fa: "بار خطی استاتیک", en: "Static Linear Load", type: "DECIMAL", unit: "KG/CM" },
+    { key: "vibration_frequency_hz", fa: "فرکانس ارتعاش", en: "Vibration Frequency", type: "DECIMAL", unit: "HZ" },
+  ]),
+  leafForm("asphalt-roller", "غلطک آسفالت", [
+    { key: "drum_width_mm", fa: "عرض درام", en: "Drum Width", type: "DECIMAL", unit: "MM", filterable: true },
+    { key: "amplitude_mm", fa: "دامنه ارتعاش", en: "Vibration Amplitude", type: "DECIMAL", unit: "MM" },
+    { key: "vibration_frequency_hz", fa: "فرکانس ارتعاش", en: "Vibration Frequency", type: "DECIMAL", unit: "HZ" },
+  ]),
+  leafForm("combination-roller", "غلطک ترکیبی", [
+    { key: "front_drum_width_mm", fa: "عرض درام جلو", en: "Front Drum Width", type: "DECIMAL", unit: "MM", filterable: true },
+    { key: "rear_tire_count", fa: "تعداد چرخ‌های لاستیکی عقب", en: "Rear Tire Count", type: "INTEGER" },
+    { key: "operating_weight_ton", fa: "وزن عملیاتی", en: "Operating Weight", type: "DECIMAL", unit: "TON" },
+  ]),
+
+  // Mining shovels, loaders and LHDs
+  leafForm("mining-shovel", "شاول معدنی", [
+    { key: "dipper_capacity_m3", fa: "ظرفیت دیپر", en: "Dipper Capacity", type: "DECIMAL", unit: "M3", filterable: true, card: true },
+    { key: "drive_type", fa: "نوع محرک", en: "Drive Type", type: "SELECT", options: ["برقی کابلی", "دیزلی-هیدرولیکی", "مکانیکی"] },
+  ]),
+  leafForm("front-shovel", "شاول جلو", [
+    { key: "bucket_capacity_m3", fa: "ظرفیت باکت جلو", en: "Front Shovel Bucket Capacity", type: "DECIMAL", unit: "M3", filterable: true },
+    { key: "digging_force_kn", fa: "نیروی حفاری", en: "Digging Force", type: "DECIMAL", unit: "KN" },
+  ]),
+  leafForm("backhoe-shovel", "شاول بکهو", [
+    { key: "bucket_capacity_m3", fa: "ظرفیت باکت", en: "Bucket Capacity", type: "DECIMAL", unit: "M3", filterable: true },
+    { key: "crowd_force_kn", fa: "نیروی نفوذ", en: "Crowd Force", type: "DECIMAL", unit: "KN" },
+  ]),
+  leafForm("mining-loader-machine", "لودر ماشین‌آلات معدنی", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "bucket_capacity_m3", fa: "ظرفیت باکت", en: "Bucket Capacity", type: "DECIMAL", unit: "M3" },
+    { key: "mine_operating_class", fa: "کلاس کاربری معدنی", en: "Mine Operating Class", type: "SELECT", options: ["زیرزمینی", "روباز", "زیرزمینی و روباز"] },
+  ]),
+  leafForm("diesel-lhd", "لودر زیرزمینی دیزلی", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "engine_emission_stage", fa: "مرحله آلایندگی موتور", en: "Engine Emission Stage", type: "TEXT" },
+    { key: "ventilation_requirement", fa: "نیاز تهویه معدن", en: "Mine Ventilation Requirement", type: "TEXT" },
+  ]),
+  leafForm("electric-lhd", "لودر زیرزمینی برقی", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "motor_power_kw", fa: "توان موتور الکتریکی", en: "Electric Motor Power", type: "DECIMAL", unit: "KW" },
+    { key: "supply_voltage_v", fa: "ولتاژ تغذیه", en: "Supply Voltage", type: "DECIMAL", unit: "V" },
+  ]),
+  leafForm("battery-lhd", "لودر زیرزمینی باتری‌دار", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "battery_capacity_kwh", fa: "ظرفیت باتری", en: "Battery Capacity", type: "DECIMAL", unit: "KWH" },
+    { key: "charging_time_h", fa: "زمان شارژ", en: "Charging Time", type: "DECIMAL", unit: "H" },
+  ]),
+  leafForm("low-profile-lhd", "لودر زیرزمینی کم‌ارتفاع", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "overall_height_mm", fa: "ارتفاع کلی", en: "Overall Height", type: "DECIMAL", unit: "MM", filterable: true },
+    { key: "overall_width_mm", fa: "عرض کلی", en: "Overall Width", type: "DECIMAL", unit: "MM" },
+  ]),
+
+  // Drilling equipment
+  leafForm("dth-drill", "دستگاه حفاری DTH", [
+    { key: "hole_diameter_mm", fa: "قطر حفاری", en: "Hole Diameter", type: "DECIMAL", unit: "MM", filterable: true },
+    { key: "drilling_depth_m", fa: "عمق حفاری", en: "Drilling Depth", type: "DECIMAL", unit: "M" },
+    { key: "air_pressure_bar", fa: "فشار هوای کاری", en: "Working Air Pressure", type: "DECIMAL", unit: "BAR" },
+  ]),
+  leafForm("top-hammer-drill", "دستگاه حفاری تاپ‌هامر", [
+    { key: "hole_diameter_mm", fa: "قطر حفاری", en: "Hole Diameter", type: "DECIMAL", unit: "MM", filterable: true },
+    { key: "impact_power_kw", fa: "توان ضربه‌ای", en: "Impact Power", type: "DECIMAL", unit: "KW" },
+    { key: "drill_rod_diameter_mm", fa: "قطر راد حفاری", en: "Drill Rod Diameter", type: "DECIMAL", unit: "MM" },
+  ]),
+  leafForm("water-well-drill", "دستگاه حفاری چاه آب", [
+    { key: "drilling_depth_m", fa: "عمق حفاری", en: "Drilling Depth", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "drilling_method", fa: "روش حفاری", en: "Drilling Method", type: "SELECT", options: ["دورانی", "ضربه‌ای", "DTH", "ترکیبی"] },
+    { key: "casing_diameter_mm", fa: "قطر لوله جداری", en: "Casing Diameter", type: "DECIMAL", unit: "MM" },
+  ]),
+
+  // Crushing and processing lines
+  leafForm("crushing-line", "خط کامل خردایش", [
+    { key: "throughput_tph", fa: "ظرفیت خوراک‌دهی", en: "Throughput", type: "DECIMAL", unit: "T/H", filterable: true, card: true },
+    { key: "feed_size_mm", fa: "حداکثر ابعاد خوراک", en: "Maximum Feed Size", type: "DECIMAL", unit: "MM" },
+    { key: "product_size_mm", fa: "ابعاد محصول خروجی", en: "Product Output Size", type: "TEXT" },
+  ]),
+  leafForm("mobile-processing-line", "خط فرآوری سیار", [
+    { key: "throughput_tph", fa: "ظرفیت فرآوری", en: "Processing Throughput", type: "DECIMAL", unit: "T/H", filterable: true, card: true },
+    { key: "mobility_configuration", fa: "آرایش جابه‌جایی", en: "Mobility Configuration", type: "SELECT", options: ["تریلی‌کش", "شنی", "چرخ‌دار", "کانتینری"] },
+    { key: "power_source", fa: "منبع تأمین انرژی", en: "Power Source", type: "SELECT", options: ["دیزل", "برق شبکه", "دیزل-الکتریک"] },
+  ]),
+
+  // Concrete pumps, production and placing
+  leafForm("truck-mounted-pump", "پمپ بتن دکل‌دار کامیونی", [
+    { key: "maximum_output_m3h", fa: "حداکثر خروجی بتن", en: "Maximum Concrete Output", type: "DECIMAL", unit: "M3/H", filterable: true },
+    { key: "boom_reach_m", fa: "برد دکل", en: "Boom Reach", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "delivery_pressure_bar", fa: "فشار انتقال بتن", en: "Concrete Delivery Pressure", type: "DECIMAL", unit: "BAR" },
+  ]),
+  leafForm("trailer-pump", "پمپ بتن تریلری", [
+    { key: "maximum_output_m3h", fa: "حداکثر خروجی بتن", en: "Maximum Concrete Output", type: "DECIMAL", unit: "M3/H", filterable: true },
+    { key: "maximum_delivery_pressure_bar", fa: "حداکثر فشار انتقال", en: "Maximum Delivery Pressure", type: "DECIMAL", unit: "BAR" },
+    { key: "maximum_aggregate_mm", fa: "حداکثر اندازه سنگدانه", en: "Maximum Aggregate Size", type: "DECIMAL", unit: "MM" },
+  ]),
+  leafForm("line-pump", "پمپ بتن زمینی خطی", [
+    { key: "maximum_output_m3h", fa: "حداکثر خروجی بتن", en: "Maximum Concrete Output", type: "DECIMAL", unit: "M3/H", filterable: true },
+    { key: "horizontal_pumping_distance_m", fa: "حداکثر طول پمپاژ افقی", en: "Maximum Horizontal Pumping Distance", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("boom-pump", "پمپ بتن بوم‌دار", [
+    { key: "boom_reach_m", fa: "برد عمودی بوم", en: "Vertical Boom Reach", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "maximum_output_m3h", fa: "حداکثر خروجی بتن", en: "Maximum Concrete Output", type: "DECIMAL", unit: "M3/H" },
+    { key: "boom_sections", fa: "تعداد قطعات بوم", en: "Boom Sections", type: "INTEGER" },
+  ]),
+  leafForm("stationary-pump", "پمپ بتن ثابت", [
+    { key: "maximum_output_m3h", fa: "حداکثر خروجی بتن", en: "Maximum Concrete Output", type: "DECIMAL", unit: "M3/H", filterable: true },
+    { key: "maximum_pressure_bar", fa: "حداکثر فشار کاری", en: "Maximum Working Pressure", type: "DECIMAL", unit: "BAR" },
+  ]),
+  leafForm("shotcrete", "دستگاه شاتکریت", [
+    { key: "spraying_process", fa: "فرآیند پاشش", en: "Spraying Process", type: "SELECT", options: ["تر", "خشک"] },
+    { key: "output_m3h", fa: "ظرفیت پاشش", en: "Spraying Output", type: "DECIMAL", unit: "M3/H", filterable: true },
+    { key: "maximum_aggregate_mm", fa: "حداکثر اندازه سنگدانه", en: "Maximum Aggregate Size", type: "DECIMAL", unit: "MM" },
+  ]),
+  leafForm("concrete-production", "تجهیزات تولید بتن", [
+    { key: "batching_capacity_m3h", fa: "ظرفیت بچینگ", en: "Batching Capacity", type: "DECIMAL", unit: "M3/H", filterable: true },
+    { key: "mixer_type", fa: "نوع میکسر", en: "Mixer Type", type: "SELECT", options: ["پن میکسر", "تویین‌شفت", "درام", "پیوسته"] },
+    { key: "aggregate_bins", fa: "تعداد مخازن سنگدانه", en: "Aggregate Bins", type: "INTEGER" },
+  ]),
+  leafForm("concrete-placing", "تجهیزات بتن‌ریزی و پخش بتن", [
+    { key: "placing_method", fa: "روش بتن‌ریزی", en: "Concrete Placing Method", type: "SELECT", options: ["دکل توزیع", "اسلیپ‌فرم", "پخش‌کن", "ویبره و پرداخت"] },
+    { key: "placing_width_m", fa: "عرض بتن‌ریزی", en: "Placing Width", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "output_m3h", fa: "ظرفیت اجرا", en: "Placing Output", type: "DECIMAL", unit: "M3/H" },
+  ]),
+
+  // Asphalt pavers
+  leafForm("track-paver", "فینیشر زنجیری", [
+    { key: "maximum_paving_width_m", fa: "حداکثر عرض پخش", en: "Maximum Paving Width", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "paving_capacity_tph", fa: "ظرفیت پخش", en: "Paving Capacity", type: "DECIMAL", unit: "T/H" },
+    { key: "screed_heating", fa: "نوع گرم‌کن اتو", en: "Screed Heating", type: "SELECT", options: ["گازی", "برقی"] },
+  ]),
+  leafForm("wheel-paver", "فینیشر چرخ‌دار", [
+    { key: "maximum_paving_width_m", fa: "حداکثر عرض پخش", en: "Maximum Paving Width", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "paving_capacity_tph", fa: "ظرفیت پخش", en: "Paving Capacity", type: "DECIMAL", unit: "T/H" },
+    { key: "travel_speed_kmh", fa: "سرعت حرکت", en: "Travel Speed", type: "DECIMAL", unit: "KMH" },
+  ]),
+  leafForm("mini-paver", "مینی فینیشر", [
+    { key: "maximum_paving_width_m", fa: "حداکثر عرض پخش", en: "Maximum Paving Width", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "minimum_paving_width_m", fa: "حداقل عرض پخش", en: "Minimum Paving Width", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("highway-paver", "فینیشر بزرگراهی", [
+    { key: "maximum_paving_width_m", fa: "حداکثر عرض پخش", en: "Maximum Paving Width", type: "DECIMAL", unit: "M", filterable: true },
+    { key: "paving_capacity_tph", fa: "ظرفیت پخش", en: "Paving Capacity", type: "DECIMAL", unit: "T/H" },
+    { key: "screed_extension_type", fa: "نوع افزایش عرض اتو", en: "Screed Extension Type", type: "SELECT", options: ["مکانیکی", "هیدرولیکی"] },
+  ]),
+
+  // Crane configurations
+  leafForm("telescopic-crane", "جرثقیل تلسکوپی", [
+    { key: "maximum_load_capacity_ton", fa: "حداکثر ظرفیت باربرداری", en: "Maximum Load Capacity", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "telescopic_boom_length_m", fa: "طول بوم تلسکوپی", en: "Telescopic Boom Length", type: "DECIMAL", unit: "M" },
+    { key: "maximum_working_radius_m", fa: "حداکثر شعاع کاری", en: "Maximum Working Radius", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("rough-terrain-crane", "جرثقیل آفرود", [
+    { key: "maximum_load_capacity_ton", fa: "حداکثر ظرفیت باربرداری", en: "Maximum Load Capacity", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "drive_steer_configuration", fa: "آرایش محرک و فرمان", en: "Drive and Steering Configuration", type: "TEXT" },
+    { key: "maximum_gradeability_percent", fa: "حداکثر شیب‌روی", en: "Maximum Gradeability", type: "DECIMAL", unit: "%" },
+  ]),
+  leafForm("industrial-crane", "جرثقیل صنعتی", [
+    { key: "maximum_load_capacity_ton", fa: "حداکثر ظرفیت باربرداری", en: "Maximum Load Capacity", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "crane_configuration", fa: "پیکربندی جرثقیل", en: "Crane Configuration", type: "SELECT", options: ["سقفی", "دروازه‌ای", "نیم‌دروازه‌ای", "بازویی", "مونوریل"] },
+    { key: "lifting_height_m", fa: "ارتفاع بالابری", en: "Lifting Height", type: "DECIMAL", unit: "M" },
+  ]),
+
+  // Forklift and handling equipment
+  leafForm("stackers", "استاکر و لیفتراک دستی/برقی", [
+    { key: "rated_capacity_kg", fa: "ظرفیت باربرداری", en: "Rated Capacity", type: "DECIMAL", unit: "KG", filterable: true, card: true },
+    { key: "maximum_lift_height_m", fa: "حداکثر ارتفاع بالابری", en: "Maximum Lift Height", type: "DECIMAL", unit: "M" },
+    { key: "power_type", fa: "نوع نیروی محرکه", en: "Power Type", type: "SELECT", options: ["دستی", "برقی", "نیمه‌برقی"] },
+  ]),
+  leafForm("telehandler", "تله‌هندلر", [
+    { key: "rated_lift_capacity_kg", fa: "ظرفیت باربرداری نامی", en: "Rated Lift Capacity", type: "DECIMAL", unit: "KG", filterable: true, card: true },
+    { key: "maximum_lift_height_m", fa: "حداکثر ارتفاع بالابری", en: "Maximum Lift Height", type: "DECIMAL", unit: "M" },
+    { key: "maximum_forward_reach_m", fa: "حداکثر دسترسی افقی", en: "Maximum Forward Reach", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("container-handler", "کانتینر هندلر", [
+    { key: "maximum_lifting_capacity_ton", fa: "حداکثر ظرفیت باربرداری", en: "Maximum Lifting Capacity", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "container_rows", fa: "تعداد ردیف دسترسی", en: "Container Rows", type: "INTEGER" },
+    { key: "spreader_type", fa: "نوع اسپریدر", en: "Spreader Type", type: "SELECT", options: ["20 فوت", "40 فوت", "تلسکوپی", "ثابت"] },
+  ]),
+
+  // Industrial haulage
+  leafForm("site-dump-truck", "دامپتراک کارگاهی", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "body_volume_m3", fa: "حجم اتاق بار", en: "Body Volume", type: "DECIMAL", unit: "M3" },
+    { key: "turning_radius_m", fa: "شعاع گردش", en: "Turning Radius", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("haul-truck", "کامیون حمل معدنی", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "gross_vehicle_weight_ton", fa: "وزن ناخالص وسیله", en: "Gross Vehicle Weight", type: "DECIMAL", unit: "TON" },
+    { key: "drive_configuration", fa: "آرایش محرک", en: "Drive Configuration", type: "TEXT" },
+  ]),
+  leafForm("off-highway-truck", "کامیون خارج جاده‌ای", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "body_capacity_m3", fa: "ظرفیت اتاق بار", en: "Body Capacity", type: "DECIMAL", unit: "M3" },
+    { key: "maximum_speed_kmh", fa: "حداکثر سرعت", en: "Maximum Speed", type: "DECIMAL", unit: "KMH" },
+  ]),
+  leafForm("mining-truck", "کامیون معدنی", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "retarder_type", fa: "نوع ریتاردر", en: "Retarder Type", type: "SELECT", options: ["دینامیکی", "هیدرولیکی", "ترکیبی"] },
+    { key: "mine_gradeability_percent", fa: "قابلیت عبور از شیب معدن", en: "Mine Gradeability", type: "DECIMAL", unit: "%" },
+  ]),
+
+  // Port and marine material handling
+  leafForm("port-reach-stacker", "ریچ‌استاکر بندری", [
+    { key: "maximum_lifting_capacity_ton", fa: "حداکثر ظرفیت باربرداری", en: "Maximum Lifting Capacity", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "stacking_rows", fa: "تعداد ردیف چیدمان", en: "Stacking Rows", type: "INTEGER" },
+    { key: "maximum_stacking_height", fa: "حداکثر ارتفاع چیدمان", en: "Maximum Stacking Height", type: "INTEGER" },
+  ]),
+  leafForm("empty-container-handler", "دستگاه جابه‌جایی کانتینر خالی", [
+    { key: "maximum_lifting_capacity_ton", fa: "حداکثر ظرفیت باربرداری", en: "Maximum Lifting Capacity", type: "DECIMAL", unit: "TON", filterable: true },
+    { key: "maximum_stacking_height", fa: "حداکثر ارتفاع چیدمان", en: "Maximum Stacking Height", type: "INTEGER" },
+    { key: "container_spreader", fa: "نوع اسپریدر کانتینر", en: "Container Spreader", type: "TEXT" },
+  ]),
+  leafForm("port-crane", "جرثقیل بندری", [
+    { key: "safe_working_load_ton", fa: "بار مجاز کاری", en: "Safe Working Load", type: "DECIMAL", unit: "TON", filterable: true },
+    { key: "outreach_m", fa: "دسترسی افقی", en: "Outreach", type: "DECIMAL", unit: "M" },
+    { key: "lifting_height_m", fa: "ارتفاع بالابری", en: "Lifting Height", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("mobile-harbor-crane", "جرثقیل متحرک بندری", [
+    { key: "maximum_load_capacity_ton", fa: "حداکثر ظرفیت باربرداری", en: "Maximum Load Capacity", type: "DECIMAL", unit: "TON", filterable: true },
+    { key: "maximum_outreach_m", fa: "حداکثر دسترسی افقی", en: "Maximum Outreach", type: "DECIMAL", unit: "M" },
+    { key: "hook_or_grab_mode", fa: "حالت کاری قلاب یا گراب", en: "Hook or Grab Mode", type: "MULTI_SELECT", options: ["قلاب", "گراب", "اسپریدر کانتینر"] },
+  ]),
+
+  // Recycling and waste processing
+  leafForm("sorting-machine", "دستگاه تفکیک و سورتینگ", [
+    { key: "throughput_tph", fa: "ظرفیت پردازش", en: "Processing Throughput", type: "DECIMAL", unit: "T/H", filterable: true },
+    { key: "sorting_technology", fa: "فناوری تفکیک", en: "Sorting Technology", type: "MULTI_SELECT", options: ["نوری", "مغناطیسی", "القایی", "دستی", "وزنی"] },
+    { key: "material_stream", fa: "جریان مواد ورودی", en: "Material Stream", type: "TEXT" },
+  ]),
+  leafForm("recycling-plant", "خط یا کارخانه بازیافت", [
+    { key: "plant_throughput_tph", fa: "ظرفیت خط بازیافت", en: "Plant Throughput", type: "DECIMAL", unit: "T/H", filterable: true },
+    { key: "feed_material", fa: "نوع خوراک ورودی", en: "Feed Material", type: "MULTI_SELECT", options: ["فلزات", "پلاستیک", "لاستیک", "پسماند ساختمانی", "آسفالت", "شیشه"] },
+    { key: "output_product", fa: "محصول خروجی", en: "Output Product", type: "TEXT" },
+  ]),
+  leafForm("asphalt-recycling-machine", "دستگاه بازیافت آسفالت", [
+    { key: "recycling_capacity_tph", fa: "ظرفیت بازیافت", en: "Recycling Capacity", type: "DECIMAL", unit: "T/H", filterable: true },
+    { key: "recycling_process", fa: "فرآیند بازیافت", en: "Recycling Process", type: "SELECT", options: ["درجا", "کارخانه‌ای", "سرد", "گرم"] },
+    { key: "maximum_milling_depth_mm", fa: "حداکثر عمق برداشت", en: "Maximum Milling Depth", type: "DECIMAL", unit: "MM" },
+  ]),
+
+  // Tunnel and underground equipment
+  leafForm("tunnel-jumbo", "دریل جامبو تونلی", [
+    { key: "boom_count", fa: "تعداد بوم حفاری", en: "Drilling Boom Count", type: "INTEGER", filterable: true },
+    { key: "drilling_coverage_m2", fa: "سطح پوشش حفاری", en: "Drilling Coverage", type: "DECIMAL", unit: "M2" },
+    { key: "maximum_drilling_depth_m", fa: "عمق حفاری", en: "Maximum Drilling Depth", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("underground-lhd", "لودر LHD زیرزمینی", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "overall_height_mm", fa: "ارتفاع کلی", en: "Overall Height", type: "DECIMAL", unit: "MM" },
+    { key: "powertrain_type", fa: "نوع پاورترین", en: "Powertrain Type", type: "SELECT", options: ["دیزلی", "برقی کابلی", "باتری‌دار"] },
+  ]),
+  leafForm("underground-truck-machine", "کامیون حمل زیرزمینی", [
+    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
+    { key: "overall_width_mm", fa: "عرض کلی", en: "Overall Width", type: "DECIMAL", unit: "MM" },
+    { key: "turning_radius_m", fa: "شعاع گردش", en: "Turning Radius", type: "DECIMAL", unit: "M" },
+  ]),
+
+  // Generator subtypes
+  leafForm("diesel-generator", "ژنراتور دیزلی", [
+    { key: "prime_power_kva", fa: "توان دائم بر حسب کاوا", en: "Prime Power", type: "DECIMAL", unit: "KVA", filterable: true, card: true },
+    { key: "standby_power_kva", fa: "توان اضطراری", en: "Standby Power", type: "DECIMAL", unit: "KVA" },
+    { key: "fuel_tank_l", fa: "ظرفیت مخزن سوخت", en: "Fuel Tank Capacity", type: "DECIMAL", unit: "L" },
+  ]),
+  leafForm("gas-generator", "ژنراتور گازسوز", [
+    { key: "prime_power_kw", fa: "توان دائم", en: "Prime Power", type: "DECIMAL", unit: "KW", filterable: true, card: true },
+    { key: "gas_pressure_mbar", fa: "فشار ورودی گاز", en: "Gas Inlet Pressure", type: "DECIMAL", unit: "MBAR" },
+    { key: "gas_type", fa: "نوع گاز مصرفی", en: "Fuel Gas Type", type: "SELECT", options: ["گاز طبیعی", "LPG", "بیوگاز", "گاز سنتز"] },
+  ]),
+  leafForm("natural-gas-generator", "ژنراتور گاز طبیعی", [
+    { key: "prime_power_kw", fa: "توان دائم", en: "Prime Power", type: "DECIMAL", unit: "KW", filterable: true, card: true },
+    { key: "gas_inlet_pressure_mbar", fa: "فشار ورودی گاز", en: "Gas Inlet Pressure", type: "DECIMAL", unit: "MBAR" },
+    { key: "electrical_efficiency_percent", fa: "بازده الکتریکی", en: "Electrical Efficiency", type: "DECIMAL", unit: "%" },
+  ]),
+  leafForm("bi-fuel-generator", "ژنراتور دوگانه‌سوز", [
+    { key: "prime_power_kva", fa: "توان دائم", en: "Prime Power", type: "DECIMAL", unit: "KVA", filterable: true, card: true },
+    { key: "fuel_modes", fa: "حالت‌های سوخت", en: "Fuel Modes", type: "MULTI_SELECT", options: ["دیزل", "گاز طبیعی", "LPG"] },
+    { key: "gas_substitution_percent", fa: "درصد جایگزینی گاز", en: "Gas Substitution Ratio", type: "DECIMAL", unit: "%" },
+  ]),
+  leafForm("hybrid-generator", "ژنراتور هیبریدی", [
+    { key: "prime_power_kva", fa: "توان نامی ژنراتور", en: "Generator Prime Power", type: "DECIMAL", unit: "KVA", filterable: true },
+    { key: "battery_capacity_kwh", fa: "ظرفیت ذخیره باتری", en: "Battery Storage Capacity", type: "DECIMAL", unit: "KWH" },
+    { key: "energy_management", fa: "سامانه مدیریت انرژی", en: "Energy Management System", type: "TEXT" },
+  ]),
+  leafForm("mobile-generator", "ژنراتور سیار", [
+    { key: "prime_power_kva", fa: "توان دائم", en: "Prime Power", type: "DECIMAL", unit: "KVA", filterable: true, card: true },
+    { key: "trailer_mounted", fa: "نصب‌شده روی تریلر", en: "Trailer Mounted", type: "BOOLEAN" },
+    { key: "enclosure_type", fa: "نوع محفظه", en: "Enclosure Type", type: "SELECT", options: ["باز", "کانوپی", "کانتینری"] },
+  ]),
+  leafForm("silent-generator", "ژنراتور سایلنت", [
+    { key: "prime_power_kva", fa: "توان دائم", en: "Prime Power", type: "DECIMAL", unit: "KVA", filterable: true, card: true },
+    { key: "noise_level_dba", fa: "سطح صدا", en: "Noise Level", type: "DECIMAL", unit: "DBA" },
+    { key: "measurement_distance_m", fa: "فاصله اندازه‌گیری صدا", en: "Noise Measurement Distance", type: "DECIMAL", unit: "M" },
+  ]),
+  leafForm("containerized-generator", "ژنراتور کانتینری", [
+    { key: "prime_power_kva", fa: "توان دائم", en: "Prime Power", type: "DECIMAL", unit: "KVA", filterable: true, card: true },
+    { key: "container_length_ft", fa: "طول کانتینر", en: "Container Length", type: "SELECT", options: ["10 فوت", "20 فوت", "40 فوت"] },
+    { key: "sound_at_7m_dba", fa: "سطح صدا در فاصله ۷ متر", en: "Sound Level at 7m", type: "DECIMAL", unit: "DBA" },
+  ]),
+  leafForm("trailer-generator", "ژنراتور تریلری", [
+    { key: "prime_power_kva", fa: "توان دائم", en: "Prime Power", type: "DECIMAL", unit: "KVA", filterable: true, card: true },
+    { key: "trailer_axle_count", fa: "تعداد محور تریلر", en: "Trailer Axle Count", type: "INTEGER" },
+    { key: "road_registration", fa: "قابلیت شماره‌گذاری جاده‌ای", en: "Road Registration", type: "BOOLEAN" },
+  ]),
+
+  // Industrial utilities
+  leafForm("industrial-welding", "تجهیزات جوشکاری صنعتی", [
+    { key: "welding_process", fa: "فرآیند جوشکاری", en: "Welding Process", type: "MULTI_SELECT", options: ["SMAW", "MIG/MAG", "TIG", "SAW", "پلاسما"] },
+    { key: "rated_welding_current_a", fa: "جریان جوشکاری نامی", en: "Rated Welding Current", type: "DECIMAL", unit: "A", filterable: true },
+    { key: "duty_cycle_percent", fa: "چرخه کاری", en: "Duty Cycle", type: "DECIMAL", unit: "%" },
+  ]),
+  leafForm("industrial-hvac", "تجهیزات تهویه مطبوع صنعتی", [
+    { key: "cooling_capacity_kw", fa: "ظرفیت سرمایش", en: "Cooling Capacity", type: "DECIMAL", unit: "KW", filterable: true, card: true },
+    { key: "heating_capacity_kw", fa: "ظرفیت گرمایش", en: "Heating Capacity", type: "DECIMAL", unit: "KW" },
+    { key: "refrigerant_type", fa: "نوع مبرد", en: "Refrigerant Type", type: "TEXT" },
+  ]),
+];
+
+const duplicateAddedLeafSlugs = missingTerminalLeafForms
+  .map((template) => template.slug)
+  .filter((slug, index, all) => all.indexOf(slug) !== index);
+if (duplicateAddedLeafSlugs.length) {
+  throw new Error(`Duplicate supplemental leaf form slugs: ${duplicateAddedLeafSlugs.join(", ")}`);
+}
+templates.push(...missingTerminalLeafForms);
+
+// AttributeDefinition.key is globally unique. Preserve an existing compatible. Preserve an existing compatible
 // definition; namespace incompatible variants by category to prevent global clobbering.
 const fieldSignature = (field: Pick<Field, "type" | "unit" | "fa" | "en" | "options" | "filterable" | "searchable" | "sortable" | "card">): string =>
   JSON.stringify({
