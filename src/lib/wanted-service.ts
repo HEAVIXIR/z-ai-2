@@ -292,7 +292,6 @@ export async function listWanted(params: {
     status: string;
     verified: boolean;
     createdAt: Date;
-    userId: string | null;
   }>;
   total: number;
 }> {
@@ -344,7 +343,6 @@ export async function listWanted(params: {
         status: true,
         verified: true,
         createdAt: true,
-        userId: true,
       },
     }),
     db.buyRequest.count({ where }),
@@ -462,6 +460,9 @@ export async function closeWanted(
     throw new WantedServiceError(404, "درخواست خرید یافت نشد");
   }
   // Idempotent — already closed.
+  if (before.userId !== userId) {
+    throw new WantedServiceError(403, "اجازه بستن این درخواست را ندارید");
+  }
   if (before.status === STATUS_CLOSED) {
     return { id: before.id, status: before.status };
   }
@@ -474,7 +475,7 @@ export async function closeWanted(
 
   await logAudit({
     actorId: userId,
-    actorType: "ADMIN",
+    actorType: "USER",
     action: "marketplace.wanted.close",
     entityType: "BuyRequest",
     entityId: id,
