@@ -252,6 +252,9 @@ export async function POST(req: Request) {
       quantity,
       budgetMin,
       budgetMax,
+      price,
+      sellerName,
+      sellerPhone,
       categoryId,
       brandId,
       modelId,
@@ -332,6 +335,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "نوع تقاضا (intent) الزامی است. مقادیر مجاز: SALE, RENT, SALE_AND_RENT, SERVICE_REQUEST." }, { status: 400 });
     }
 
+    // WANTED's optional suggested price is an exact budget when no range is supplied.
+    // Never silently discard it or ambiguously combine it with a min/max range.
+    const hasSuggestedPrice = price !== undefined && price !== null && String(price).trim() !== "";
+    if (hasSuggestedPrice && (budgetMin !== undefined && budgetMin !== null && budgetMin !== "" || budgetMax !== undefined && budgetMax !== null && budgetMax !== "")) {
+      return NextResponse.json({ error: "قیمت پیشنهادی را جداگانه وارد کنید یا از بازه حداقل/حداکثر بودجه استفاده کنید؛ هر دو هم‌زمان مجاز نیستند." }, { status: 400 });
+    }
+    const effectiveBudgetMin = hasSuggestedPrice ? price : budgetMin;
+    const effectiveBudgetMax = hasSuggestedPrice ? price : budgetMax;
+
+    const normalizedRequesterName = typeof sellerName === "string" ? sellerName.trim() : "";
+    const normalizedRequesterPhone = typeof sellerPhone === "string" ? sellerPhone.trim() : "";
+    if (normalizedRequesterName.length > 120 || normalizedRequesterPhone.length > 40) {
+      return NextResponse.json({ error: "اطلاعات تماس بیش از حد طولانی است." }, { status: 400 });
+    }
+
     // P0 #3: server-side budget range validation. The client enforces
     // (canProceed) but a direct API caller can bypass. Mirror the QUOTE
     // checks from /api/listings/route.ts:689-696.
@@ -342,8 +360,8 @@ export async function POST(req: Request) {
         if (!s || s === "-") return null;
         try { return BigInt(s); } catch { return null; }
       };
-      const bMin = parseBudget(budgetMin);
-      const bMax = parseBudget(budgetMax);
+      const bMin = parseBudget(effectiveBudgetMin);
+      const bMax = parseBudget(effectiveBudgetMax);
       if (bMin !== null && bMin < 0n) {
         return NextResponse.json({ error: "حداقل بودجه نمی‌تواند منفی باشد." }, { status: 400 });
       }
@@ -361,7 +379,10 @@ export async function POST(req: Request) {
     // combinations are rejected before createWanted writes the real FKs.
     // The service then validates category/model attribute membership and
     // typed values before the atomic BuyRequest + attribute transaction.
-    const requestedCategoryId = categoryId ? String(categoryId) : null;
+    const requestedCategoryId = typeof categoryId === "string" ? categoryId.trim() : "";
+    if (!requestedCategoryId) {
+      return NextResponse.json({ error: "انتخاب دسته‌بندی برای ثبت درخواست الزامی است." }, { status: 400 });
+    }
     const requestedBrandId = brandId ? String(brandId) : null;
     const requestedModelId = modelId ? String(modelId) : null;
     const requestedServiceTypeId = serviceTypeId ? String(serviceTypeId) : null;
@@ -469,8 +490,8 @@ export async function POST(req: Request) {
       title: typeof title === "string" ? title : "",
       description: description as string | null | undefined,
       quantity: normalizedQuantity,
-      budgetMin: budgetMin as string | number | bigint | null | undefined,
-      budgetMax: budgetMax as string | number | bigint | null | undefined,
+      budgetMin: effectiveBudgetMin as string | number | bigint | null | undefined,
+      budgetMax: effectiveBudgetMax as string | number | bigint | null | undefined,
       categoryId: categoryId as string | null | undefined,
       brandId: brandId as string | null | undefined,
       modelId: modelId as string | null | undefined,
@@ -481,6 +502,8 @@ export async function POST(req: Request) {
       province: selectedProvince?.name ?? selectedCity?.province.name ?? (requestedProvinceId ? null : (province as string | null | undefined)),
       city: selectedCity?.name ?? (requestedCityId ? null : (city as string | null | undefined)),
       deadline: normalizedDeadline,
+      requesterName: normalizedRequesterName || null,
+      requesterPhone: normalizedRequesterPhone || null,
       userId,
       idempotencyKey,
     });
