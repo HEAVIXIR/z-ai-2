@@ -1286,7 +1286,7 @@ export default function NewListingPage() {
 
                       {(transactionType === "WANTED" || isServiceRequest) && (
                         <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
-                          <p className="mb-3 text-sm font-black text-amber-300">جزئیات درخواست خرید</p>
+                          <p className="mb-3 text-sm font-black text-amber-300">{isServiceRequest ? "جزئیات درخواست خدمات" : "جزئیات درخواست خرید"}</p>
                           <div className="grid gap-4 sm:grid-cols-2">
                             {/* P0-A: intent selector moved to Step 1. Here in Step 6
                                 we show a read-only badge of the selected intent so the
@@ -1319,7 +1319,7 @@ export default function NewListingPage() {
                               <input value={wanted.budgetMax} onChange={(e) => setWanted((v) => ({ ...v, budgetMax: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
                             </div>
                           </div>
-                          <p className="mt-3 text-xs text-white/55">تعداد فعلاً در سابقه ممیزی نگهداری می‌شود؛ ذخیره ساختاریافته تعداد نیازمند تکمیل مدل داده است.</p>
+                          <p className="mt-3 text-xs text-white/55">تعداد، بودجه و مهلت در اطلاعات ساختاریافته درخواست ذخیره می‌شوند.</p>
                         </div>
                       )}
 
