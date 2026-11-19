@@ -6,7 +6,7 @@ on:
     branches: [main, 'recovery/**']
     types: [opened, reopened, synchronize, edited, ready_for_review]
   push:
-    branches: [main, 'feature/**', 'fix/**', 'recovery/**', 'integration/preview-readiness-workerd-2026-11-15']
+    branches: [main, 'feature/**', 'feat/**', 'fix/**', 'recovery/**', 'integration/preview-readiness-workerd-2026-11-15']
 
 # Keep only the newest CI run for a given PR/branch. This prevents obsolete
 # commits from occupying all runners while a newer recovery commit is waiting.
