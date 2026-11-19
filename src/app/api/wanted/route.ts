@@ -366,6 +366,15 @@ export async function POST(req: Request) {
     const requestedModelId = modelId ? String(modelId) : null;
     const requestedServiceTypeId = serviceTypeId ? String(serviceTypeId) : null;
 
+    // A service-demand request must carry an active ServiceType; conversely,
+    // non-service demand intents must not accidentally persist a service type.
+    if (intentStr === "SERVICE_REQUEST" && !requestedServiceTypeId) {
+      return NextResponse.json({ error: "برای درخواست خدمات، نوع خدمت الزامی است." }, { status: 400 });
+    }
+    if (intentStr !== "SERVICE_REQUEST" && requestedServiceTypeId) {
+      return NextResponse.json({ error: "نوع خدمت فقط برای تقاضای خدمات مجاز است." }, { status: 400 });
+    }
+
     const [categoryRow, brandRow, modelRow, serviceTypeRow] = await Promise.all([
       requestedCategoryId
         ? db.category.findUnique({
