@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { isBuyRequestMatchEligible } from "@/lib/wanted-eligibility";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 
 /* ============================================================
    HEAVIX — AI Matching: BuyRequest ↔ Listing (FIX-GAPS-1)
@@ -200,9 +201,16 @@ export async function matchRequestToListings(
     return { matches: [] };
   }
 
-  // Load PUBLISHED listings with their brand + category names.
+  // Load PUBLISHED SUPPLY listings with their brand + category names.
+  // Only supply-side listing types (SALE, RENT, AUCTION, SERVICE_OFFER)
+  // are valid candidates for a BuyRequest. Demand-side listings (WANTED,
+  // QUOTE, SERVICE_REQUEST) are excluded so a demand post can never be
+  // matched against another demand post (demand/supply contamination).
   const listings = await db.listing.findMany({
-    where: { status: "PUBLISHED" },
+    where: {
+      status: "PUBLISHED",
+      listingType: { in: [...SUPPLY_LISTING_TYPES] },
+    },
     select: {
       id: true,
       price: true,

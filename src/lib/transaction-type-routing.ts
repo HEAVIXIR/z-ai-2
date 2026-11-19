@@ -35,6 +35,28 @@ export function isRequestTransactionType(key: string): boolean {
   return normalized === "WANTED" || normalized === "QUOTE";
 }
 
+/**
+ * The set of Listing.listingType values that represent SUPPLY — i.e.
+ * someone offering an asset/service for sale, rent, or auction. The
+ * matching engine only considers supply listings as match candidates
+ * for a BuyRequest (demand). Demand-side listing types (WANTED,
+ * QUOTE, SERVICE_REQUEST) must never be returned as candidates,
+ * otherwise a demand post could be "matched" against another demand
+ * post (demand/supply contamination).
+ */
+export const SUPPLY_LISTING_TYPES = [
+  "SALE",
+  "RENT",
+  "AUCTION",
+  // Legacy alias — someone offering a service. Retained for back-compat.
+  "SERVICE_OFFER",
+] as const;
+
+export function isSupplyListingType(key: string): boolean {
+  const normalized = String(key ?? "").trim().toUpperCase();
+  return (SUPPLY_LISTING_TYPES as readonly string[]).includes(normalized);
+}
+
 export function requiresListingImage(key: string): boolean {
   const normalized = String(key ?? "").trim().toUpperCase();
   return !["WANTED", "QUOTE", "SERVICE_REQUEST", "SERVICE_OFFER"].includes(normalized);
