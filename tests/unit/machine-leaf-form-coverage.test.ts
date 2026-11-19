@@ -6,6 +6,7 @@ const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8");
 
 describe("definitive machine terminal form coverage", () => {
   const taxonomy = read("prisma/seed-machine-taxonomy.ts");
+  const taxonomyV11 = read("prisma/seed-taxonomy-v11.ts");
   const formSeed = read("prisma/seed-category-specific-attributes.ts");
   const treeStart = taxonomy.indexOf("const TREE:");
   const treeEnd = taxonomy.indexOf("const treeSlugs", treeStart);
@@ -44,6 +45,54 @@ describe("definitive machine terminal form coverage", () => {
     expect(terminalSlugs).toHaveLength(271);
     expect(templateSet.size).toBe(templateSlugs.length);
     expect(duplicates).toEqual([]);
+    expect(missing).toEqual([]);
+  });
+
+  it("covers every terminal category under vehicles, attachments, agriculture and industrial equipment", () => {
+    const lines = taxonomyV11.split("\n");
+    const roots = ["vehicles", "attachments", "agriculture", "industrial-equipment"];
+    const terminalSlugs: string[] = [];
+
+    for (const root of roots) {
+      const start = lines.findIndex((line) => line.match(/slug:\\s*"([^"]+)"/)?.[1] === root);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const rootIndent = lines[start].match(/^ */)?.[0].length ?? 0;
+      let end = lines.length;
+      for (let index = start + 1; index < lines.length; index += 1) {
+        const slug = lines[index].match(/slug:\\s*"([^"]+)"/)?.[1];
+        const indent = lines[index].match(/^ */)?.[0].length ?? 0;
+        if (slug && indent === rootIndent) {
+          end = index;
+          break;
+        }
+      }
+
+      for (let index = start + 1; index < end; index += 1) {
+        const slug = lines[index].match(/slug:\\s*"([^"]+)"/)?.[1];
+        if (!slug) continue;
+        const indent = lines[index].match(/^ */)?.[0].length ?? 0;
+        let nextSibling = end;
+        for (let next = index + 1; next < end; next += 1) {
+          const nextSlug = lines[next].match(/slug:\\s*"([^"]+)"/)?.[1];
+          const nextIndent = lines[next].match(/^ */)?.[0].length ?? 0;
+          if (nextSlug && nextIndent <= indent) {
+            nextSibling = next;
+            break;
+          }
+        }
+        const hasChildren = lines.slice(index, nextSibling).some((line) => /children:\\s*\\[/.test(line));
+        if (!hasChildren) terminalSlugs.push(slug);
+      }
+    }
+
+    const formBlock = formSeed.slice(templateStart, templateEnd);
+    const literal = [...formBlock.matchAll(/slug:\\s*"([^"]+)"/g)].map((match) => match[1]);
+    const generated = [...formBlock.matchAll(/leafForm\\("([^"]+)"/g)].map((match) => match[1]);
+    const templateSet = new Set([...literal, ...generated]);
+    const missing = terminalSlugs.filter((slug) => !templateSet.has(slug));
+
+    expect(terminalSlugs).toHaveLength(57);
+    expect(new Set(terminalSlugs).size).toBe(57);
     expect(missing).toEqual([]);
   });
 
