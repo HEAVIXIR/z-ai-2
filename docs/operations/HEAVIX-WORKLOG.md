@@ -711,3 +711,12 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 - Opened Issue #346 with the observed evidence, investigation plan and strict non-production guardrails: https://github.com/HEAVIXIR/z-ai-2/issues/346.
 - No code or schema changes, no database writes/migrations/seeds, no Production deploy, no secrets/DNS/Worker configuration changes, no paid providers.
 - Outcome: CI green; Preview deployment succeeded; runtime acceptance FAILED. Integration is not release-ready. Next: obtain full Prisma exception/statement error and validate Preview DB identity/schema/migration history read-only before a narrow code fix.
+
+
+## 2026-11-19 — Protected analytics actor attribution + App Preview gate
+
+- PR #347 (workflow-only App Preview migration gate) was marked Ready for Review after the owner asked to proceed continuously. It remains open/unmerged; only `.github/workflows/app-preview-single-migration.yml` is included. Corrected head `4b68a33fa501ebb1a8308718a594a9f02b74f07a` has CI run `44484268815` SUCCESS (six successful checks; legacy archive inventory skipped). No backup, restore or migration was dispatched.
+- Issue #344 security fix started on Integration. Commit `97d102374874531dac40ec2c49a85147ff6f6851` changes public analytics ingestion to derive actor identity from canonical `getCurrentUserId()`; payload `userId` is ignored. Commit `e252b4744a6e4580df1d9ad2cb93bd72e8891cf8` adds behavioral tests for authenticated and anonymous spoofing attempts.
+- Exact-head CI `44485945278` is pending and OpenNext `44485945151` is queued for `e252b4744a6e4580df1d9ad2cb93bd72e8891cf8`. Intermediate checks on `97d1023` were cancelled and are not used as validation. Integration Preview run `44485925154` targets the intermediate commit only and is not evidence for final HEAD.
+- Issue #344 updated with the implementation and exact CI references. No schema change, migration, seed, Preview DB write, Production deployment, secret/DNS change, or paid service was used.
+- Next: inspect exact-head CI/OpenNext; if passing, perform Preview acceptance and verify that authenticated events record only the session actor while anonymous events remain null. Continue WANTED lifecycle remediation after this security gate. Never infer success from queued/running or an older SHA.
