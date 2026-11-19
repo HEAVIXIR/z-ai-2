@@ -131,8 +131,8 @@ jobs:
           test "$rolled_back" = "0"
           # H.3: schema preconditions — the WANTED structured columns + attribute
           # tables must NOT yet exist (they're added by this migration).
-          schema_preconditions="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='quantity'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='categoryId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeValue'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeOption'))::text")"
-          test "$schema_preconditions" = "true|true|true|true"
+          schema_preconditions="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='quantity'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='categoryId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='brandId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='modelId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='serviceTypeId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='intent'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='idempotencyKey'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeValue'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeOption'))::text")"
+          test "$schema_preconditions" = "true|true|true|true|true|true|true|true|true"
           # H.3: the migration folder must exist in the repo (checked out at this SHA).
           test -f prisma/migrations/20261119160000_wanted_structural_storage/migration.sql
           echo "PASS: App Preview exact identity; exactly seven reviewed migrations; WANTED structural preconditions hold."
@@ -218,9 +218,32 @@ jobs:
           else
             pg_restore --exit-on-error --no-owner --no-acl -h 127.0.0.1 -U restore -d app_preview_restore "$WORK/app-preview.dump"
           fi
-          table_count="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")"
+          table_count="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
           test "$table_count" -gt 0
-          echo "PASS: encrypted App Preview backup decrypted, checksum verified and restored into disposable PostgreSQL 17 ($table_count tables)."
+
+          # Compare the complete public-table inventory in the archive with
+          # the restored database. A successful pg_restore plus one table is
+          # not sufficient evidence that the backup is complete.
+          awk '$4 == "TABLE" && $5 == "public" { print $6 }' "$WORK/restore.list" | sort -u > "$WORK/expected-public-tables.txt"
+          psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename" > "$WORK/restored-public-tables.txt"
+          test -s "$WORK/expected-public-tables.txt"
+          diff -u "$WORK/expected-public-tables.txt" "$WORK/restored-public-tables.txt"
+
+          # Prove the restored backup is at the exact seven-migration
+          # pre-state, then exercise the actual H.3 DDL against the disposable
+          # PostgreSQL 17 restore before touching the live Preview database.
+          restore_history="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          expected_restore_history="7|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes,20261116120000_industrial_marketplace_identity_core,20261116130000_company_invitations,20261118152000_link_listing_service_rfq"
+          test "$restore_history" = "$expected_restore_history"
+          psql -h 127.0.0.1 -U restore -d app_preview_restore -X -v ON_ERROR_STOP=1 -f prisma/migrations/20261119160000_wanted_structural_storage/migration.sql
+
+          restored_schema="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name IN ('quantity','categoryId','brandId','modelId','serviceTypeId','intent','idempotencyKey'))::text || '|' || (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeValue')::text || '|' || (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeOption')::text")"
+          test "$restored_schema" = "7|1|1"
+          restored_fks="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_constraint WHERE conname IN ('BuyRequest_categoryId_fkey','BuyRequest_brandId_fkey','BuyRequest_modelId_fkey','BuyRequest_serviceTypeId_fkey','BuyRequestAttributeValue_attributeId_fkey','BuyRequestAttributeValue_optionId_fkey','BuyRequestAttributeValue_buyRequestId_fkey','BuyRequestAttributeOption_attributeValueId_fkey','BuyRequestAttributeOption_optionId_fkey')")"
+          test "$restored_fks" = "9"
+          restored_indexes="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('BuyRequest_userId_idempotencyKey_key','BuyRequestAttributeValue_buyRequestId_attributeId_key','BuyRequestAttributeOption_attributeValueId_optionId_key')")"
+          test "$restored_indexes" = "3"
+          echo "PASS: encrypted backup decrypted, full public-table inventory matched, seven-migration state restored, and H.3 migration SQL applied + verified on disposable PostgreSQL 17 ($table_count public tables)."
           rm -rf "$WORK"
 
       - name: Recheck App Preview identity and exact migration gate immediately before apply
