@@ -126,8 +126,17 @@ export async function POST(req: Request) {
     if (!userId || userId.length > 128) {
       return NextResponse.json({ error: "A valid userId is required" }, { status: 400 });
     }
-    const plan = typeof body.plan === "string" ? body.plan.trim() : "BASIC";
-    const status = typeof body.status === "string" ? body.status.trim() : "ACTIVE";
+    const mutableFields = Object.keys(body).filter((key) => key !== "userId");
+    if (mutableFields.length === 0) {
+      return NextResponse.json({ error: "At least one subscription field is required" }, { status: 400 });
+    }
+
+    const plan = body.plan === undefined
+      ? "BASIC"
+      : typeof body.plan === "string" ? body.plan.trim() : "";
+    const status = body.status === undefined
+      ? "ACTIVE"
+      : typeof body.status === "string" ? body.status.trim() : "";
     if (!plan || plan.length > 64 || !status || status.length > 32) {
       return NextResponse.json({ error: "Invalid plan or subscription status" }, { status: 400 });
     }
@@ -144,7 +153,15 @@ export async function POST(req: Request) {
       }
     }
 
-    const data: any = {
+    if (body.paymentRef !== undefined && body.paymentRef !== null &&
+        (typeof body.paymentRef !== "string" || body.paymentRef.length > 128)) {
+      return NextResponse.json({ error: "paymentRef is invalid" }, { status: 400 });
+    }
+
+    // Create defaults are intentionally separate from PATCH-like upsert updates.
+    // Omitted fields must preserve the existing administrative entitlement.
+    const createData: any = {
+      userId,
       plan,
       status,
       featuredCredits,
@@ -153,21 +170,29 @@ export async function POST(req: Request) {
       priorityLeads: body.priorityLeads ?? false,
       companyPage: body.companyPage ?? false,
       paymentRef: body.paymentRef ?? null,
+      startedAt: new Date(),
     };
-    if (body.paymentRef !== undefined && body.paymentRef !== null &&
-        (typeof body.paymentRef !== "string" || body.paymentRef.length > 128)) {
-      return NextResponse.json({ error: "paymentRef is invalid" }, { status: 400 });
+    const updateData: any = {};
+    if ("plan" in body) updateData.plan = plan;
+    if ("status" in body) updateData.status = status;
+    if ("featuredCredits" in body) updateData.featuredCredits = featuredCredits;
+    for (const field of ["analyticsAccess", "aiAssistantAccess", "priorityLeads", "companyPage"] as const) {
+      if (field in body) updateData[field] = body[field];
     }
+    if ("paymentRef" in body) updateData.paymentRef = body.paymentRef;
+
     if (body.amount !== undefined) {
       const amount = parseBig(body.amount);
       if (amount === null || amount < 0n || amount > 9223372036854775807n) {
         return NextResponse.json({ error: "amount is invalid" }, { status: 400 });
       }
-      data.amount = amount;
+      createData.amount = amount;
+      updateData.amount = amount;
     }
     if (body.expiresAt !== undefined) {
       if (body.expiresAt === null) {
-        data.expiresAt = null;
+        createData.expiresAt = null;
+        updateData.expiresAt = null;
       } else {
         if (typeof body.expiresAt !== "string" && typeof body.expiresAt !== "number") {
           return NextResponse.json({ error: "expiresAt must be a valid date" }, { status: 400 });
@@ -176,7 +201,8 @@ export async function POST(req: Request) {
         if (!Number.isFinite(expiresAt.getTime())) {
           return NextResponse.json({ error: "expiresAt must be a valid date" }, { status: 400 });
         }
-        data.expiresAt = expiresAt;
+        createData.expiresAt = expiresAt;
+        updateData.expiresAt = expiresAt;
       }
     }
 
@@ -192,8 +218,8 @@ export async function POST(req: Request) {
       });
       const subscription = await tx.premiumSubscription.upsert({
         where: { userId },
-        create: { userId, ...data, startedAt: new Date() },
-        update: data,
+        create: createData,
+        update: updateData,
       });
 
       await tx.auditLog.create({
