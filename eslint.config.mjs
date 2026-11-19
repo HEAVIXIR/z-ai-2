@@ -48,7 +48,14 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", ".next-dev-backup/**", ".next-standalone/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "inspect/**", "download/**", "upload/**", ".zscripts/**", "scripts/**", "mini-services/**", "store-mekanix-reference/**", "src/lib/generated/**", "tool-results/**"]
+  ignores: [
+    "node_modules/**", ".next/**", ".next-dev-backup/**", ".next-standalone/**",
+    "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "inspect/**",
+    "download/**", "upload/**", ".zscripts/**", "scripts/**", "mini-services/**",
+    "store-mekanix-reference/**", "src/lib/generated/**", "tool-results/**",
+    // Legacy source snapshots are evidence, not executable project source.
+    "docs/legacy-parity/evidence-18.2.7.2/legacy-files/**"
+  ]
 }];
 
 export default eslintConfig;
