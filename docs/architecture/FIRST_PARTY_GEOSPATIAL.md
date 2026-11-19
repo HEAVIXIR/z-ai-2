@@ -68,25 +68,38 @@ a later infrastructure decision, not silently enabled by this migration.
 - Add self-hosted tile server and offline/rollback procedures before production
   map traffic is enabled.
 
-## Reviewed source candidates (not yet imported)
+## Current canonical location catalog (generated; not seeded)
 
-A public candidate repository, `sajaddp/list-of-cities-in-Iran`, reports a
-versioned 1404 administrative workbook projection with 31 provinces, 484
-counties, 1,193 districts, and 1,672 CODEREC=5 city records. It explicitly
-distinguishes city from county and separately classifies 1,481 real-city
-records and 191 derived urban-zone records. These counts are useful as
-cross-check targets, not as permission to ingest the files.
+HEAVIX now contains a deterministic Country → Province → City catalog built
+from the already-bundled `prisma/data/iran-cities-1404.json` snapshot:
 
-**Important licensing gate:** the candidate repository declares GNU GPL v3.
-HEAVIX must not copy its generated data files into this commercial codebase
-until provenance, applicable data rights, and compatibility have been
-reviewed. The upstream README also says the official source is a Ministry of
-Interior workbook but does not make the repository itself a legal authority.
-Acquire and verify the source through an authorized official channel or obtain
-a compatible explicit data license first. The source-faithful 1,672-record
-projection must not be mistaken for 1,672 distinct real urban cities.
+- Output: `prisma/data/iran-locations-1404.json`
+- Manifest: `prisma/data/iran-locations-1404.manifest.json`
+- Reproduction: `bun run data:locations:check`
+- Counts: 1 country, 31 provinces, 1,479 distinct selectable city labels.
+- Source metadata: 1,481 real-city records; two same-province duplicate names
+  were already collapsed in the bundled snapshot to satisfy the current
+  `(provinceId, name)` uniqueness constraint.
 
-The separate coordinate enrichment in that project comes from GeoNames under
+The bundled source declares GPL-3.0. That provenance is retained in the
+manifest and README; the derivative is not relabeled under another license.
+The manifest remains `rightsReviewStatus: PENDING` and
+`commercialUseAllowed: false`. This does not block continued engineering,
+validation, UI work, or CI. It does keep database seeding/import fail-closed
+until a separate documented review and explicit approval.
+
+The current catalog intentionally excludes county, district, rural district,
+village, and urban-zone entities. No English city names or city coordinates
+were invented. City centroids, when separately sourced and reviewed, must
+never be used as exact equipment coordinates.
+
+The alternative `Hameds/IranCountryDivisions` 1404 source was reviewed but was
+not used to generate the bundled catalog. Its original CSV has not been
+acquired into the repository; its converter remains a separately testable
+intake path, not evidence that the 1,481-row official export was processed.
+
+The catalog and migration files are present in the PR stack. No live database
+seed/import or migration has been executed.s under
 CC BY 4.0 and requires attribution; it is not an official boundary or city
 centroid source. Do not treat it as precise equipment-location data.
 
