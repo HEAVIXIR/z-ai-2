@@ -338,7 +338,7 @@ model GeoZone {
   name              String
   slug              String   @unique
   level             String   // COUNTRY | PROVINCE | CITY | OPERATIONAL | CUSTOM
-  boundaryGeoJson   Json
+  boundaryGeoJson   String
   centerLatitude    Float?
   centerLongitude   Float?
   countryId         String?
