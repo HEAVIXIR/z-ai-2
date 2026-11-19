@@ -36,7 +36,7 @@ ALTER TABLE "BuyRequest"
   FOREIGN KEY ("serviceTypeId") REFERENCES "ServiceType"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- DB-enforced idempotency (closes the concurrent double-submit gap).
-CREATE UNIQUE INDEX "BuyRequest_idempotencyKey_key" ON "BuyRequest"("idempotencyKey");
+CREATE UNIQUE INDEX "BuyRequest_userId_idempotencyKey_key" ON "BuyRequest"("userId", "idempotencyKey");
 
 -- Supporting indexes for structured search/filter/matching.
 CREATE INDEX "BuyRequest_categoryId_idx"      ON "BuyRequest"("categoryId");
