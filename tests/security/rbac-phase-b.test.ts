@@ -40,6 +40,7 @@ const spies = vi.hoisted(() => ({
   userRoleFindMany: vi.fn(),
   userRoleDeleteMany: vi.fn(),
   userRoleUpsert: vi.fn(),
+  auditLogCreate: vi.fn(),
   roleFindUnique: vi.fn(),
   logAudit: vi.fn(),
   getCurrentUser: vi.fn(),
@@ -128,6 +129,7 @@ beforeEach(() => {
   spies.userRoleFindMany.mockResolvedValue([]);
   spies.userRoleDeleteMany.mockResolvedValue({ count: 0 });
   spies.userRoleUpsert.mockResolvedValue({ id: "ur-1" });
+  spies.auditLogCreate.mockResolvedValue({ id: "audit-1" });
   spies.userUpdate.mockImplementation(async (args: any) => ({
     id: "user-123",
     role: args.data.role ?? "BUYER",
@@ -145,7 +147,8 @@ beforeEach(() => {
   // delegate to the same spies (so we can assert call counts).
   spies.$transaction.mockImplementation(async (cb: any) => {
     const mockTx = {
-      user: { update: spies.userUpdate },
+      user: { findUnique: spies.userFindUnique, update: spies.userUpdate },
+      auditLog: { create: spies.auditLogCreate },
       userRole: {
         findMany: spies.userRoleFindMany,
         deleteMany: spies.userRoleDeleteMany,
@@ -316,6 +319,20 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
       try {
         const tx = {
           user: {
+            findUnique: async () => ({
+              id: "user-123",
+              firstName: "User",
+              lastName: "Example",
+              email: "user@example.com",
+              mobile: "1234567890",
+              userType: "INDIVIDUAL",
+              role: dbState.user.role,
+              status: "ACTIVE",
+              companyName: null,
+              emailVerified: false,
+              mobileVerified: false,
+              lastLoginAt: null,
+            }),
             update: async (args: any) => {
               dbState.user.role = args.data.role;
               return {
@@ -331,6 +348,7 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
               };
             },
           },
+          auditLog: { create: async () => ({ id: "audit-mock" }) },
           userRole: {
             findMany: async () => {
               return dbState.userRoles
@@ -425,7 +443,7 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
     // ── Response is 500 ──
     expect(res.status).toBe(500);
     const json = await res.json();
-    expect(json.error).toContain("upsert failed");
+    expect(json.error).toBe("Unable to process user request");
 
     // ── Transaction callback threw → $transaction rethrew ──
     expect(spies.userUpdate).toHaveBeenCalledTimes(1); // ran before throw
@@ -437,5 +455,6 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
     // (logAudit runs OUTSIDE the transaction, AFTER it commits.
     // Since the transaction threw, we never reached logAudit.)
     expect(spies.logAudit).not.toHaveBeenCalled();
+    expect(spies.auditLogCreate).not.toHaveBeenCalled();
   });
 });
