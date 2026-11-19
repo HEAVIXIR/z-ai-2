@@ -1,58 +1,22 @@
 /**
  * HEAVIX — Wanted Service Layer (Phase 7 — Wanted/RFQ/Matching)
  * ------------------------------------------------------------
- * Extracted business logic for the "Wanted" marketplace domain
- * (BuyRequest — buyer posts what they're looking for; matching
- * engine surfaces seller listings as candidates).
+ * Canonical WANTED request service.
  *
- * Responsibilities:
- *   - createWanted({ title, description, quantity, budgetMin,
- *       budgetMax, categoryId, brandId, transactionType,
- *       province, city, userId })
- *       Create a BuyRequest with status=PUBLISHED (publish to the
- *       public marketplace immediately). Maps the task-spec
- *       field names (categoryId, brandId, transactionType,
- *       quantity) onto the actual schema fields (category,
- *       brandPref, transaction). The `quantity` field has no
- *       matching schema column — it's preserved in the audit
- *       `after` payload so the record is self-describing.
- *       Audited as `marketplace.wanted.create`.
+ * createWanted validates demand intent, taxonomy ownership, typed
+ * attributes and required fields, then atomically writes BuyRequest
+ * structured columns plus parent/child attribute rows. Database
+ * idempotency is scoped to the authenticated owner; audit remains a
+ * separate best-effort trail after the canonical transaction commits.
  *
- *   - listWanted({ status, categoryId, limit, offset })
- *       Paginated list of public wanted requests (newest first).
- *       Filters by status (defaults to ACTIVE — the public feed)
- *       and optionally by categoryId. The schema stores `category`
- *       as a free-text string, so `categoryId` is mapped through
- *       the Category table to its name before filtering.
+ * listWanted/getWanted expose canonical taxonomy references and typed
+ * attribute values. Public listing remains limited to published,
+ * active, non-expired requests; owner and moderation reads are separately
+ * access-controlled by their API/page boundaries.
  *
- *   - getWanted(id)
- *       Single wanted request + a `matchCount` derived from the
- *       matching engine (best-effort — never throws; returns 0 on
- *       failure).
- *
- *   - closeWanted(id, userId)
- *       Flip status → CLOSED. Audited as `marketplace.wanted.close`.
- *
- *   - getWantedMatches(id)
- *       Delegates to matching-service.matchBuyRequest + returns
- *       the candidate list. Thin wrapper so the API route stays
- *       stateless — the service owns the audit + error mapping.
- *
- * Audit convention:
- *   - Action keys: `marketplace.wanted.create` | `marketplace.wanted.close`.
- *   - entityType: `BuyRequest`.
- *   - actorType: `USER` (the buyer) for create; `ADMIN` for close.
- *   - All audits are best-effort: a thrown audit helper NEVER
- *     fails the service mutation (mirrors src/lib/admin/audit.ts).
- *
- * Pattern mirrors src/lib/disputes-service.ts + matching-service.ts.
- * NO .env / schema / migration changes — works against the
- * existing BuyRequest schema (status default ACTIVE, columns:
- * title, description, category, brandPref, transaction, budgetMin,
- * budgetMax, city, province, deadline, status, verified, userId,
- * requesterName, requesterPhone, adminNotes, publishedAt, expiresAt).
+ * Lifecycle transitions use the existing state machine and compare-and-
+ * set updates. Audit failures do not roll back canonical mutations.
  */
-
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { matchBuyRequest, BuyRequestMatchResult } from "@/lib/matching-service";
