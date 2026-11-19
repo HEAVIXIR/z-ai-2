@@ -930,3 +930,83 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 
 ### Invariants held
 - No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 remain open/unmerged. No paid services used. Token not leaked in any commit/log/issue.
+
+## 2026-11-19 — PHASE C: moderation hardening (CSRF + state machine + bulk + real admin page)
+
+- Branch: `integration/preview-readiness-workerd-2026-11-15`. Follows the formal corrective directive (#345 comment 7007716404). All P0 moderation-bypass routes closed; publishWanted enforces a real state machine; the real /admin/requests page is complete.
+- Code-validated HEAD: `4649f23`. CI `44517687240` SUCCESS (7 jobs green, 2 skipped per directive — not counted as pass). OpenNext `44517687133` SUCCESS.
+
+### P0-1 CSRF
+- POST /api/admin/requests (bulk) now calls checkCsrf(req), mirroring the single-row PATCH. Cross-site POST can no longer approve/close/fulfill requests on the admin's behalf.
+
+### P0-2 Bypass removal
+- status removed from the PATCH [id] allowed fields list — free-form status editing no longer bypasses the moderation gate.
+- Legacy `activate` action redirected to the controlled publishWanted (existing callers go through the state machine; CLOSED/FULFILLED sent via activate now 409s).
+
+### P0-3 State machine (publishWanted)
+- PENDING → ACTIVE (the only valid approve transition).
+- ACTIVE with valid publishedAt → idempotent no-op (no update, no audit).
+- ACTIVE with null publishedAt → REPAIR (persist publishedAt=now in DB, audited as marketplace.wanted.publish.repair — no fake timestamp).
+- CLOSED/FULFILLED/REJECTED/EXPIRED → 409 (terminal; reopening is a separate action with its own permission + audit).
+
+### P0-4 Bulk approve safety
+- updateMany now constrains by { id in ids, status: PENDING, OR: [expiresAt null, expiresAt > now] } — CLOSED/FULFILLED/ACTIVE/expired rows NOT touched.
+- Response reports approved count + rejected count + rejectedIds (with their status).
+
+### P0-5 Expiry
+- publishWanted reads expiresAt; an expired PENDING request in the moderation queue is rejected with 409.
+
+### P0-6 Repair
+- ACTIVE+null publishedAt is persisted (publishedAt=now in DB), not fabricated. Audited as repair.
+
+### P0-7 Real admin page
+- src/app/admin/requests/page.tsx (the page admins actually see) now has: PENDING in STATUS_CFG + filter + dashboard tile (amber); Rocket approve button on PENDING rows; status removed from edit-modal save (read-only badge); intent labels for SALE_AND_RENT + SERVICE_REQUEST.
+
+### P1-9 Deadline
+- /api/wanted appends T23:59:59 to date-only (YYYY-MM-DD) deadlines → end-of-day, not midnight UTC. No-deadline policy documented (expiresAt=null, stays matchable).
+
+### P1-10 Intent required
+- /api/wanted now REQUIRES a valid intent (400 on empty/whitespace/missing). Legacy compat (intent optional → SALE) lives ONLY in /api/requests adapter.
+
+### P1-11 SERVICE_OFFER comment reconciled
+- Code comment updated: SERVICE_OFFER is a seeded canonical TransactionType (supplemental seed, not in base-6 V1.1 list) and is the canonical service-supply type. The matching map is backed by it.
+
+### P1-12 RFC corrections
+- Idempotency: user-scoped (@@unique([userId, idempotencyKey])) + 409 on payload mismatch (not silent return).
+- Quantity: Decimal(12,3) + quantityUnit controlled-code field (not Int?).
+- Attributes: linked to AttributeDefinition/AttributeOption + specificationProfileVersionId + Prisma reverse relations on all referenced models.
+
+### Behavioral tests (new — not just string assertions)
+- 10 behavioral tests for publishWanted with mocked DB (vi.mock @/lib/db): publish PENDING→ACTIVE, reject CLOSED (409), reject FULFILLED (409), reject expired PENDING (409), idempotent on ACTIVE+valid publishedAt (no update), repair ACTIVE+null publishedAt (persist), 404 on missing, 400 on empty id/adminUserId. These test REAL behavior, not source-string presence.
+- 7 new/updated contract assertions: CSRF on bulk, bulk PENDING+unexpired constraint + rejectedIds, status removal from allowed, repair action, expiry rejection, real /admin/requests page (PENDING + Rocket + status-removed-from-save), intent required + deadline end-of-day.
+
+### Verification (single SHA `4649f23`)
+- typecheck:worker EXIT 0. ESLint clean. esbuild transpile OK.
+- 222 non-DB tests pass (13 files) — incl. 10 new behavioral + 13 updated moderation contract + all existing privacy/intent/taxonomy/eligibility/csrf/phase tests.
+- CI 44517687240 SUCCESS: verify, docker-build-proof, phase-tests, audit-transaction, tls-proof, Workerd smoke, Cloudflare compat. 2 jobs SKIPPED (Legacy Archive Inventory, Preview Diagnostics) — NOT counted as pass per directive.
+- OpenNext 44517687133 SUCCESS.
+
+### Per-criterion status (directive acceptance)
+| # | Directive item | Status |
+|---|---|---|
+| 1 | CSRF on bulk POST | ✅ DONE |
+| 2 | status removal from PATCH + activate redirect | ✅ DONE |
+| 3 | publishWanted state machine (only PENDING→ACTIVE) | ✅ DONE |
+| 4 | Bulk approve PENDING+unexpired + rejected report | ✅ DONE |
+| 5 | publishWanted rejects expired | ✅ DONE |
+| 6 | publishWanted repairs ACTIVE+null publishedAt | ✅ DONE |
+| 7 | Real /admin/requests page complete | ✅ DONE |
+| 8 | B2 = UI routing done / persistence pending | ✅ DOCUMENTED |
+| 9 | Deadline end-of-day + no-deadline policy | ✅ DONE |
+| 10 | Intent required on /api/wanted; legacy only on /api/requests | ✅ DONE |
+| 11 | SERVICE_OFFER comment reconciled | ✅ DONE |
+| 12 | RFC corrections (user-scoped, Decimal, profile version) | ✅ DONE |
+| 13 | Behavioral tests (not just string assertions) | ✅ DONE (10 behavioral + 7 contract) |
+
+### Remaining (NOT closed)
+- Items 4+5 (structural storage + idempotency): RFC corrected; implementation blocked on backup/restore gate.
+- Preview acceptance: still blocked by #346.
+- Branch protection: Integration branch is protected=false; required status checks not enforced. Recommend enabling after compatibility review (no Main/Production change).
+
+### Invariants held
+- No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 remain open/unmerged. No paid services. Token not leaked.
