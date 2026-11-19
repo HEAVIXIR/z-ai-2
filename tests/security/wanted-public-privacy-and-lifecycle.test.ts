@@ -30,6 +30,17 @@ describe("WANTED public privacy and lifecycle safety", () => {
   });
 
 
+
+  it("limits the legacy public feed to a safe DTO", () => {
+    const source = read("src/app/api/requests/route.ts");
+    const publicGet = source.split("/* POST /api/requests")[0];
+    expect(publicGet).toContain("select: {");
+    expect(publicGet).not.toContain("userId: true");
+    expect(publicGet).not.toContain("requesterPhone: true");
+    expect(publicGet).not.toContain("requesterName: true");
+    expect(publicGet).not.toContain("adminNotes: true");
+  });
+
   it("routes the legacy request form through the authenticated canonical service", () => {
     const source = read("src/app/api/requests/route.ts");
     expect(source).toContain("const userId = await getCurrentUserId()");
