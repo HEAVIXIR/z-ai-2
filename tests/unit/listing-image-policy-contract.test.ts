@@ -54,6 +54,7 @@ describe("listing image subscription policy", () => {
   it("enforces active listing caps at the authenticated listing API boundary", () => {
     const route = read("src/app/api/listings/route.ts");
     expect(route).toContain('status: { in: ["PENDING", "PUBLISHED", "SCHEDULED"] }');
+    expect(route).toContain("listingType: { in: [...SUPPLY_LISTING_TYPES] }");
     expect(route).toContain("db.listing.count({ where: activeListingWhere })");
     expect(route).toContain("tx.listing.count({ where: activeListingWhere })");
     expect(route).toContain("Prisma.TransactionIsolationLevel.Serializable");
