@@ -46,7 +46,7 @@ async function readBoundedSubscriptionBody(req: Request): Promise<Record<string,
 function serialize(s: any) {
   return {
     ...s,
-    amount: s.amount ? s.amount.toString() : null,
+    amount: s.amount == null ? null : s.amount.toString(),
   };
 }
 
