@@ -12,7 +12,7 @@ describe("first-party country → province → city picker", () => {
     expect(picker).toContain('fetch("/api/locations", { cache: "no-store" })');
     expect(picker).toContain("`/api/locations?country=${encodeURIComponent(code)}`");
     expect(picker).toContain("`/api/locations?province=${encodeURIComponent(value.provinceId)}`");
-    expect(picker).not.toMatch(/https?:\\/\\//);
+    expect(picker).not.toMatch(/https?:\/\//);
     expect(api).toContain("db.country.findMany");
     expect(api).toContain("db.province.findMany");
     expect(api).toContain("db.city.findMany");
