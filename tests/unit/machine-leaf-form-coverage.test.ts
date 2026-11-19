@@ -48,9 +48,9 @@ describe("definitive machine terminal form coverage", () => {
     expect(missing).toEqual([]);
   });
 
-  it("covers every terminal category under vehicles, attachments, agriculture and industrial equipment", () => {
+  it("covers every terminal category under vehicles, attachments, agriculture, industrial equipment and parts", () => {
     const lines = taxonomyV11.split("\n");
-    const roots = ["vehicles", "attachments", "agriculture", "industrial-equipment"];
+    const roots = ["vehicles", "attachments", "agriculture", "industrial-equipment", "parts"];
     const terminalSlugs: string[] = [];
 
     for (const root of roots) {
@@ -91,8 +91,8 @@ describe("definitive machine terminal form coverage", () => {
     const templateSet = new Set([...literal, ...generated]);
     const missing = terminalSlugs.filter((slug) => !templateSet.has(slug));
 
-    expect(terminalSlugs).toHaveLength(57);
-    expect(new Set(terminalSlugs).size).toBe(57);
+    expect(terminalSlugs).toHaveLength(72);
+    expect(new Set(terminalSlugs).size).toBe(72);
     expect(missing).toEqual([]);
   });
 
@@ -100,6 +100,7 @@ describe("definitive machine terminal form coverage", () => {
     expect(formSeed).toContain("const missingTerminalLeafForms: Template[] = [");
     expect(formSeed).toContain("required: fields.length ? [fields[0].key] : []");
     expect(formSeed).toContain("templates.push(...missingTerminalLeafForms)");
+    expect(formSeed).toContain('const coverageRootSlugs = ["machinery", "vehicles", "attachments", "agriculture", "industrial-equipment", "parts"];');
     expect(formSeed).toContain("if (duplicateAddedLeafSlugs.length)");
   });
 });
