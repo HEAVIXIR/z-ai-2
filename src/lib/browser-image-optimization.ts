@@ -1,4 +1,10 @@
-export const MAX_IMAGE_UPLOAD_BYTES = 4 * 1024 * 1024;
+import {
+  FREE_LISTING_IMAGE_POLICY,
+  PAID_LISTING_IMAGE_POLICY,
+} from "@/lib/listing-image-policy-shared";
+
+export const MAX_IMAGE_UPLOAD_BYTES = PAID_LISTING_IMAGE_POLICY.maxImageBytes;
+export const FREE_MAX_IMAGE_UPLOAD_BYTES = FREE_LISTING_IMAGE_POLICY.maxImageBytes;
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_DECODED_PIXELS = 12_000_000;
 const MAX_IMAGE_DIMENSION = 6_000;
@@ -191,7 +197,8 @@ export async function prepareImageForUpload(
   file: File,
   maxBytes = MAX_IMAGE_UPLOAD_BYTES,
 ): Promise<PreparedImageUpload> {
-  const limit = Math.min(maxBytes, MAX_IMAGE_UPLOAD_BYTES);
+  const requestedLimit = Number.isFinite(maxBytes) ? Math.floor(maxBytes) : FREE_MAX_IMAGE_UPLOAD_BYTES;
+  const limit = Math.max(1, Math.min(requestedLimit, MAX_IMAGE_UPLOAD_BYTES));
   if (file.size <= limit) {
     return { file, originalBytes: file.size, uploadBytes: file.size, compressed: false };
   }
@@ -205,7 +212,7 @@ export async function prepareImageForUpload(
     throw new Error("این فرمت تصویر برای فشرده‌سازی مرورگری پشتیبانی نمی‌شود.");
   }
   if (dimensions.animated) {
-    throw new Error("برای حفظ پویانمایی، فایل متحرک بزرگ‌تر از ۴ مگابایت را باید کوچک‌تر کنید.");
+    throw new Error("برای حفظ پویانمایی، فایل متحرک از سقف مجاز این حساب بزرگ‌تر است و باید نسخه کوچک‌تری انتخاب شود.");
   }
   if (
     !dimensions.width ||
@@ -231,14 +238,14 @@ export async function prepareImageForUpload(
 
     let scale = Math.min(
       1,
-      MAX_OUTPUT_DIMENSION / bitmap.width,
-      MAX_OUTPUT_DIMENSION / bitmap.height,
-      Math.sqrt(MAX_OUTPUT_PIXELS / (bitmap.width * bitmap.height)),
+      MAX_OUTPUT_DIMENSION / decoded.width,
+      MAX_OUTPUT_DIMENSION / decoded.height,
+      Math.sqrt(MAX_OUTPUT_PIXELS / (decoded.width * decoded.height)),
     );
 
     for (let resizeAttempt = 0; resizeAttempt < 4; resizeAttempt++) {
-      const width = Math.max(1, Math.round(bitmap.width * scale));
-      const height = Math.max(1, Math.round(bitmap.height * scale));
+      const width = Math.max(1, Math.round(decoded.width * scale));
+      const height = Math.max(1, Math.round(decoded.height * scale));
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
