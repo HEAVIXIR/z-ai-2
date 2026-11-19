@@ -68,6 +68,11 @@ describe("listing image subscription policy", () => {
     expect(resolver).toContain("FREE_LISTING_IMAGE_POLICY");
   });
 
+  it("fails closed for unrecognized paid plan codes", () => {
+    const resolver = read("src/lib/listing-image-policy.ts");
+    expect(resolver).toContain('if (planCode !== "PRO" && planCode !== "PREMIUM") return FREE_LISTING_IMAGE_POLICY');
+  });
+
   it("enforces the same entitlement at upload and listing creation boundaries", () => {
     const staging = read("src/app/api/media/staging/route.ts");
     const listings = read("src/app/api/listings/route.ts");
