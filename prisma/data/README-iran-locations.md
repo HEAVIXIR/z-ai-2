@@ -44,6 +44,19 @@ IDs are preserved; missing English names and coordinates remain null/absent
 rather than being fabricated. City centroid coordinates are not equipment
 coordinates.
 
+## Reproducible generation
+
+The normalized catalog is generated from the existing bundled source file by:
+
+```sh
+bun run data:locations:check
+bun run data:locations:build
+```
+
+The check command is read-only and exits non-zero if either generated file
+drifts. The build command writes only the two catalog files; it has no
+database, migration, Preview, or Production connection.
+
 ## Integrity
 
 The exact bytes of `iran-locations-1404.json` are SHA-256 checked against
