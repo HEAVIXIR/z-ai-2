@@ -62,9 +62,12 @@ export async function validateBuyRequestAttributeValues(
   isAdmin = false,
   enforceRequired = false,
 ): Promise<BuyRequestAttributeValidation> {
-  const values = incoming as Array<Record<string, unknown>>;
-  if (!Array.isArray(values)) {
+  if (!Array.isArray(incoming)) {
     return { ok: false, error: "attributeValues باید یک آرایه باشد." };
+  }
+  const values = incoming as Array<Record<string, unknown>>;
+  if (values.some((value) => !value || typeof value !== "object" || Array.isArray(value))) {
+    return { ok: false, error: "هر ویژگی باید یک شیء معتبر باشد." };
   }
   if (values.length > 100) {
     return { ok: false, error: "تعداد ویژگی‌ها نمی‌تواند بیش از ۱۰۰ مورد باشد." };
@@ -231,13 +234,18 @@ export async function validateBuyRequestAttributeValues(
     if (attribute.type === "MULTI_SELECT") {
       if (Array.isArray(value.selectedOptionIds)) {
         selectedOptionIds = (value.selectedOptionIds as unknown[])
-          .map((id) => String(id))
+          .map((id) => String(id).trim())
           .filter(Boolean);
       } else if (value.textValue != null && value.textValue !== "") {
+        // Legacy compatibility for older clients that encoded selected IDs
+        // as comma-separated text. This is normalized to child option rows.
         selectedOptionIds = String(value.textValue)
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean);
+      }
+      if (new Set(selectedOptionIds).size !== selectedOptionIds.length) {
+        return { ok: false, error: "گزینهٔ تکراری در ویژگی چندانتخابی مجاز نیست." };
       }
       if (selectedOptionIds.some((oid) => !optionIds.has(oid))) {
         return { ok: false, error: "یکی از گزینه‌های چندانتخابی متعلق به این ویژگی نیست." };
@@ -254,7 +262,9 @@ export async function validateBuyRequestAttributeValues(
       return { ok: false, error: "گزینهٔ انتخاب‌شده متعلق به این ویژگی نیست." };
     }
 
-    const hasText = value.textValue !== undefined && value.textValue !== null && value.textValue !== "";
+    // MULTI_SELECT textValue is a legacy transport encoding only; once
+    // normalized into selectedOptionIds it must not occupy the TEXT slot.
+    const hasText = attribute.type !== "MULTI_SELECT" && value.textValue !== undefined && value.textValue !== null && value.textValue !== "";
     const hasNumber = numberValue !== null;
     const hasBoolean = value.booleanValue !== undefined && value.booleanValue !== null;
     const hasDate = dateValue !== null;
