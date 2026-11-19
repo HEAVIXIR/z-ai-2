@@ -1010,3 +1010,62 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 
 ### Invariants held
 - No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 remain open/unmerged. No paid services. Token not leaked.
+
+## 2026-11-19 — PHASE D: CSRF + CAS + unified state machine (P0-A..D)
+
+- Branch: `integration/preview-readiness-workerd-2026-11-15`. Follows the formal corrective directive (#345 comment 7008488677). All 4 P0 security + state-machine defects closed. Code-validated HEAD: `4c68e41`. CI `44523088245` SUCCESS (7 jobs green, 2 skipped per directive — NOT counted as pass). OpenNext `44523088261` SUCCESS.
+
+### P0-A — CSRF + rate-limit + bounded-body on POST /api/wanted
+- checkCsrf(req) runs BEFORE the body is parsed (origin-checked mutation).
+- WANTED_CREATE rate-limit preset (10/hour, user-scoped, in-process; distributed limiter is a tracked follow-up).
+- readBoundedJson (256 KiB cap) before JSON.parse; oversized → 413, malformed/non-object → 400.
+- intent is required (400 on empty/whitespace/missing); legacy compat (intent optional → SALE) lives ONLY in /api/requests adapter.
+
+### P0-B — bulk approve rejected-ID correctness
+- New bulkTransitionWanted service function reads the eligible set BEFORE the update — so just-transitioned rows are NOT misclassified as rejected (the original bug: the post-update NOT-eligibleWhere query found the just-approved ACTIVE rows as "rejected").
+- Deduplicates + validates + caps ids at 100 (400 on overflow).
+- Returns approved count + rejected ids with their status (incl. "NOT_FOUND" for nonexistent ids).
+- Behavioral tests: all-PENDING, mixed (PENDING+CLOSED+nonexistent), duplicate/oversized/empty batches, expired-in-batch.
+
+### P0-C — publishWanted compare-and-set (race condition)
+- The transition uses updateMany constrained by { id, status: before.status, OR: [expiresAt null, expiresAt > now] }.
+- If CAS affects 0 rows (concurrent transition between read and write), re-read + respond: idempotent ACTIVE if another admin published; 409 if terminal/expired. Terminal state is NEVER overwritten.
+- Repair path also CAS ({ id, status: ACTIVE, publishedAt: null }).
+- Behavioral tests: CAS success, CAS-0→409 (concurrent close), CAS-0→idempotent (concurrent publish).
+
+### P0-D — unified state machine
+- Single ALLOWED_TRANSITIONS matrix: PENDING→{ACTIVE(approve), CLOSED(close), FULFILLED(fulfill)}; ACTIVE→{CLOSED, FULFILLED}; terminal states (CLOSED/FULFILLED/REJECTED/EXPIRED) → {} (no outbound).
+- resolveTransitionTarget(currentStatus, action) is the single source of truth.
+- closeWanted, closeWantedByAdmin (admin variant, no owner check), fulfillWanted all go through the matrix + CAS.
+- Bulk approve/close/fulfill all delegate to bulkTransitionWanted (single canonical path). Legacy 'delete' = bulkTransitionWanted('close').
+- Single-row PATCH [id] close/fulfill delegate to closeWantedByAdmin / fulfillWanted (NOT the generic update). status removed from the allowed list.
+
+### E2E contract test (12 assertions)
+- wizard→/api/wanted (intent+quantity+budget+deadline) → PENDING → admin approve (CAS) → ACTIVE → public feed (ACTIVE+published+unexpired) → matching eligibility (rejects non-ACTIVE/non-published/expired) → owner ?mine=true (all statuses) → admin /admin/requests PENDING queue + approve button.
+
+### Behavioral tests (mocked DB — real behavior)
+- 19 publishWanted behavioral tests (CAS success, reject CLOSED/FULFILLED/expired, idempotent, repair, 2 race-condition tests, 404/400).
+- 7 bulkTransitionWanted behavioral tests (all-PENDING, mixed, dedupe/cap, overflow, empty, terminal-reject, expired-in-batch).
+
+### Verification (single SHA `4c68e41`)
+- typecheck:worker EXIT 0. ESLint clean. 244 non-DB tests pass (14 files).
+
+### Per-criterion status
+| # | Directive item | Status |
+|---|---|---|
+| P0-A | CSRF + rate-limit + bounded-body on /api/wanted | ✅ DONE |
+| P0-B | bulk approve rejected-ID correctness + tests | ✅ DONE |
+| P0-C | publishWanted compare-and-set + race tests | ✅ DONE |
+| P0-D | unified state machine (close/fulfill single + bulk) | ✅ DONE |
+| §5.5 | E2E test (wizard→POST→PENDING→approve→ACTIVE→public→matching→owner) | ✅ DONE (contract; behavioral E2E blocked on DB) |
+| §5.6 | migration design (no execution) | ✅ RFC READY (blocked on backup/restore gate) |
+| §5.7 | typecheck/lint/tests/CI/OpenNext exact-SHA | ✅ DONE |
+
+### Remaining (NOT closed — tracked on #345)
+- Structural storage (quantity/modelId/serviceTypeId/categoryId/brandId/attributeValues): still audit-only; RFC corrected (user-scoped idempotency, Decimal quantity, attribute profile version); migration blocked on backup/restore gate.
+- Behavioral E2E with a real DB: blocked by the preview-database gate (#346). The contract test documents the flow; the behavioral E2E will run once a DB is available.
+- Preview acceptance: still blocked by #346 (HTTP 500 on GET /).
+- Branch protection: Integration protected=false; recommend enabling after compatibility review.
+
+### Invariants held
+- No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 open/unmerged. No paid services. Token not leaked.
