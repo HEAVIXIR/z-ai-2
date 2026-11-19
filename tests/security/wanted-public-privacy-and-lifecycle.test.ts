@@ -80,6 +80,7 @@ describe("WANTED public privacy and lifecycle safety", () => {
   it("records model and typed-attribute snapshot in audit until schema migration", () => {
     const service = read("src/lib/wanted-service.ts");
     expect(service).toContain("modelId: modelId ?? null");
+    expect(service).toContain("serviceTypeId: serviceTypeId ?? null");
     expect(service).toContain("attributeValues: Array.isArray(attributeValues)");
   });
 

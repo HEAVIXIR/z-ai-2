@@ -346,7 +346,12 @@ export default function NewListingPage() {
   const isAuction = transactionType === "AUCTION";
   const isServiceRequest = transactionType === "SERVICE_REQUEST";
   const isServiceOffer = transactionType === "SERVICE_OFFER";
-  const isServiceFlow = isServiceRequest || isServiceOffer;
+  // When the wizard's WANTED flow picks intent=SERVICE_REQUEST, the demand
+  // is a service demand and must use the SERVICE taxonomy (serviceRoots),
+  // service-type fields, and service-step labels — NOT the marketplace
+  // roots that the WANTED listing-type label would otherwise select.
+  const isWantedServiceRequest = transactionType === "WANTED" && wanted.intent === "SERVICE_REQUEST";
+  const isServiceFlow = isServiceRequest || isServiceOffer || isWantedServiceRequest;
   const isMarketplaceFlow = isMarketplaceTransactionType(transactionType);
   const isRequestFlow = isRequestTransactionType(transactionType);
   const categoryRoots = isServiceFlow ? serviceRoots : isMarketplaceFlow ? marketplaceRoots : catalogRoots;

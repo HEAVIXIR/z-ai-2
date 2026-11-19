@@ -27,7 +27,13 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(route).toContain("categoryLayerForTransactionType(transactionType.key)");
     expect(route).toContain("const expectedLayer = categoryLayerForTransactionType(transactionType.key);");
     const wizard = read("src/app/listings/new/page.tsx");
-    expect(wizard).toContain('const isServiceFlow = isServiceRequest || isServiceOffer');
+    // isServiceFlow must be intent-aware: a WANTED request with
+    // intent=SERVICE_REQUEST is a service demand and must use the SERVICE
+    // taxonomy (serviceRoots), service-type fields, and service labels —
+    // NOT the marketplaceRoots that the WANTED listing-type label would
+    // otherwise select.
+    expect(wizard).toContain('const isWantedServiceRequest = transactionType === "WANTED" && wanted.intent === "SERVICE_REQUEST"');
+    expect(wizard).toContain("const isServiceFlow = isServiceRequest || isServiceOffer || isWantedServiceRequest");
     expect(wizard).toContain("const categoryRoots = isServiceFlow ? serviceRoots : isMarketplaceFlow ? marketplaceRoots : catalogRoots");
     expect(wizard).toContain("if (isServiceFlow) return Boolean(serviceTypeId);");
     expect(wizard).toContain('if (transactionType === "QUOTE")');

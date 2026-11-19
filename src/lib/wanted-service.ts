@@ -207,6 +207,7 @@ export async function createWanted(params: {
   requesterName?: string | null;
   requesterPhone?: string | null;
   modelId?: string | null;
+  serviceTypeId?: string | null;
   attributeValues?: unknown[] | null;
   userId: string;
 }): Promise<{ id: string; status: string }> {
@@ -228,6 +229,7 @@ export async function createWanted(params: {
     requesterName = null,
     requesterPhone = null,
     modelId = null,
+    serviceTypeId = null,
     attributeValues = null,
     userId,
   } = params;
@@ -335,6 +337,7 @@ export async function createWanted(params: {
       category: categoryName ?? category ?? null,
       brandPref: brandName ?? brandPref ?? null,
       modelId: modelId ?? null,
+      serviceTypeId: serviceTypeId ?? null, // audit-only until schema migration
       // Structured attribute snapshots are audit-only until the BuyRequest
       // schema has a dedicated specification relation (migration gated).
       attributeValues: Array.isArray(attributeValues) ? attributeValues.slice(0, 100) : [],

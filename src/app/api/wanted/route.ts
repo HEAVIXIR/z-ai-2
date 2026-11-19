@@ -150,6 +150,7 @@ export async function POST(req: Request) {
       // onto the buy intent.
       intent,
       transactionType,
+      serviceTypeId,
       province,
       city,
       provinceId,
@@ -212,6 +213,7 @@ export async function POST(req: Request) {
       attributeValues,
       intent: intent ? String(intent) : null,
       transactionType,
+      serviceTypeId: serviceTypeId ? String(serviceTypeId) : null,
       province: selectedProvince?.name ?? selectedCity?.province.name ?? (requestedProvinceId ? null : province),
       city: selectedCity?.name ?? (requestedCityId ? null : city),
       deadline: normalizedDeadline,
