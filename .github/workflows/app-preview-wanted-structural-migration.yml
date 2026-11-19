@@ -277,7 +277,7 @@ jobs:
           # H.3: verify the FK constraints + unique indexes landed.
           fks="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_constraint WHERE conname IN ('BuyRequest_categoryId_fkey','BuyRequest_brandId_fkey','BuyRequest_modelId_fkey','BuyRequest_serviceTypeId_fkey','BuyRequestAttributeValue_attributeId_fkey','BuyRequestAttributeValue_optionId_fkey','BuyRequestAttributeValue_buyRequestId_fkey','BuyRequestAttributeOption_attributeValueId_fkey','BuyRequestAttributeOption_optionId_fkey')")"
           test "$fks" = "9"
-          uniq="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('BuyRequest_idempotencyKey_key','BuyRequestAttributeValue_buyRequestId_attributeId_key','BuyRequestAttributeOption_attributeValueId_optionId_key')")"
+          uniq="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('BuyRequest_userId_idempotencyKey_key','BuyRequestAttributeValue_buyRequestId_attributeId_key','BuyRequestAttributeOption_attributeValueId_optionId_key')")"
           test "$uniq" = "3"
           {
             echo "## App Preview WANTED structural migration result"
