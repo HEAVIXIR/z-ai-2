@@ -296,8 +296,22 @@ export async function POST(req: Request) {
     if (selectedCity && selectedProvince && selectedCity.province.id !== selectedProvince.id) {
       return NextResponse.json({ error: "شهر با استان انتخاب‌شده مطابقت ندارد." }, { status: 400 });
     }
-    if (requestedCountryId && selectedProvince && selectedProvince.countryId !== requestedCountryId) {
+
+    // Resolve and validate the complete canonical hierarchy once. When only a
+    // city is supplied, its province/country are derived from the City relation.
+    const resolvedProvince = selectedProvince ?? selectedCity?.province ?? null;
+    if (requestedCountryId && resolvedProvince && resolvedProvince.countryId !== requestedCountryId) {
       return NextResponse.json({ error: "استان انتخاب‌شده با کشور انتخاب‌شده مطابقت ندارد." }, { status: 400 });
+    }
+    const resolvedCountryId = resolvedProvince?.countryId ?? requestedCountryId;
+    if (resolvedCountryId) {
+      const country = await db.country.findUnique({
+        where: { id: resolvedCountryId },
+        select: { id: true },
+      });
+      if (!country) {
+        return NextResponse.json({ error: "کشور انتخاب‌شده معتبر نیست." }, { status: 400 });
+      }
     }
 
     const normalizedQuantity = quantity === undefined || quantity === null || quantity === ""
@@ -507,8 +521,11 @@ export async function POST(req: Request) {
       intent: intentStr,
       transactionType: transactionType as string | null | undefined,
       serviceTypeId: serviceTypeId ? String(serviceTypeId) : null,
-      province: selectedProvince?.name ?? selectedCity?.province.name ?? (requestedProvinceId ? null : (province as string | null | undefined)),
+      province: resolvedProvince?.name ?? (requestedProvinceId ? null : (province as string | null | undefined)),
       city: selectedCity?.name ?? (requestedCityId ? null : (city as string | null | undefined)),
+      countryId: resolvedCountryId,
+      provinceId: resolvedProvince?.id ?? null,
+      cityId: selectedCity?.id ?? null,
       deadline: normalizedDeadline,
       requesterName: normalizedRequesterName || null,
       requesterPhone: normalizedRequesterPhone || null,
