@@ -57,6 +57,7 @@ describe("HEAVIX listing wizard end-to-end source contract", () => {
     const routing = read("src/lib/transaction-type-routing.ts");
     const listings = read("src/app/api/listings/route.ts");
     expect(page).toContain('transactionType === "SERVICE_REQUEST" ? "SERVICE_REQUEST" : wanted.intent');
+    expect(page).toContain('body.description = [form.shortDesc.trim(), form.description.trim()]');
     expect(page).toContain('transactionType === "WANTED" || transactionType === "SERVICE_REQUEST"');
     expect(page).toContain('const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings"');
     expect(page).toContain("if (isWantedServiceRequest || isServiceRequest)");
