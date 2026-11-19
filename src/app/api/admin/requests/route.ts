@@ -115,22 +115,27 @@ export async function POST(req: Request) {
       case "unverify": data = { verified: false }; break;
       case "close": data = { status: "CLOSED" }; break;
       case "fulfill": data = { status: "FULFILLED" }; break;
-      case "delete":
-        await db.buyRequest.deleteMany({ where: { id: { in: ids } } });
+      case "delete": {
+        // Preserve marketplace and audit history: the legacy "delete"
+        // action is now a bulk soft-close, never a destructive DB delete.
+        const result = await db.buyRequest.updateMany({
+          where: { id: { in: ids } },
+          data: { status: "CLOSED" },
+        });
         await logAudit({
           actorId: sessionUser.id,
           actorType: "ADMIN",
-          action: "admin.buyRequests.deleteMany",
+          action: "admin.buyRequests.closeMany",
           entityType: "BuyRequest",
           entityId: null,
-          before: { ids },
-          after: { count: ids.length },
-          reason: "via admin API",
+          before: { ids, requestedAction: "delete" },
+          after: { status: "CLOSED", count: result.count },
+          reason: "Legacy bulk delete safely mapped to soft close via admin API",
         });
         // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
         try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests] revalidateTag failed:', e); }
 
-        return NextResponse.json({ ok: true, action, count: ids.length });
+        return NextResponse.json({ ok: true, action: "close", count: result.count });
       default:
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });
     }
