@@ -105,7 +105,7 @@ describe("Preview taxonomy seed safety contracts", () => {
     )).toBe(true);
     expect(seed).toContain('IRAN_LOCATION_DATA.provinces.map((province)');
     expect(seed).toContain('name: "چهارمحال و بختیاری"');
-    expect(seed).toContain("totalCities !== IRAN_LOCATION_DATA.cityCount");
+    expect(seed).toContain("totalCities !== IRAN_LOCATION_DATA.metadata.distinctCityCount");
   });
 
 });
