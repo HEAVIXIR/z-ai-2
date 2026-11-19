@@ -16,8 +16,10 @@ describe('BuyRequest Resource Contract (resource-specific invariants)', () => {
     return;
   }
 
-  it('B1: should have at least 13 fields including required title', () => {
-    expect(cfg.fields.length).toBeGreaterThanOrEqual(13);
+  it('B1: should have at least 12 fields including required title', () => {
+    // P0 audit: status was removed from fields (read-only now, lives in
+    // columns only). The count dropped from 13 to 12. title is still required.
+    expect(cfg.fields.length).toBeGreaterThanOrEqual(12);
     expect(cfg.fields.find(f => f.key === 'title')?.required).toBe(true);
   });
 
