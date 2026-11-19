@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
@@ -80,7 +79,7 @@ export async function GET(_req: Request, { params }: Args) {
   } catch (err: any) {
     trackError(err, { endpoint: "GET /api/admin/payments/[id]" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process payment request" },
       { status: 500 },
     );
   }
@@ -118,11 +117,13 @@ export async function PATCH(req: Request, { params }: Args) {
   await requirePermission(user.id, "payment.manage");
   try {
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
-
-    const existing = await db.payment.findUnique({ where: { id } });
-    if (!existing) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const declaredLength = Number(req.headers.get("content-length") ?? 0);
+    if (Number.isFinite(declaredLength) && declaredLength > 16 * 1024) {
+      return NextResponse.json({ error: "Request body too large" }, { status: 413 });
+    }
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
     const data: any = {};
@@ -136,7 +137,7 @@ export async function PATCH(req: Request, { params }: Args) {
           { status: 400 },
         );
       }
-      data.status = status ?? existing.status;
+      if (status !== null) data.status = status;
     }
 
     // type (validated against allowed enum)
@@ -148,7 +149,7 @@ export async function PATCH(req: Request, { params }: Args) {
           { status: 400 },
         );
       }
-      data.type = type ?? existing.type;
+      if (type !== null) data.type = type;
     }
 
     // gateway (validated against allowed enum)
@@ -178,45 +179,67 @@ export async function PATCH(req: Request, { params }: Args) {
 
     // paidAt (ISO date string or null)
     if ("paidAt" in body) {
-      data.paidAt = body.paidAt === null ? null : new Date(body.paidAt);
+      if (body.paidAt === null) {
+        data.paidAt = null;
+      } else {
+        const paidAt = new Date(body.paidAt);
+        if (!Number.isFinite(paidAt.getTime())) {
+          return NextResponse.json({ error: "paidAt must be a valid date" }, { status: 400 });
+        }
+        data.paidAt = paidAt;
+      }
     }
 
-    // If status is being set to PAID and paidAt is not explicitly provided,
-    // auto-set paidAt to now (matches POST /api/admin/payments markPaid semantics).
-    if (data.status === "PAID" && !("paidAt" in data) && !existing.paidAt) {
-      data.paidAt = new Date();
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: "No editable fields supplied" }, { status: 400 });
     }
 
-    const payment = await db.payment.update({ where: { id }, data });
+    const payment = await db.$transaction(async (tx) => {
+      const existing = await tx.payment.findUnique({ where: { id } });
+      if (!existing) return null;
 
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "payment.update",
-      entityType: "Payment",
-      entityId: payment.id,
-      before: {
-        status: existing.status,
-        type: existing.type,
-        gateway: existing.gateway,
-        trackingCode: existing.trackingCode,
-        paidAt: existing.paidAt?.toISOString() ?? null,
-      },
-      after: {
-        status: payment.status,
-        type: payment.type,
-        gateway: payment.gateway,
-        trackingCode: payment.trackingCode,
-        paidAt: payment.paidAt?.toISOString() ?? null,
-      },
-      reason: "via admin API",
+      // Preserve the existing mark-paid behavior using the transaction's
+      // authoritative before-state rather than an out-of-transaction read.
+      if (data.status === "PAID" && !("paidAt" in data) && !existing.paidAt) {
+        data.paidAt = new Date();
+      }
+
+      const updated = await tx.payment.update({ where: { id }, data });
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "payment.update",
+          entityType: "Payment",
+          entityId: updated.id,
+          beforeJson: JSON.stringify({
+            status: existing.status,
+            type: existing.type,
+            gateway: existing.gateway,
+            trackingCode: existing.trackingCode,
+            paidAt: existing.paidAt?.toISOString() ?? null,
+          }),
+          afterJson: JSON.stringify({
+            status: updated.status,
+            type: updated.type,
+            gateway: updated.gateway,
+            trackingCode: updated.trackingCode,
+            paidAt: updated.paidAt?.toISOString() ?? null,
+          }),
+          reason: "via admin API",
+        },
+      });
+      return updated;
     });
+    if (!payment) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
 
     return NextResponse.json({ ok: true, payment: serialize(payment) });
   } catch (err: any) {
     trackError(err, { endpoint: "PATCH /api/admin/payments/[id]" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process payment request" },
       { status: 500 },
     );
   }
@@ -231,35 +254,41 @@ export async function DELETE(_req: Request, { params }: Args) {
   await requirePermission(user.id, "payment.manage");
   try {
     const { id } = await params;
-    const before = await db.payment.findUnique({ where: { id } });
-    if (!before) {
+    const deleted = await db.$transaction(async (tx) => {
+      const before = await tx.payment.findUnique({ where: { id } });
+      if (!before) return false;
+
+      await tx.payment.delete({ where: { id } });
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "payment.delete",
+          entityType: "Payment",
+          entityId: id,
+          beforeJson: JSON.stringify({
+            userId: before.userId,
+            amount: before.amount.toString(),
+            currency: before.currency,
+            type: before.type,
+            status: before.status,
+            gateway: before.gateway,
+            trackingCode: before.trackingCode,
+          }),
+          reason: "via admin API",
+        },
+      });
+      return true;
+    });
+    if (!deleted) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    await db.payment.delete({ where: { id } });
-
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "payment.delete",
-      entityType: "Payment",
-      entityId: id,
-      before: {
-        userId: before.userId,
-        amount: before.amount.toString(),
-        currency: before.currency,
-        type: before.type,
-        status: before.status,
-        gateway: before.gateway,
-        trackingCode: before.trackingCode,
-      },
-      reason: "via admin API",
-    });
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     trackError(err, { endpoint: "DELETE /api/admin/payments/[id]" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to process payment request" },
       { status: 500 },
     );
   }
