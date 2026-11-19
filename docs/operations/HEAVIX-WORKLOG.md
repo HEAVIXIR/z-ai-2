@@ -1135,3 +1135,67 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 
 ### Invariants held
 - No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 open/unmerged. No paid services. Token not leaked.
+
+## 2026-11-19 — PHASE F: wizard audit + E.1 fixes + P0 wizard bugs (exact-SHA green)
+
+- Branch: `integration/preview-readiness-workerd-2026-11-15`. Follows the master execution directive. Phase F (7-step wizard audit) completed via subagent Explore — full gap inventory produced. E.1 (DELETE error mapping + RequestsClient remove) + P0 wizard bugs (intent selector, budget validation, state hygiene) fixed. Code-validated HEAD: `8493bc0`. CI `44537056469` SUCCESS (7 jobs green, 2 skipped — NOT counted as pass). OpenNext `44537056456` SUCCESS.
+
+### E.1.1 — DELETE route error mapping
+- `src/app/api/admin/requests/[id]/route.ts` catch block now maps `WantedServiceError` to its HTTP status (404/409/400), NOT a blanket 500. A FULFILLED request (terminal) returns 409 — the admin UI shows the correct error + the row stays in its real state.
+
+### E.1.2 — RequestsClient remove + updateStatus + save
+- `remove()`: checks `response.ok`. On error, does NOT remove the row; refreshes the list from the server so the UI matches reality. On success, updates the row to CLOSED (soft-close, not removal).
+- `updateStatus()` + `save()`: show the real server error message (e.g. 409 terminal state) instead of a generic string.
+
+### P0 #1 — WANTED intent selector clears category on change
+- New `handleWantedIntentChange()` clears `categoryId` + `categoryPath` + brand + model + attributes when the user changes the WANTED intent. Fixes the mismatch where a user picks a MARKETPLACE category at Step 2 (default intent=SALE), then switches to intent=SERVICE_REQUEST at Step 6 — the category was mismatched with the service taxonomy. Now the user re-selects with the correct (serviceRoots) taxonomy.
+
+### P0 #3 — /api/wanted budget range validation (server-side)
+- `src/app/api/wanted/route.ts`: added server-side validation for budgetMin ≥ 0, budgetMax ≥ 0, budgetMin ≤ budgetMax. Mirrors the QUOTE checks. Closes the gap where a direct API caller could bypass the client-side checks.
+
+### P1 #4-7 — wizard state hygiene on transaction-type change
+- `handleTransactionTypeChange` now clears: images + imagesUploading, rental fields, form fields, transient UI flags (submitError, attributeWarning, mediaWarning, mediaRepairListingId, submitting). Prevents stale state from polluting a new transaction-type flow.
+
+### Phase F audit — full gap inventory (subagent Explore)
+The audit produced a comprehensive 26-item gap list across the 7 wizard steps. Key findings:
+- **P0 #1** (intent selector timing): FIXED above.
+- **P0 #2** (WANTED structured persistence — quantity/modelId/serviceTypeId/attributeValues audit-only): STILL OPEN — blocked on backup/restore gate for the schema migration. RFC corrected (user-scoped idempotency, Decimal quantity, attribute profile version). No migration executed.
+- **P0 #3** (WANTED budget range validation): FIXED above.
+- **P1 #4-7** (state hygiene): FIXED above.
+- **P1 #8-10** (review screen: location shown as raw IDs, created id not exposed, missing review rows): NOT YET FIXED — next pass.
+- **P2 #11-21** (server-side validation hardening — RENT rentalPeriod, negative deposit, availabilityEnd ordering, description length cap, condition/priceType allowlists, negative year/hours, title length mismatch, deadline seconds mismatch, WANTED categoryId existence): NOT YET FIXED — next pass (single PR to /api/listings + /api/wanted + wanted-service).
+- **P2 #22-24** (UX polish): NOT YET FIXED — next pass.
+
+### Phase H — B2 media audit (read-only)
+The B2 media infrastructure is robust:
+- `/api/media/staging`: auth + CSRF + rate limit (UPLOAD) + content-length check + magic-bytes validation (validateImageBuffer) + image optimization (optimizeImageBuffer) + private/staged storage in B2. Returns `/api/media/<24hex>` stable URL.
+- `uploadAsset`: validates buffer, optimizes, sanitizes filename, stores in B2 staging key, creates MediaAsset row (visibility=PRIVATE, status=STAGED, entityType=Listing, entityId=null).
+- `attachAsset`: idempotent retry for same destination; rejects cross-user attachment (asset.uploadedBy must match userId); rejects re-attachment to a different entity; copies staging → final B2 key; updates MediaAsset status=ATTACHED + entityId.
+- `/api/listings` POST: validates image URL pattern, re-validates ownership/visibility/status, creates ListingImage rows atomically in the listing transaction, then calls attachAsset for each (best-effort; pending ids returned for retry via /api/listings/[id]/media).
+- **WANTED images**: the wizard DISABLES the image uploader for WANTED (BuyRequest has no image relation). A clear message is shown. This is the correct MVP behavior.
+- **Gap (P2)**: no scheduled cleanup of orphaned STAGED assets (a user who uploads then navigates away leaves staged assets forever). This is an operational improvement, not a correctness blocker for the main SALE/RENT/AUCTION flow. Tracked as a follow-up.
+
+### Per-criterion status
+| # | Directive item | Status |
+|---|---|---|
+| E.1.1 | DELETE error mapping | ✅ DONE |
+| E.1.2 | RequestsClient remove + updateStatus + save | ✅ DONE |
+| Phase F | 7-step wizard audit | ✅ DONE (26-item gap inventory) |
+| P0 #1 | Intent selector clears category | ✅ DONE |
+| P0 #2 | WANTED structured persistence | ⏳ RFC READY (blocked on gate) |
+| P0 #3 | WANTED budget range validation | ✅ DONE |
+| P1 #4-7 | Wizard state hygiene | ✅ DONE |
+| P1 #8-10 | Review screen gaps | ⏳ NEXT PASS |
+| P2 #11-21 | Server-side validation hardening | ⏳ NEXT PASS |
+| Phase H | B2 media audit | ✅ DONE (robust; WANTED images correctly disabled; orphan cleanup is P2 follow-up) |
+
+### Remaining (NOT closed — tracked on #345)
+- **WANTED structured persistence** (quantity/modelId/serviceTypeId/attributeValues): RFC corrected; migration blocked on backup/restore gate.
+- **Review screen gaps** (P1 #8-10): location as raw IDs, created id not exposed, missing review rows.
+- **Server-side validation hardening** (P2 #11-21): RENT/AUCTION/WANTED validation gaps.
+- **Behavioral E2E with real DB**: blocked by #346.
+- **Preview acceptance**: still blocked by #346.
+- **Orphaned staged-media cleanup**: P2 operational follow-up.
+
+### Invariants held
+- No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 open/unmerged. No paid services. Token not leaked.
