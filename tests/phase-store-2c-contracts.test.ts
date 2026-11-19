@@ -753,9 +753,11 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       const gaps: string[] = [];
       for (const { path: f, content } of files) {
         const mutMatches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g) || [];
-        const auditMatches = content.match(/await logAudit\(/g) || [];
-        if (mutMatches.length > 0 && auditMatches.length === 0) {
-          gaps.push(f + ': mutations=' + mutMatches.length + ' audits=' + auditMatches.length);
+        const logMatches = content.match(/await logAudit\(/g) || [];
+        const outboxMatches = content.match(/await enqueueAuditOutbox\(/g) || [];
+        const auditMatches = logMatches.length + outboxMatches.length;
+        if (mutMatches.length > 0 && auditMatches === 0) {
+          gaps.push(f + ': mutations=' + mutMatches.length + ' audits=' + auditMatches);
         }
       }
       expect(gaps).toEqual([]);
