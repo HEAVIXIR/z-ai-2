@@ -29,6 +29,15 @@ describe("WANTED public privacy and lifecycle safety", () => {
     expect(closeSection).toContain('actorType: "USER"');
   });
 
+
+  it("routes the legacy request form through the authenticated canonical service", () => {
+    const source = read("src/app/api/requests/route.ts");
+    expect(source).toContain("const userId = await getCurrentUserId()");
+    expect(source).toContain("createWanted({");
+    expect(source).not.toContain("db.buyRequest.create");
+    expect(source).toContain("return NextResponse.json({ ok: true, id: created.id, status: created.status })");
+  });
+
   it("maps legacy admin bulk delete to audited soft-close, never hard delete", () => {
     const source = read("src/app/api/admin/requests/route.ts");
     expect(source).toContain('data: { status: "CLOSED" }');
