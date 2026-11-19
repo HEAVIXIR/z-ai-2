@@ -781,3 +781,46 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 ### Invariants held
 - No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch.
 - PR #347 remains open/unmerged. Issue #345 (WANTED privacy) and Issue #346 (App Preview schema) untouched in scope.
+
+
+---
+
+## 2026-11-19 — Independent audit follow-up: WANTED flow, public supply isolation, and exact-SHA validation
+
+**Audited Integration HEAD:** `27b8822299009e543ee899defef2668687c0a395`  
+**Branch:** `integration/preview-readiness-workerd-2026-11-15`
+
+### Corrective implementation added after independent review
+
+- `5db42036605c46d7fd01236136525be841d390d0` reconnects the seven-step WANTED wizard to `POST /api/wanted`, adds quantity/budget/deadline inputs, validates the numeric/date inputs, and makes the UI explicit that image attachments are not yet persisted for WANTED.
+- `fb3a407d49c7ac65197e15e03b156b9542bc6d55` corrects the digit-normalization regex in the new WANTED fields.
+- The canonical WANTED API now validates quantity and future deadlines, resolves selected province/city IDs to display names, forwards deadline to `createWanted`, and returns both `ok` and `success` for the wizard response contract.
+- Public WANTED enumeration is clamped to ACTIVE requests; the service filters out unpublished and expired records. Public detail returns 404 for non-ACTIVE, unpublished, or expired requests.
+- `073256f59dfec094c59f49a5ef6a45f515e08ef1` constrains both public `/api/listings` search paths (normal and attribute-filter path) to `SUPPLY_LISTING_TYPES`.
+- `02b23fcd16eb734f365fbcf973805cf9fe3040f3` applies the same supply-only boundary to homepage feeds/counts, seller and company profiles, brand pages, listing detail/metadata, and recommendations.
+- `27b8822299009e543ee899defef2668687c0a395` updates the existing source-contract tests to assert the new routing and supply-only filters.
+
+### Exact-SHA evidence
+
+- CI push run `44497734202` on exact SHA `27b8822299009e543ee899defef2668687c0a395`: **SUCCESS**.
+- CI PR run `44497745352` on the same exact SHA: **SUCCESS**.
+- OpenNext run `44497745314` on the same exact SHA: **SUCCESS**.
+- The exact-head CI jobs include successful typecheck, lint, security tests, integration test files, all contract + unit tests, E2E smoke tests, production build, Docker image build, TLS proof, audit-transaction, phase-tests, Workerd smoke, and Cloudflare compatibility. The read-only paired migration diagnostics and legacy archive inventory were skipped; skipped is not a pass.
+- The prior Preview run `44496877409` deployed the Integration Worker from `02b23fcd16eb734f365fbcf973805cf9fe3040f3` (the application source is unchanged by the later test-only commit `27b8822`) and failed the root acceptance gate: `GET /` HTTP 500 while `GET /api/health` returned HTTP 200 with both DB checks up. No Production deploy was invoked.
+
+### Remaining WANTED acceptance gaps — not to be represented as complete
+
+- Quantity remains audit-only because BuyRequest has no quantity column; model ID and attribute snapshots are also audit-only pending an approved schema change. No migration was performed.
+- The wizard currently identifies the aggregate as WANTED, but does not yet capture a separate purchase/rental/service intent. `BuyRequest.transaction` therefore receives the WANTED value, while AI matching filters candidates to supply types but does not yet map each request intent to the compatible supply type. Cross-type matches remain possible; product semantics must be defined before implementing that mapping.
+- `createWanted` currently creates ACTIVE records with `publishedAt = now`; any required moderation/review-before-publication policy remains unverified and must not be assumed satisfied.
+- The canonical flow does not yet persist WANTED image attachments. The UI now discloses this rather than implying they are saved.
+
+### Preview / release boundary
+
+- Issue #346 remains the Preview blocker. The latest Preview acceptance above still fails at homepage HTTP 500; the workflow log does not itself expose the SQL exception. Previously recorded Cloudflare telemetry associated the Preview failures with missing `Listing.serviceTypeId` (SQLSTATE 42703); re-confirm through read-only telemetry before any migration.
+- PR #340 remains OPEN / DRAFT / NOT MERGED. PR #347 remains OPEN / NOT MERGED. No Main merge, Production deployment, DNS change, schema migration, seed, or database write was performed.
+- No Store Preview or Production database was touched. The paired Preview migration workflow was not dispatched.
+
+### Secret-handling evidence boundary
+
+- Repository code search did not return a literal GitHub token; it found only an older verification document mentioning a token prefix/length and a local path. The external agent's claim that its local token copy was deleted cannot be independently verified through the GitHub connection. If the actual token was exposed in plaintext, logs, or shell history, revoke/rotate it rather than relying on local file deletion.
