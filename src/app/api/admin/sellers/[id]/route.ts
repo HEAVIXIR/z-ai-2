@@ -80,12 +80,12 @@ export async function GET(
  *              + audit marketplace.seller.verify
  *   suspend  — flip FoundingSeller.active=false + User.status=BLOCKED
  *              + audit marketplace.seller.suspend (reason required)
- *   register — set User.role=SELLER + create FoundingSeller
+ *   register — assign canonical UserRole=SELLER + create FoundingSeller
  *              (PENDING) + audit marketplace.seller.register
  *
  * Permission: user.update (canonical admin write gate for user
  *   lifecycle — verify + suspend mutate user state; register
- *   also flips User.role which is a user-level mutation).
+ *   also assigns a canonical UserRole which is a user-level mutation).
  *
  * The service layer calls logAudit with the canonical action keys
  * (marketplace.seller.verify / marketplace.seller.suspend /
