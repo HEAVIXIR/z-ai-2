@@ -6,7 +6,7 @@ const read = (path: string) => fs.readFileSync(path, "utf8");
 describe("WANTED public privacy and lifecycle safety", () => {
   it("does not select or return owner IDs in the public list service", () => {
     const source = read("src/lib/wanted-service.ts");
-    const listSection = source.split("// ── getWanted ──")[0];
+    const listSection = source.split("// ── listWanted ──")[1]?.split("// ── getWanted ──")[0] ?? "";
     expect(listSection).not.toContain("userId: true");
     expect(listSection).not.toMatch(/userId:\s*string\s*\|\s*null/);
   });
