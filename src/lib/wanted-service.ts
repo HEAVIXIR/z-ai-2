@@ -213,6 +213,9 @@ export async function createWanted(params: {
   transactionType?: string | null;
   province?: string | null;
   city?: string | null;
+  countryId?: string | null;
+  provinceId?: string | null;
+  cityId?: string | null;
   deadline?: string | null;
   requesterName?: string | null;
   requesterPhone?: string | null;
@@ -242,6 +245,9 @@ export async function createWanted(params: {
     transactionType = null,
     province = null,
     city = null,
+    countryId = null,
+    provinceId = null,
+    cityId = null,
     deadline = null,
     requesterName = null,
     requesterPhone = null,
@@ -368,6 +374,9 @@ export async function createWanted(params: {
           budgetMax: toBigInt(budgetMax),
           city: city ? String(city).slice(0, 120) : null,
           province: province ? String(province).slice(0, 120) : null,
+          countryId: countryId ?? null,
+          provinceId: provinceId ?? null,
+          cityId: cityId ?? null,
           deadline: deadline ? String(deadline).slice(0, 120) : null,
           publishedAt,
           expiresAt,
@@ -483,6 +492,9 @@ export async function createWanted(params: {
       transactionType: resolvedIntent,
       province: province ?? null,
       city: city ?? null,
+      countryId: countryId ?? null,
+      provinceId: provinceId ?? null,
+      cityId: cityId ?? null,
       // Lifecycle timestamps — recorded so the audit trail proves
       // expiration was wired (expiresAt derived from deadline). For a
       // PENDING request publishedAt is null until admin approval.
