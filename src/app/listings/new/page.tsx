@@ -476,11 +476,17 @@ export default function NewListingPage() {
         const quantity = Number(wanted.quantity);
         const min = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\d]/g, "")) : null;
         const max = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\d]/g, "")) : null;
+        const exactPrice = form.price.trim();
+        const hasExactPrice = exactPrice.length > 0;
+        const exactPriceValid = !hasExactPrice || /^\d+$/.test(exactPrice);
+        const exactPriceConflictsWithRange = hasExactPrice && (min !== null || max !== null);
         const deadline = wanted.deadline ? new Date(`${wanted.deadline}T23:59:00`) : null;
         return Number.isInteger(quantity) && quantity >= 1 && quantity <= 10000 &&
           (min === null || min >= 0n) &&
           (max === null || max >= 0n) &&
           (min === null || max === null || min <= max) &&
+          exactPriceValid &&
+          !exactPriceConflictsWithRange &&
           (!deadline || (!Number.isNaN(deadline.getTime()) && deadline.getTime() > Date.now()));
       }
       if (isRequestFlow) return true;
@@ -1385,7 +1391,7 @@ export default function NewListingPage() {
                           </div>
                           <div>
                             <label className={labelCls}>
-                              {isRequestFlow ? "بودجه یا قیمت پیشنهادی (اختیاری)" : isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
+                              {transactionType === "WANTED" ? "قیمت پیشنهادی دقیق (اختیاری؛ به‌جای بازه بودجه)" : isRequestFlow ? "بودجه یا قیمت پیشنهادی (اختیاری)" : isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
                               {!isRequestFlow && "*"}
                             </label>
                             <input
@@ -1396,20 +1402,22 @@ export default function NewListingPage() {
                               className={inputCls}
                             />
                           </div>
-                          <div>
-                            <label className={labelCls}>نوع قیمت</label>
-                            <select
-                              value={isAuction ? "AUCTION" : form.priceType}
-                              onChange={(e) => set("priceType", e.target.value)}
-                              disabled={isAuction}
-                              className={inputCls}
-                            >
-                              <option value="NEGOTIABLE">توافقی</option>
-                              <option value="FIXED">مقطوع</option>
-                              <option value="CALL_FOR_PRICE">تماس بگیرید</option>
-                              <option value="AUCTION">مزایده</option>
-                            </select>
-                          </div>
+                          {!isRequestFlow && (
+                            <div>
+                              <label className={labelCls}>نوع قیمت</label>
+                              <select
+                                value={isAuction ? "AUCTION" : form.priceType}
+                                onChange={(e) => set("priceType", e.target.value)}
+                                disabled={isAuction}
+                                className={inputCls}
+                              >
+                                <option value="NEGOTIABLE">توافقی</option>
+                                <option value="FIXED">مقطوع</option>
+                                <option value="CALL_FOR_PRICE">تماس بگیرید</option>
+                                <option value="AUCTION">مزایده</option>
+                              </select>
+                            </div>
+                          )}
                         </div>
                       )}
 
