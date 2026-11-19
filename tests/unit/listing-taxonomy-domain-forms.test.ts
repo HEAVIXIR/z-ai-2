@@ -42,7 +42,7 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     // for WANTED+SERVICE_REQUEST, runs the quantity/budget/deadline checks.
     expect(wizard).toContain("if (isServiceFlow) {");
     expect(wizard).toContain("if (!serviceTypeId) return false;");
-    expect(wizard).toContain("if (isWantedServiceRequest) {");
+    expect(wizard).toContain("if (isWantedServiceRequest || isServiceRequest) {");
     expect(wizard).toContain('if (transactionType === "QUOTE")');
     expect(wizard).toContain("if (isRequestFlow) return true");
   });
