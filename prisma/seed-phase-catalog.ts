@@ -47,9 +47,12 @@
  *
  * Run:
  *   bunx tsx prisma/seed-phase-catalog.ts
+ *   (requires NODE_ENV=test, HEAVIX_ALLOW_TEST_FIXTURE_SEED=1,
+ *    and a local DATABASE_URL database ending in _test)
  *   or: bun run db:seed-phase-catalog
  */
 import { db } from "../src/lib/db";
+import { assertTestSeedTarget } from "./test-seed-guard";
 import bcrypt from "bcryptjs";
 
 // ════════════════════════════════════════════════════════════
@@ -90,6 +93,7 @@ async function findOrCreate<T>(params: {
 // ════════════════════════════════════════════════════════════
 
 async function main() {
+  assertTestSeedTarget("seed-phase-catalog.ts");
   console.log("=== STEP 13.53 Phase C — P2-B SEED PHASE CATALOG ===\n");
 
   // Compute the fixture password hash now (top-level await is not supported

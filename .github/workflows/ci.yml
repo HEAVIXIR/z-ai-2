@@ -67,6 +67,9 @@ jobs:
       - name: Seed RBAC
         run: bun run db:seed-rbac
       - name: Seed catalog data
+        env:
+          NODE_ENV: "test"
+          HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
         run: |
           bun run db:seed-brands-a
           bun run db:seed-brands-b
@@ -268,6 +271,8 @@ jobs:
       STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
       ADMIN_USERNAME: "ci-admin"
       ADMIN_PASSWORD: "ci-password-not-real"
+      NODE_ENV: "test"
+      HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -324,6 +329,8 @@ jobs:
       STORE_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heavix_store_test?schema=public"
       ADMIN_USERNAME: "ci-admin"
       ADMIN_PASSWORD: "ci-password-not-real"
+      NODE_ENV: "test"
+      HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -344,6 +351,9 @@ jobs:
           bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
           bunx prisma db push --accept-data-loss --schema=prisma/store/schema.prisma
       - name: Seed RBAC + catalog
+        env:
+          NODE_ENV: "test"
+          HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
         run: |
           bun run db:seed-rbac
           bun run db:seed-brands-a
@@ -351,6 +361,9 @@ jobs:
           bun run db:seed-user-roles
           bun run db:seed-test-fixtures
       - name: Seed phase catalog (STEP 13.53 P2-B)
+        env:
+          NODE_ENV: "test"
+          HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
         run: bun run db:seed-phase-catalog
       - name: Phase integration tests (real status, no masking)
         run: bunx vitest run tests/phase*.test.ts
