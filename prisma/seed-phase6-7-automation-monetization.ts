@@ -10,8 +10,10 @@
  *
  * Phase 7 — Monetization:
  * - SubscriptionPlans (BASIC/PRO/PREMIUM)
- * - Payment records
- * - PremiumSubscription for existing users
+ *
+ * This seed intentionally does NOT fabricate Payment or PremiumSubscription
+ * rows. Financial settlement and entitlements must come from verified,
+ * audited operational flows, never from user ordering or demo seed data.
  */
 import { db } from "../src/lib/db";
 
@@ -192,58 +194,10 @@ async function main() {
   }
   console.log(`  ✓ ${planCount} subscription plans created/updated`);
 
-  // 7. Seed Payment records
-  console.log("\n7. Seeding Payment records...");
-  const users = await db.user.findMany({ take: 2 });
-  let paymentCount = 0;
-  for (let i = 0; i < users.length; i++) {
-    const existing = await db.payment.findFirst({ where: { userId: users[i].id } }).catch(() => null);
-    if (!existing) {
-      await db.payment.create({
-        data: {
-          userId: users[i].id,
-          amount: i === 0 ? 2900000n : 0n,
-          currency: "IRR",
-          type: i === 0 ? "SUBSCRIPTION" : "FEATURED_LISTING",
-          status: i === 0 ? "PAID" : "PENDING",
-          gateway: i === 0 ? "MANUAL" : null,
-          paidAt: i === 0 ? new Date() : null,
-        },
-      }).catch(() => {});
-      paymentCount++;
-    }
-  }
-  console.log(`  ✓ ${paymentCount} payment records created`);
-
-  // 8. Seed PremiumSubscription for admin user
-  console.log("\n8. Seeding PremiumSubscription...");
-  const adminUser = users[0];
-  if (adminUser) {
-    const existing = await db.premiumSubscription.findUnique({ where: { userId: adminUser.id } }).catch(() => null);
-    if (!existing) {
-      const expiresAt = new Date();
-      expiresAt.setMonth(expiresAt.getMonth() + 1);
-      await db.premiumSubscription.create({
-        data: {
-          userId: adminUser.id,
-          plan: "PREMIUM",
-          status: "ACTIVE",
-          startedAt: new Date(),
-          expiresAt,
-          featuredCredits: 50,
-          analyticsAccess: true,
-          aiAssistantAccess: true,
-          priorityLeads: true,
-          companyPage: true,
-          amount: 8900000n,
-          paymentRef: "MANUAL-SEED",
-        },
-      });
-      console.log("  ✓ Premium subscription (PREMIUM plan) assigned to admin user");
-    } else {
-      console.log("  ✓ Premium subscription already exists");
-    }
-  }
+  // 7. Do not seed synthetic financial records or paid entitlements.
+  // A fabricated PAID payment or PREMIUM subscription could grant access
+  // to an arbitrary first user and corrupt the financial ledger.
+  console.log("\n7. Skipping synthetic Payment and PremiumSubscription records.");
 
   console.log("\n=== PHASE 6+7 SEED COMPLETE ===");
 }
