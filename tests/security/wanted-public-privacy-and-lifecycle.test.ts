@@ -64,7 +64,8 @@ describe("WANTED public privacy and lifecycle safety", () => {
 
   it("routes the WANTED wizard through the canonical BuyRequest API", () => {
     const page = read("src/app/listings/new/page.tsx");
-    expect(page).toContain('transactionType === "WANTED" ? "/api/wanted" : "/api/listings"');
+    expect(page).toContain('const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST"');
+    expect(page).toContain('const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings"');
     expect(page).toContain("body.deadline");
     expect(page).toContain("body.quantity");
   });
