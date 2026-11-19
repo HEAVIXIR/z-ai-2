@@ -57,6 +57,32 @@ The check command is read-only and exits non-zero if either generated file
 drifts. The build command writes only the two catalog files; it has no
 database, migration, Preview, or Production connection.
 
+## Controlled database seed
+
+A separate idempotent seed runner is available:
+
+```sh
+bun run db:seed-iran-locations
+```
+
+This is a **dry-run by default**. It verifies the exact dataset bytes against
+the manifest SHA-256, checks the 1 + 31 + 1,479 hierarchy and stable source
+codes, prints the proposed upsert counts, and does not instantiate Prisma or
+open a database connection.
+
+The apply path is deliberately gated and is not part of normal deployment:
+
+```sh
+HEAVIX_ENV=preview HEAVIX_ALLOW_PREVIEW_LOCATION_SEED=1 \
+  bun run db:seed-iran-locations -- --apply --confirm-preview-location-seed
+```
+
+Even with those flags, apply remains blocked while the manifest rights gate is
+pending. After a separately documented approval, the runner may only write to
+Preview. It upserts by stable source code or existing parent/name unique keys,
+preserves existing city coordinates when present, inserts no fabricated
+coordinates, and never deletes records. It does not run migrations.
+
 ## Integrity
 
 The exact bytes of `iran-locations-1404.json` are SHA-256 checked against
