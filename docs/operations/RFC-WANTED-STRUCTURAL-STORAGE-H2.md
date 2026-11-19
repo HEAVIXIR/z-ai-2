@@ -496,3 +496,25 @@ live in `tests/integration/wanted-structural-storage-roundtrip.test.ts`
       visibility after moderation).
 
 Until every box above is checked, this migration stays a proposal.
+
+---
+
+## H.3 implementation supersession notice — 2026-11-19
+
+**This H.2 RFC is historical design evidence, not the executable migration specification.** The H.2 single-table / partial-index approach was rejected after the design audit. Do not implement or apply its earlier SQL snippets.
+
+The current Integration implementation is defined by:
+
+- `prisma/schema.prisma` and the structurally synchronized `prisma/preview-schema.prisma`
+- `prisma/migrations/20261119160000_wanted_structural_storage/migration.sql`
+- `src/lib/buy-request-attributes.ts` and `src/lib/wanted-service.ts`
+
+H.3 supersedes the conflicting H.2 details as follows:
+
+1. **MULTI_SELECT:** one `BuyRequestAttributeValue` parent per `(buyRequestId, attributeId)`; one `BuyRequestAttributeOption` child per selected option. No partial unique indexes and no `SET NULL` uniqueness collision.
+2. **Idempotency:** owner-scoped `@@unique([userId, idempotencyKey])` and SQL index `BuyRequest_userId_idempotencyKey_key`; do not use the earlier global `BuyRequest_idempotencyKey_key` proposal.
+3. **Canonical fields:** quantity, categoryId, brandId, modelId, serviceTypeId and intent are persisted on BuyRequest; typed attribute values are relational rows, not audit-only snapshots.
+4. **Validation:** type/slot, option ownership, category ancestry/model membership and required attributes are enforced server-side before the atomic write. Empty optional MULTI_SELECT values are omitted by the shared wizard payload builder.
+5. **Read paths:** `getWanted`, `listWanted`, `/api/wanted?mine=true` and the owner dashboard use canonical fields/relations.
+
+**Release state:** H.3 code and migration are authored on Integration, but the WANTED migration has NOT been applied to App Preview. The guarded workflow is separately exposed through PR #349 and requires PR #347's #346 migration to be reviewed and applied first. No Main merge, Store Preview mutation or Production operation is implied by this addendum.
