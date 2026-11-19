@@ -39,7 +39,19 @@ describe("WANTED journey source-contract (NOT behavioral E2E)", () => {
     expect(page).toContain("body.intent = wanted.intent");
     expect(page).toContain("body.quantity = Number(wanted.quantity)");
     expect(page).toContain("body.budgetMin = wanted.budgetMin");
+    expect(page).toContain("sellerName: form.sellerName || undefined");
+    expect(page).toContain("sellerPhone: form.sellerPhone || undefined");
     expect(page).toContain("body.deadline =");
+  });
+
+  it("POST /api/wanted preserves contact details, requires category, and persists a suggested price as an exact budget", () => {
+    const route = read("src/app/api/wanted/route.ts");
+    expect(route).toContain("requesterName: normalizedRequesterName || null");
+    expect(route).toContain("requesterPhone: normalizedRequesterPhone || null");
+    expect(route).toContain("if (!requestedCategoryId)");
+    expect(route).toContain("const effectiveBudgetMin = hasSuggestedPrice ? price : budgetMin");
+    expect(route).toContain("const effectiveBudgetMax = hasSuggestedPrice ? price : budgetMax");
+    expect(route).toContain("هر دو هم‌زمان مجاز نیستند");
   });
 
   it("POST /api/wanted enforces CSRF + rate-limit + bounded-body + intent-required (P0-A)", () => {
