@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { storeDb } from '@/lib/store-db';
-import { adjustStock } from '@/lib/store-inventory-service';
+import { adjustStock, createMovement } from '@/lib/store-inventory-service';
 import { resolveReturn } from '@/lib/store-returns-service';
 
 const suffix = () => String(Date.now()) + '-' + Math.random().toString(36).slice(2, 10);
@@ -57,6 +57,7 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       customerId = undefined;
     }
     if (partId) {
+      await storeDb.auditOutbox.deleteMany({ where: { payloadJson: { contains: partId } } });
       await storeDb.stockMovement.deleteMany({ where: { partId } });
       await storeDb.inventoryBalance.deleteMany({ where: { partId } });
       await storeDb.part.deleteMany({ where: { id: partId } });
@@ -71,6 +72,56 @@ describe('Store inventory and return atomicity (real PostgreSQL)', () => {
       categoryId = undefined;
     }
   });
+
+  it('serializes concurrent legacy-only movements with compare-and-set and transactional outbox', async () => {
+    if (!partId) throw new Error('fixture setup incomplete');
+
+    const outcomes = await Promise.allSettled([
+      createMovement(partId, 'RECEIVE', 2, 'legacy CAS test'),
+      createMovement(partId, 'RECEIVE', 3, 'legacy CAS test'),
+    ]);
+
+    expect(outcomes.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((x) => x.status === 'rejected')).toHaveLength(1);
+
+    const [part, movements, outbox] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.stockMovement.findMany({ where: { partId } }),
+      storeDb.auditOutbox.findMany({ where: { payloadJson: { contains: partId } } }),
+    ]);
+
+    expect([12, 13]).toContain(part?.stock);
+    expect(movements).toHaveLength(1);
+    expect(movements[0]?.balanceAfter).toBe(part?.stock);
+    expect(outbox).toHaveLength(2);
+  }, 15000);
+
+  it('rejects warehouse-less legacy movement for warehouse-managed parts without side effects', async () => {
+    if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
+
+    await storeDb.inventoryBalance.create({
+      data: {
+        partId,
+        warehouseId,
+        quantity: 10,
+        reserved: 0,
+        lowStockThreshold: 5,
+      },
+    });
+
+    await expect(
+      createMovement(partId, 'RECEIVE', 2, 'must choose warehouse'),
+    ).rejects.toMatchObject({ status: 409 });
+
+    const [part, movementCount, outboxCount] = await Promise.all([
+      storeDb.part.findUnique({ where: { id: partId }, select: { stock: true } }),
+      storeDb.stockMovement.count({ where: { partId } }),
+      storeDb.auditOutbox.count({ where: { payloadJson: { contains: partId } } }),
+    ]);
+    expect(part?.stock).toBe(10);
+    expect(movementCount).toBe(0);
+    expect(outboxCount).toBe(0);
+  }, 15000);
 
   it('serializes competing stock decrements and keeps balance, snapshot, and ledger consistent', async () => {
     if (!partId || !warehouseId) throw new Error('fixture setup incomplete');
