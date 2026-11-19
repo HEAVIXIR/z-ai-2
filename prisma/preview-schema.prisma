@@ -287,6 +287,8 @@ model Country {
   createdAt DateTime @default(now())
   provinces Province[]
   listings  Listing[]
+  buyRequests BuyRequest[] @relation("BuyRequestCountry")
+  geoZones GeoZone[] @relation("GeoZoneCountry")
 }
 
 model Province {
@@ -300,6 +302,8 @@ model Province {
   createdAt DateTime @default(now())
   cities    City[]
   listings  Listing[] @relation("ListingProvince")
+  buyRequests BuyRequest[] @relation("BuyRequestProvince")
+  geoZones GeoZone[] @relation("GeoZoneProvince")
   @@unique([countryId, name])
 }
 
@@ -314,8 +318,29 @@ model City {
   sortOrder  Int     @default(0)
   createdAt  DateTime @default(now())
   listings   Listing[] @relation("ListingCity")
+  buyRequests BuyRequest[] @relation("BuyRequestCity")
   branches   CompanyBranch[]
   @@unique([provinceId, name])
+}
+
+model GeoZone {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  level             String
+  boundaryGeoJson   String
+  centerLatitude    Float?
+  centerLongitude   Float?
+  countryId         String?
+  country           Country?  @relation("GeoZoneCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  provinceId        String?
+  province          Province? @relation("GeoZoneProvince", fields: [provinceId], references: [id], onDelete: SetNull)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@index([level, isActive])
+  @@index([countryId, isActive])
+  @@index([provinceId, isActive])
 }
 
 model AttributeDefinition {
@@ -484,6 +509,10 @@ model Listing {
   condition    String?
   province     String?
   city         String?
+  locationLatitude       Float?
+  locationLongitude      Float?
+  locationAccuracyMeters Float?
+  locationUpdatedAt      DateTime?
   year         Int?
   workingHours Int?
   status       String         @default("PUBLISHED")
@@ -565,6 +594,8 @@ model Listing {
   reviews        Review[]
   deals          Deal[]
   @@index([serviceTypeId])
+  @@index([countryId, provinceId, cityId])
+  @@index([locationLatitude, locationLongitude])
 }
 
 model ListingImage {
@@ -592,6 +623,13 @@ model BuyRequest {
   budgetMax   BigInt?
   city        String?
   province    String?
+  countryId   String?
+  provinceId  String?
+  cityId      String?
+  locationLatitude       Float?
+  locationLongitude      Float?
+  locationAccuracyMeters Float?
+  locationUpdatedAt      DateTime?
   deadline    String?
   status      String   @default("ACTIVE")
   verified    Boolean  @default(false)
@@ -616,6 +654,9 @@ model BuyRequest {
   brandRef        Brand?           @relation("BuyRequestBrand",   fields: [brandId],       references: [id], onDelete: SetNull)
   modelRef        ProductModel?    @relation("BuyRequestModel",   fields: [modelId],       references: [id], onDelete: SetNull)
   serviceTypeRef  ServiceType?     @relation("BuyRequestService", fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  countryRef      Country?         @relation("BuyRequestCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  provinceRef     Province?        @relation("BuyRequestProvince", fields: [provinceId], references: [id], onDelete: SetNull)
+  cityRef         City?            @relation("BuyRequestCity", fields: [cityId], references: [id], onDelete: SetNull)
   attributeValues BuyRequestAttributeValue[]
   // Idempotency keys are scoped to the authenticated owner; different users
   // may legitimately generate the same client-side key without colliding.
@@ -626,6 +667,8 @@ model BuyRequest {
   @@index([status, expiresAt])
   @@index([userId, status])
   @@index([intent])
+  @@index([countryId, provinceId, cityId])
+  @@index([locationLatitude, locationLongitude])
 }
 
 model BuyRequestAttributeValue {
