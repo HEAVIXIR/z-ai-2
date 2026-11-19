@@ -390,8 +390,8 @@ export default function NewListingPage() {
       }
       if (transactionType === "WANTED") {
         const quantity = Number(wanted.quantity);
-        const min = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\\d]/g, "")) : null;
-        const max = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\\d]/g, "")) : null;
+        const min = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\d]/g, "")) : null;
+        const max = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\d]/g, "")) : null;
         const deadline = wanted.deadline ? new Date(`${wanted.deadline}T23:59:00`) : null;
         return Number.isInteger(quantity) && quantity >= 1 && quantity <= 10000 &&
           (min === null || min >= 0n) &&
@@ -1075,7 +1075,7 @@ export default function NewListingPage() {
                           <div className="grid gap-4 sm:grid-cols-2">
                             <div>
                               <label className={labelCls}>تعداد موردنیاز *</label>
-                              <input value={wanted.quantity} onChange={(e) => setWanted((v) => ({ ...v, quantity: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                              <input value={wanted.quantity} onChange={(e) => setWanted((v) => ({ ...v, quantity: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
                             </div>
                             <div>
                               <label className={labelCls}>مهلت موردنیاز (اختیاری)</label>
@@ -1083,11 +1083,11 @@ export default function NewListingPage() {
                             </div>
                             <div>
                               <label className={labelCls}>حداقل بودجه (تومان)</label>
-                              <input value={wanted.budgetMin} onChange={(e) => setWanted((v) => ({ ...v, budgetMin: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                              <input value={wanted.budgetMin} onChange={(e) => setWanted((v) => ({ ...v, budgetMin: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
                             </div>
                             <div>
                               <label className={labelCls}>حداکثر بودجه (تومان)</label>
-                              <input value={wanted.budgetMax} onChange={(e) => setWanted((v) => ({ ...v, budgetMax: e.target.value.replace(/[^\\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                              <input value={wanted.budgetMax} onChange={(e) => setWanted((v) => ({ ...v, budgetMax: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
                             </div>
                           </div>
                           <p className="mt-3 text-xs text-white/55">تعداد فعلاً در سابقه ممیزی نگهداری می‌شود؛ ذخیره ساختاریافته تعداد نیازمند تکمیل مدل داده است.</p>
