@@ -80,7 +80,10 @@ describe("HEAVIX listing wizard end-to-end source contract", () => {
     const wantedApi = read("src/app/api/wanted/route.ts");
     const wizard = read("src/app/listings/new/page.tsx");
     expect(wantedApi).toContain("const requestedCountryId = countryId ? String(countryId) : null");
-    expect(wantedApi).toContain("selectedProvince.countryId !== requestedCountryId");
+    expect(wantedApi).toContain("resolvedProvince.countryId !== requestedCountryId");
+    expect(wantedApi).toContain("countryId: resolvedCountryId");
+    expect(wantedApi).toContain("provinceId: resolvedProvince?.id ?? null");
+    expect(wantedApi).toContain("cityId: selectedCity?.id ?? null");
     expect(wantedApi).toContain("استان انتخاب‌شده با کشور انتخاب‌شده مطابقت ندارد.");
     expect(wizard).toContain('transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? "درخواست شما ثبت شد!"');
     expect(wizard).toContain('createdId && (transactionType === "WANTED" || transactionType === "SERVICE_REQUEST")');
