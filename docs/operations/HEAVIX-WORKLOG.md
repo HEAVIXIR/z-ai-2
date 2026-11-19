@@ -867,3 +867,66 @@ Append-only session log. Keep exact evidence and distinguish completed from unve
 
 ### Invariants held
 - No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #347 remains open/unmerged.
+
+## 2026-11-19 — PHASE B: moderation + service taxonomy + intent fail-closed + RFC (exact-SHA green)
+
+- Branch: `integration/preview-readiness-workerd-2026-11-15`. Follows the formal directive (issue #345 comment 7006431118). Phase A read-only inventory completed (full requirement→API→DB→UI→permission→tests matrix produced, not reproduced here for brevity). Phase B implemented the P0 + P1 fixes without any migration.
+- Final pushed HEAD: `bec2bc4` (RFC docs on top of 3 code commits). Code-validated SHA: `bec2bc4` (docs commit carries no code change; CI ran on it).
+
+### B3 — Moderation lifecycle (P0-1, commit 12e9217)
+- `createWanted` now creates `status=PENDING`, `publishedAt=null` (was ACTIVE + now). The request is invisible to the public feed (status=ACTIVE filter), public detail (status!==ACTIVE → 404), and matching eligibility (PENDING already in the rejection set). Only the owner (?mine=true) and admin review queue see PENDING rows. expiresAt is still derived from deadline at create time so it takes effect on approval.
+- New `publishWanted(id, adminUserId)` service function: the moderation gate. Flips status→ACTIVE + publishedAt→now. Idempotent on already-ACTIVE. Audited as `marketplace.wanted.publish` (ADMIN).
+- Admin single-row PATCH `action=approve` → delegates to publishWanted. Admin bulk POST `case=approve` → updateMany + batched audit (`marketplace.wanted.publishMany`). Existing `activate` action kept as back-compat.
+- Admin UI (RequestsClient): PENDING badge (amber), Rocket "تأیید و انتشار" button on PENDING rows, PENDING option in edit-modal status select.
+- Legacy `/requests/new` success message fixed: no longer claims "immediately visible"; now promises expert review — consistent with the new PENDING lifecycle + the /listings/new wizard + BuyRequestForm messages.
+- 6 new contract tests (`wanted-moderation-lifecycle`). No existing test broken (public feed/detail/matching already excluded non-ACTIVE).
+
+### B2 — Service taxonomy routing (P0-2, commit 9b7a046)
+- Wizard `isServiceFlow` is now intent-aware: `transactionType===WANTED && wanted.intent===SERVICE_REQUEST` → true. So categoryRoots=serviceRoots, the service-type picker renders, step-6 validation requires serviceTypeId, and step labels say "خدمات" — all driven by the intent, not the WANTED listing-type label.
+- `serviceTypeId` now accepted by POST /api/wanted and threaded through createWanted (audit-only, like modelId — no schema column yet; covered by the RFC).
+- Updated `listing-taxonomy-domain-forms` contract to assert the new `isWantedServiceRequest` + intent-aware `isServiceFlow` derivation. Added `serviceTypeId` to the privacy/lifecycle audit-snapshot assertion.
+
+### B1 — Intent fail-closed (P1-3, commit d436156)
+- Added `DEMAND_INTENTS` allowlist + `isValidDemandIntent()` type guard to transaction-type-routing.
+- `createWanted` rejects an explicitly-provided intent not in the allowlist with 400 (fail-closed). A garbage intent no longer silently creates a buy request. When `intent` is null/empty, falls back to the legacy `transactionType` alias (which normalizeDemandIntent collapses onto buy intent for legacy WANTED rows) — explicit-API boundary fail-closed, legacy read-back + /api/requests caller keep working.
+- `normalizeDemandIntent` stays permissive (READ-side normalizer for matching on existing rows). The fail-closed is only on the WRITE boundary.
+- 4 new unit tests (allowlist, case-insensitive accept, garbage/null/non-string reject, legacy listing-type labels NOT valid intents) + contract test.
+
+### B6 — Service taxonomy verify (P1-6, commit d436156)
+- Read-only inventory confirmed SERVICE_OFFER is a seeded canonical TransactionType (`prisma/seed-service-and-mineral-taxonomy.ts` upserts it), not just a legacy alias. The matching map `SERVICE_REQUEST → SERVICE_OFFER` is backed by a real supply type.
+- Contract test with positive (SERVICE_REQUEST → SERVICE_OFFER) and negative (only one mention of SERVICE_OFFER in the intent map; SALE/RENT/SALE_AND_RENT never map to it) cases.
+
+### B4 — RFC: idempotency + structural storage (P1-4 + P1-5, commit bec2bc4)
+- Design-only doc `docs/operations/RFC-WANTED-IDEMPOTENCY-STRUCTURAL-STORAGE.md`. NO migration execution (blocked on backup/restore gate).
+- Idempotency: client-supplied `idempotencyKey` + `BuyRequest.idempotencyKey @unique` (nullable, backward-compatible). createWanted catches P2002, returns existing row.
+- Structural storage: `quantity`/`modelId`/`serviceTypeId`/`categoryId`/`brandId` as nullable BuyRequest columns + `BuyRequestAttributeValue` relation (mirrors ListingAttributeValue). Free-text category/brandPref kept for backward-compat display.
+- Backup/restore gate prerequisites documented (fresh backup, disposable restore, migration dry-run, post-apply verify, explicit approval).
+
+### Local verification (single SHA `bec2bc4`)
+- `typecheck:worker` (tsconfig.worker.json): EXIT 0. ESLint on all changed files: clean. esbuild transpile: OK.
+- Full non-DB test sweep (12 files / 193 tests): all PASS — incl. new `wanted-moderation-lifecycle` (6), `wanted-intent-validation-taxonomy` (5), 4 new fail-closed unit tests, updated `listing-taxonomy-domain-forms` (7) + `wanted-public-privacy-and-lifecycle` (14), and all existing `wanted-intent-matching` (5) + `listing-domain-workflow` (5) + `phase-p7` (36) + `phase-p10` (45) + `wanted-match-eligibility` (10) + `transaction-type-routing` (20) + `admin-mutation-csrf-contract` (38) + `public-listing-dto` (2).
+
+### Exact-SHA validation on final HEAD `bec2bc4`
+- **CI `44511591862` → SUCCESS** — all jobs green: `verify` (incl. Typecheck Worker-specific Prisma clients), `docker-build-proof`, `phase-tests`, `audit-transaction`, `tls-proof`, `Workerd runtime smoke`, `Cloudflare compatibility`.
+- **OpenNext `44511591726` → SUCCESS** (`OpenNext real-route smoke`).
+- Both exact-SHA green. (The earlier 8ab8c64 typecheck regression is NOT repeated — `typecheck:worker` run locally before push confirmed EXIT 0.)
+
+### Per-criterion status (directive acceptance)
+| # | Directive item | Status |
+|---|---|---|
+| 1 | P0 moderation lifecycle + UX consistency | ✅ DONE (B3) — PENDING create + publishWanted + admin approve UI + success-message fix |
+| 2 | P0 service-request taxonomy routing in wizard | ✅ DONE (B2) — intent-aware isServiceFlow → serviceRoots + serviceTypeId |
+| 3 | P1 intent fail-closed validation | ✅ DONE (B1) — allowlist + 400 on invalid; normalizeDemandIntent stays permissive for legacy |
+| 4 | P1 structural specs persistent storage | ✅ RFC ONLY (B4) — design doc; migration blocked on gate |
+| 5 | P1 idempotency / duplicate prevention | ✅ RFC ONLY (B4) — design doc; migration blocked on gate |
+| 6 | P1 service taxonomy mapping verification | ✅ DONE (B6) — SERVICE_OFFER confirmed seeded; positive/negative tests |
+| 7 | P2 expiration + batch consistency tests | ⏳ PARTIAL — eligibility wiring is in place (STEP 1); timezone/edge tests not yet added (next pass) |
+
+### Remaining (NOT closed)
+- Item 4 + 5 (structural storage + idempotency): RFC ready; implementation blocked on the backup/restore gate. No migration executed.
+- Item 7 (expiration edge tests): eligibility helper + batch path already share one rule; timezone/end-of-day/null-deadline/boundary tests are the next pass.
+- Moderation policy decision: createWanted now gates on admin approval (PENDING). If product policy later decides some intents (e.g. SERVICE_REQUEST) auto-publish, that's a one-line change in createWanted — the lifecycle plumbing is in place.
+- Preview acceptance: still blocked by #346 (App Preview schema mismatch `Listing.serviceTypeId`, HTTP 500 on GET /). Independent of this work.
+
+### Invariants held
+- No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 remain open/unmerged. No paid services used. Token not leaked in any commit/log/issue.
