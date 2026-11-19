@@ -3,7 +3,16 @@
  *
  * CATALOG: product/machine listings (SALE)
  * MARKETPLACE: rental, trading/request, and auction flows
- * SERVICE: service requests (SERVICE_OFFER is retained only as a legacy alias)
+ * SERVICE: service requests + service offers
+ *
+ * NOTE on SERVICE_OFFER: the V1.1 base-6 TransactionType seed
+ * (prisma/seed-taxonomy-v11.ts) lists SALE/RENT/WANTED/QUOTE/AUCTION/
+ * SERVICE_REQUEST. SERVICE_OFFER is seeded by the SUPPLEMENTAL seed
+ * (prisma/seed-service-and-mineral-taxonomy.ts) and IS a canonical
+ * TransactionType for service-supply listings — it is the supply-side
+ * counterpart to SERVICE_REQUEST demand. It is NOT in the base-6 list
+ * but is canonical for the service domain. The matching map
+ * SERVICE_REQUEST → SERVICE_OFFER is backed by this seeded type.
  */
 export type ListingCategoryLayer = "CATALOG" | "MARKETPLACE" | "SERVICE" | "FALLBACK";
 
@@ -14,7 +23,9 @@ const TRANSACTION_CATEGORY_LAYER: Record<string, ListingCategoryLayer> = {
   QUOTE: "MARKETPLACE",
   AUCTION: "MARKETPLACE",
   SERVICE_REQUEST: "SERVICE",
-  // Legacy compatibility only; not part of the canonical V1.1 seed list.
+  // Seeded by the supplemental seed (prisma/seed-service-and-mineral-
+  // taxonomy.ts); canonical service-supply type. Not in the base-6 V1.1
+  // list but canonical for the SERVICE domain.
   SERVICE_OFFER: "SERVICE",
 };
 

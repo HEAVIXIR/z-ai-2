@@ -627,15 +627,27 @@ export async function closeWanted(
  * publishedAt → now). This is the moderation gate: an admin reviews the
  * submitted request and publishes it so it becomes visible on the public
  * feed and eligible for matching. Audited as `marketplace.wanted.publish`
- * (actorType: ADMIN). Idempotent — publishing an already-ACTIVE request
- * is a no-op (returns the current state without re-auditing).
+ * (actorType: ADMIN).
  *
- * expiresAt is NOT re-derived here: it was computed from `deadline` at
- * create time and is already stored. Setting publishedAt=now activates
- * the eligibility window (publishedAt <= now AND expiresAt > now).
+ * STATE MACHINE (P0-3): only a PENDING request can be approved. Terminal
+ * states (CLOSED, FULFILLED, REJECTED, EXPIRED) are rejected with 409 —
+ * reopening a closed/fulfilled request is a separate action requiring its
+ * own permission + audit (not implemented here). An already-ACTIVE request
+ * is an idempotent no-op.
+ *
+ * EXPIRY (P0-5): an expired request in the moderation queue (expiresAt <=
+ * now) MUST NOT be published — it would be immediately un-matchable and
+ * mislead the buyer. Such a request is rejected with 409.
+ *
+ * REPAIR (P0-6): if a request is ACTIVE but publishedAt is null (legacy
+ * data inconsistency), the function REPAIRS the record (sets publishedAt =
+ * now in the DB) rather than returning a fake timestamp. The repair is
+ * audited as `marketplace.wanted.publish.repair`.
  *
  * @throws WantedServiceError(404) when the request doesn't exist.
  * @throws WantedServiceError(400) when id or adminUserId is empty.
+ * @throws WantedServiceError(409) when the request is in a terminal state
+ *   (CLOSED/FULFILLED/REJECTED/EXPIRED) or has already expired.
  */
 export async function publishWanted(
   id: string,
@@ -650,18 +662,74 @@ export async function publishWanted(
 
   const before = await db.buyRequest.findUnique({
     where: { id },
-    select: { id: true, status: true, title: true, publishedAt: true },
+    select: { id: true, status: true, title: true, publishedAt: true, expiresAt: true },
   });
   if (!before) {
     throw new WantedServiceError(404, "درخواست خرید یافت نشد");
   }
-  // Idempotent — already published.
-  if (before.status === STATUS_PUBLISHED) {
+
+  const now = new Date();
+
+  // P0-5: expired requests cannot be published, even if still PENDING.
+  if (before.expiresAt instanceof Date && Number.isFinite(before.expiresAt.getTime()) && before.expiresAt.getTime() <= now.getTime()) {
+    throw new WantedServiceError(
+      409,
+      "این درخواست منقضی شده است و قابل انتشار نیست. برای بازگشایی باید اکشن مستقل بازگشایی استفاده شود.",
+    );
+  }
+
+  // P0-3: state machine — terminal states are rejected.
+  const TERMINAL_STATUSES = new Set(["CLOSED", "FULFILLED", "REJECTED", "EXPIRED"]);
+  if (TERMINAL_STATUSES.has(before.status)) {
+    throw new WantedServiceError(
+      409,
+      `درخواست در وضعیت نهایی «${before.status}» است و قابل انتشار نیست. بازگشایی نیازمند اکشن مستقل است.`,
+    );
+  }
+
+  // Idempotent — already published (ACTIVE with a real publishedAt).
+  if (before.status === STATUS_PUBLISHED && before.publishedAt instanceof Date && Number.isFinite(before.publishedAt.getTime())) {
     return {
       id: before.id,
       status: before.status,
-      publishedAt: before.publishedAt instanceof Date ? before.publishedAt.toISOString() : new Date().toISOString(),
+      publishedAt: before.publishedAt.toISOString(),
     };
+  }
+
+  // P0-6: repair — ACTIVE with null/invalid publishedAt (legacy
+  // inconsistency). Persist publishedAt=now rather than returning a
+  // fabricated timestamp. Audited as a repair so the trail records the
+  // fix separately from a normal publish.
+  if (before.status === STATUS_PUBLISHED) {
+    const repairedAt = new Date();
+    const after = await db.buyRequest.update({
+      where: { id },
+      data: { publishedAt: repairedAt },
+      select: { id: true, status: true, publishedAt: true },
+    });
+    await logAudit({
+      actorId: adminUserId,
+      actorType: "ADMIN",
+      action: "marketplace.wanted.publish.repair",
+      entityType: "BuyRequest",
+      entityId: id,
+      before: { status: before.status, publishedAt: null },
+      after: { status: after.status, publishedAt: repairedAt.toISOString() },
+      reason: `تعمیر تاریخ انتشار درخواست ${id} — ${before.title ?? ""}`,
+    });
+    return {
+      id: after.id,
+      status: after.status,
+      publishedAt: after.publishedAt instanceof Date ? after.publishedAt.toISOString() : repairedAt.toISOString(),
+    };
+  }
+
+  // P0-3: the only valid transition is PENDING → ACTIVE.
+  if (before.status !== STATUS_PENDING) {
+    throw new WantedServiceError(
+      409,
+      `وضعیت «${before.status}» قابل انتشار نیست. فقط درخواست‌های در انتظار بررسی (PENDING) قابل تأیید هستند.`,
+    );
   }
 
   const publishedAt = new Date();

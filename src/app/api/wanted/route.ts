@@ -194,11 +194,34 @@ export async function POST(req: Request) {
 
     let normalizedDeadline: string | null = null;
     if (deadline !== undefined && deadline !== null && String(deadline).trim()) {
-      const parsedDeadline = new Date(String(deadline));
+      // P1-9: if the deadline is a date-only string (YYYY-MM-DD, length 10),
+      // interpret it as END-OF-DAY (T23:59:59) rather than midnight UTC —
+      // otherwise a buyer picking "today" or "tomorrow" would see their
+      // request expire at 00:00 UTC (03:30 Tehran) of that day, which is
+      // before they even submitted it. Appending T23:59:59 makes the
+      // request live through the end of the selected calendar day.
+      let deadlineStr = String(deadline).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(deadlineStr)) {
+        deadlineStr = `${deadlineStr}T23:59:59`;
+      }
+      const parsedDeadline = new Date(deadlineStr);
       if (Number.isNaN(parsedDeadline.getTime()) || parsedDeadline.getTime() <= Date.now()) {
         return NextResponse.json({ error: "مهلت درخواست باید یک تاریخ معتبر در آینده باشد." }, { status: 400 });
       }
       normalizedDeadline = parsedDeadline.toISOString();
+    }
+    // P1-9 policy: a request with NO deadline has expiresAt=null (no
+    // expiration) — it stays matchable until explicitly closed. This is
+    // the documented behavior (parseDeadlineToExpiresAt returns null
+    // for empty/unparseable input).
+
+    // P1-10: intent is REQUIRED on the canonical /api/wanted endpoint.
+    // Legacy compat (intent optional, defaults to SALE) lives ONLY in the
+    // /api/requests adapter. An empty/whitespace/missing intent here is
+    // a 400 — fail-closed at the API boundary.
+    const intentStr = intent !== undefined && intent !== null ? String(intent).trim() : "";
+    if (!intentStr) {
+      return NextResponse.json({ error: "نوع تقاضا (intent) الزامی است. مقادیر مجاز: SALE, RENT, SALE_AND_RENT, SERVICE_REQUEST." }, { status: 400 });
     }
 
     const created = await createWanted({
@@ -211,7 +234,7 @@ export async function POST(req: Request) {
       brandId,
       modelId,
       attributeValues,
-      intent: intent ? String(intent) : null,
+      intent: intentStr,
       transactionType,
       serviceTypeId: serviceTypeId ? String(serviceTypeId) : null,
       province: selectedProvince?.name ?? selectedCity?.province.name ?? (requestedProvinceId ? null : province),

@@ -7,6 +7,7 @@ import { parseBool } from "@/lib/api-helpers";
 import { hasPermission } from "@/lib/rbac";
 import { requireAdmin } from "@/lib/admin-guard";
 import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -101,6 +102,13 @@ export async function POST(req: Request) {
       { status: 403 },
     );
   }
+  // P0-1: CSRF check — bulk mutations (approve/close/fulfill/verify) are
+  // state-changing and MUST be CSRF-protected, mirroring the single-row
+  // PATCH route. Without this, a cross-site POST could approve/close
+  // requests on the admin's behalf.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const body = await req.json().catch(() => ({}));
     const action = String(body.action ?? "");
@@ -116,16 +124,36 @@ export async function POST(req: Request) {
       case "close": data = { status: "CLOSED" }; break;
       case "fulfill": data = { status: "FULFILLED" }; break;
       case "approve": {
-        // Moderation gate: publish PENDING requests (status → ACTIVE,
-        // publishedAt → now). Bulk variant mirrors the single-row
-        // publishWanted service function but uses updateMany for
-        // efficiency + a single batched audit entry. Idempotent on
-        // already-ACTIVE rows (they just get publishedAt refreshed).
+        // P0-4: bulk moderation gate — publish PENDING + unexpired
+        // requests ONLY. The atomic updateMany constrains by
+        // { id in ids, status: "PENDING", OR: [expiresAt null OR > now] }
+        // so CLOSED/FULFILLED/ACTIVE/expired rows in the selection are
+        // NOT touched (no accidental re-activation, no publishedAt
+        // refresh on already-ACTIVE rows). The response reports the
+        // approved count AND the rejected/unaffected ids so the admin
+        // sees which rows were skipped and why.
         const approvedAt = new Date();
+        const eligibleWhere = {
+          id: { in: ids },
+          status: "PENDING" as const,
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: approvedAt } },
+          ],
+        };
         const result = await db.buyRequest.updateMany({
-          where: { id: { in: ids } },
+          where: eligibleWhere,
           data: { status: "ACTIVE", publishedAt: approvedAt },
         });
+
+        // Determine the rejected/unaffected ids (requested but not
+        // eligible: not PENDING, or expired). One round-trip: select
+        // the ids that are NOT in the eligible set among the requested.
+        const rejected = await db.buyRequest.findMany({
+          where: { id: { in: ids }, NOT: eligibleWhere },
+          select: { id: true, status: true, expiresAt: true },
+        });
+
         await logAudit({
           actorId: sessionUser.id,
           actorType: "ADMIN",
@@ -133,13 +161,26 @@ export async function POST(req: Request) {
           entityType: "BuyRequest",
           entityId: null,
           before: { ids, requestedAction: "approve" },
-          after: { status: "ACTIVE", publishedAt: approvedAt.toISOString(), count: result.count },
-          reason: "Bulk approve + publish of wanted requests via admin API",
+          after: {
+            status: "ACTIVE",
+            publishedAt: approvedAt.toISOString(),
+            approvedCount: result.count,
+            rejectedCount: rejected.length,
+            rejectedIds: rejected.map((r) => ({ id: r.id, status: r.status })),
+          },
+          reason: "Bulk approve + publish of PENDING+unexpired wanted requests via admin API",
         });
         // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
         try { revalidateTag(HOMEPAGE_CACHE_TAGS.requests, 'default'); } catch (e) { console.error('[admin/requests] revalidateTag failed:', e); }
 
-        return NextResponse.json({ ok: true, action: "approve", count: result.count });
+        return NextResponse.json({
+          ok: true,
+          action: "approve",
+          approved: result.count,
+          rejected: rejected.length,
+          rejectedIds: rejected.map((r) => ({ id: r.id, status: r.status })),
+          requested: ids.length,
+        });
       }
       case "delete": {
         // Preserve marketplace and audit history: the legacy "delete"

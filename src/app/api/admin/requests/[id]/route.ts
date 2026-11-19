@@ -46,9 +46,14 @@ export async function PATCH(req: Request, { params }: Params) {
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const data: any = {};
+    // P0-2: status is intentionally NOT in the editable list. Status
+    // transitions must go through the controlled state-machine actions
+    // (approve/close/fulfill), not free-form PATCH editing — otherwise
+    // the moderation gate can be bypassed by setting status=ACTIVE
+    // directly. The edit modal's status <select> is display-only now.
     const allowed = [
       "title", "description", "category", "brandPref", "transaction",
-      "city", "province", "deadline", "status", "verified",
+      "city", "province", "deadline", "verified",
       "requesterName", "requesterPhone", "adminNotes",
     ];
     for (const k of allowed) {
@@ -63,14 +68,22 @@ export async function PATCH(req: Request, { params }: Params) {
     else if (body.action === "unverify") data.verified = false;
     else if (body.action === "close") data.status = "CLOSED";
     else if (body.action === "fulfill") data.status = "FULFILLED";
-    else if (body.action === "activate") data.status = "ACTIVE";
 
     // Moderation gate: "approve" publishes a PENDING request (status →
     // ACTIVE + publishedAt → now) via the canonical service function,
-    // which owns its own audit (marketplace.wanted.publish). Delegated
-    // rather than inlined so the publish transition + audit are single-
-    // sourced and testable. Returns early (skips the generic update below).
-    if (body.action === "approve") {
+    // which owns its own audit (marketplace.wanted.publish) AND enforces
+    // the state machine (only PENDING can be approved; CLOSED/FULFILLED/
+    // EXPIRED/REJECTED are rejected with 409). Delegated rather than
+    // inlined so the publish transition + audit + state-machine are
+    // single-sourced and testable. Returns early (skips the generic
+    // update below).
+    //
+    // P0-2: the legacy "activate" action (which set status=ACTIVE without
+    // publishedAt and without the state machine) is redirected to the
+    // same publishWanted gate — so existing callers that send
+    // action=activate now go through the controlled transition. A
+    // CLOSED/FULFILLED request sent via activate will now correctly 409.
+    if (body.action === "approve" || body.action === "activate") {
       try {
         const published = await publishWanted(id, sessionUser.id);
         // Invalidate Homepage cache so the newly-published request surfaces.

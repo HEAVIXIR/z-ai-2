@@ -47,20 +47,54 @@ describe("WANTED moderation lifecycle contract", () => {
     expect(service).toContain("marketplace.wanted.publish");
     // publishWanted must flip status → ACTIVE and set publishedAt → now.
     expect(service).toContain("data: { status: STATUS_PUBLISHED, publishedAt }");
-    // Idempotent: publishing an already-ACTIVE request is a no-op.
-    expect(service).toContain("before.status === STATUS_PUBLISHED");
   });
 
-  it("admin single-row PATCH supports action=approve via publishWanted", () => {
-    expect(adminSingle).toContain('import { publishWanted');
-    expect(adminSingle).toContain('body.action === "approve"');
+  it("publishWanted enforces a state machine — only PENDING can be approved", () => {
+    // Terminal states (CLOSED/FULFILLED/REJECTED/EXPIRED) are rejected
+    // with 409 — they cannot be re-published.
+    expect(service).toContain('TERMINAL_STATUSES = new Set(["CLOSED", "FULFILLED", "REJECTED", "EXPIRED"])');
+    expect(service).toContain("WantedServiceError(\n      409");
+    // The only valid transition is PENDING → ACTIVE.
+    expect(service).toContain('before.status !== STATUS_PENDING');
+  });
+
+  it("publishWanted rejects expired requests in the moderation queue (P0-5)", () => {
+    expect(service).toContain("before.expiresAt instanceof Date");
+    expect(service).toContain("before.expiresAt.getTime() <= now.getTime()");
+    expect(service).toContain("منقضی شده است و قابل انتشار نیست");
+  });
+
+  it("publishWanted repairs ACTIVE+null publishedAt rather than fabricating a timestamp (P0-6)", () => {
+    expect(service).toContain("marketplace.wanted.publish.repair");
+    expect(service).toContain("data: { publishedAt: repairedAt }");
+  });
+
+  it("admin single-row PATCH redirects legacy activate to the controlled publishWanted gate", () => {
+    expect(adminSingle).toContain('body.action === "approve" || body.action === "activate"');
     expect(adminSingle).toContain("await publishWanted(id, sessionUser.id)");
   });
 
-  it("admin bulk POST supports action=approve (publishMany batched)", () => {
+  it("admin single-row PATCH does NOT allow free-form status editing (P0-2)", () => {
+    // status must be absent from the allowed list — transitions happen
+    // only via the action buttons (approve/close/fulfill).
+    const allowedSection = adminSingle.split("const allowed = [")[1]?.split("]")[0] ?? "";
+    expect(allowedSection).not.toContain('"status"');
+  });
+
+  it("admin bulk POST has CSRF protection (P0-1)", () => {
+    expect(adminBulk).toContain("import { checkCsrf }");
+    expect(adminBulk).toContain("if (!checkCsrf(req))");
+    expect(adminBulk).toContain('CSRF check failed');
+  });
+
+  it("admin bulk approve constrains to PENDING+unexpired and reports rejected ids (P0-4)", () => {
     expect(adminBulk).toContain('case "approve"');
-    expect(adminBulk).toContain("marketplace.wanted.publishMany");
-    expect(adminBulk).toContain('data: { status: "ACTIVE", publishedAt: approvedAt }');
+    expect(adminBulk).toContain('status: "PENDING" as const');
+    expect(adminBulk).toContain("{ expiresAt: null }");
+    expect(adminBulk).toContain("{ expiresAt: { gt: approvedAt } }");
+    expect(adminBulk).toContain("approved: result.count");
+    expect(adminBulk).toContain("rejected: rejected.length");
+    expect(adminBulk).toContain("rejectedIds");
   });
 
   it("the create audit records PENDING_REVIEW semantic status", () => {
@@ -70,5 +104,25 @@ describe("WANTED moderation lifecycle contract", () => {
     const auditSection = service.split("// ── Audit (best-effort) ──")[1] ?? "";
     expect(auditSection).toContain('status: "PENDING_REVIEW"');
     expect(auditSection).toContain("schemaStatus: request.status");
+  });
+
+  it("the real /admin/requests page exposes PENDING in filters + approve button (P0-7)", () => {
+    const page = read("src/app/admin/requests/page.tsx");
+    expect(page).toContain("PENDING");
+    expect(page).toContain("STATUS_CFG");
+    expect(page).toContain("Rocket");
+    expect(page).toContain('action(r.id, "approve")');
+    // Status transitions must NOT be in the edit-modal save payload.
+    const saveSection = page.split("const save = async")[1]?.split("},")[0] ?? "";
+    expect(saveSection).not.toContain("status: form.status");
+  });
+
+  it("/api/wanted requires intent (P1-10) and handles date-only deadlines (P1-9)", () => {
+    const route = read("src/app/api/wanted/route.ts");
+    // P1-10: intent is required on the canonical endpoint.
+    expect(route).toContain("intentStr");
+    expect(route).toContain("نوع تقاضا (intent) الزامی است");
+    // P1-9: date-only deadlines get end-of-day appended.
+    expect(route).toContain("T23:59:59");
   });
 });

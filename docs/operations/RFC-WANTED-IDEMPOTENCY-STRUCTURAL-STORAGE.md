@@ -196,3 +196,82 @@ Before any migration is executed:
 5. **Test PR** — duplicate-submit + structural-specs + backward-compat tests.
 6. **Preview acceptance** — end-to-end WANTED journey with idempotency + specs.
 7. **Main merge** — only after all gates pass.
+
+## 9. Corrections (per independent audit 2026-11-19)
+
+The original RFC had three design gaps flagged by the senior-manager
+audit. These corrections refine the design before any migration is
+proposed.
+
+### 9.1 Idempotency key scope (was: global unique; now: user-scoped)
+
+**Problem:** the RFC proposed `idempotencyKey String? @unique` (global
+uniqueness) but also a `findFirst({ where: { idempotencyKey, userId } })`
+lookup after P2002. These are inconsistent — a global unique key means a
+second user's request with the same key collides with the first user's.
+
+**Corrected design:**
+- Uniqueness is **user-scoped**: `@@unique([userId, idempotencyKey])`.
+  Two different users can independently reuse the same client-generated
+  key without colliding; within one user, the key is unique.
+- On P2002 (duplicate within the same user), the existing row is fetched
+  by `(userId, idempotencyKey)`.
+- **Payload mismatch → 409, not silent return.** If a retry sends the
+  same idempotencyKey but a different payload (title/quantity/intent),
+  the API returns 409 Conflict with a clear message — the client must
+  use a NEW key for a genuinely different request. The existing row is
+  returned ONLY when the payload matches (true retry).
+
+Migration SQL (corrected):
+```sql
+ALTER TABLE "BuyRequest" ADD COLUMN "idempotencyKey" TEXT;
+CREATE UNIQUE INDEX "BuyRequest_userId_idempotencyKey_key"
+  ON "BuyRequest"("userId", "idempotencyKey");
+```
+
+### 9.2 Quantity type (was: Int?; now: Decimal + unit)
+
+**Problem:** `Int?` is fine for machine count but insufficient for
+minerals, sand, aggregates, and materials sold by weight/volume with
+fractional quantities (e.g. 2.5 tons, 1.75 m³).
+
+**Corrected design:**
+- `quantity Decimal? @db.Decimal(12, 3)` — supports up to 12 digits
+  with 3 decimal places (sufficient for tons/m³/liters).
+- `quantityUnit String?` — a controlled-code field referencing a
+  standard unit (TON, KILOGRAM, M3, LITER, PIECE, SET, ...). The
+  allowed units are defined in a separate `Unit` enum/table (seeded),
+  not free-text.
+- Validation: for machine/equipment intents (SALE/RENT), `quantity` is
+  an integer count and `quantityUnit` is PIECE/SET. For material
+  intents, `quantity` is decimal and `quantityUnit` is a weight/volume.
+  The createWanted validator enforces the (intent, unit) compatibility.
+
+### 9.3 Technical attributes (was: flat attributeKey; now: profile version)
+
+**Problem:** a flat `attributeKey` text column is not queryable and
+does not connect to the AttributeDefinition version/profile system
+HEAVIX uses for Listings.
+
+**Corrected design:**
+- `BuyRequestAttributeValue` relation mirrors `ListingAttributeValue`
+  but links to `AttributeDefinition` + `AttributeOption` (the existing
+  typed-attribute tables).
+- Add a `specificationProfileVersionId String?` FK on BuyRequest
+  pointing to a `SpecificationProfileVersion` record (if/when that
+  table exists) so a request carries a versioned, immutable spec
+  snapshot — not just loose attribute values. Until that table exists,
+  the attribute values are stored as rows in `BuyRequestAttributeValue`
+  with the FK to the current `AttributeDefinition` (which is itself
+  versioned via its own lifecycle).
+- Prisma reverse relations (must be added to the referenced models):
+  - `ProductModel.buyRequests BuyRequest[] @relation("BuyRequestModel")`
+  - `ServiceType.buyRequests BuyRequest[] @relation("BuyRequestService")`
+  - `Category.buyRequests BuyRequest[] @relation("BuyRequestCategory")`
+  - `Brand.buyRequests BuyRequest[] @relation("BuyRequestBrand")`
+  - `AttributeDefinition.buyRequestValues BuyRequestAttributeValue[]`
+  - `AttributeOption.buyRequestValues BuyRequestAttributeValue[]`
+
+These corrections are incorporated into the migration plan. The
+sequencing (§8) is unchanged: RFC → gate approval → migration PR →
+application PR → tests → Preview acceptance → Main merge.
