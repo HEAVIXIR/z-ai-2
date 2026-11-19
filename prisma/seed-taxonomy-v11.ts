@@ -666,6 +666,7 @@ async function preflightTaxonomyHierarchy(): Promise<void> {
 }
 
 import IRAN_LOCATION_DATA from "./data/iran-locations-1404.json";
+import IRAN_LOCATION_MANIFEST from "./data/iran-locations-1404.manifest.json";
 
 type ProvinceSeed = { name: string; cities: string[] };
 
@@ -756,6 +757,15 @@ async function main() {
   }
   if (process.env.HEAVIX_ENV !== "preview") {
     throw new Error("Refusing to seed: HEAVIX_ENV must be preview. No writes performed.");
+  }
+  if (
+    IRAN_LOCATION_MANIFEST.rightsReviewStatus !== "APPROVED" ||
+    IRAN_LOCATION_MANIFEST.commercialUseAllowed !== true
+  ) {
+    throw new Error(
+      "Refusing to seed: Iran location dataset rights gate is not approved. " +
+      "No database writes performed; review prisma/data/iran-locations-1404.manifest.json first.",
+    );
   }
   console.log("🌱 HEAVIX Taxonomy Seed V1.1 starting...\n");
 
