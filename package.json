@@ -37,6 +37,7 @@
     "db:seed-taxonomy": "tsx prisma/seed-taxonomy-v11.ts",
     "data:locations:check": "node scripts/geospatial/build-iran-location-catalog.mjs --check",
     "data:locations:build": "node scripts/geospatial/build-iran-location-catalog.mjs --write",
+    "db:seed-iran-locations": "tsx scripts/geospatial/seed-iran-location-catalog.ts",
     "db:seed-machine-taxonomy": "tsx prisma/seed-machine-taxonomy.ts",
     "db:migrate-passwords": "tsx prisma/migrate-passwords.ts",
     "db:seed-rbac": "tsx prisma/seed-rbac.ts",
