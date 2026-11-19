@@ -164,10 +164,15 @@ export async function createWanted(params: {
   budgetMin?: bigint | number | string | null;
   budgetMax?: bigint | number | string | null;
   categoryId?: string | null;
+  category?: string | null;
   brandId?: string | null;
+  brandPref?: string | null;
   transactionType?: string | null;
   province?: string | null;
   city?: string | null;
+  deadline?: string | null;
+  requesterName?: string | null;
+  requesterPhone?: string | null;
   userId: string;
 }): Promise<{ id: string; status: string }> {
   const {
@@ -177,10 +182,15 @@ export async function createWanted(params: {
     budgetMin,
     budgetMax,
     categoryId = null,
+    category = null,
     brandId = null,
+    brandPref = null,
     transactionType = null,
     province = null,
     city = null,
+    deadline = null,
+    requesterName = null,
+    requesterPhone = null,
     userId,
   } = params;
 
@@ -208,13 +218,16 @@ export async function createWanted(params: {
     data: {
       title: title.trim().slice(0, 200),
       description: description ? String(description).slice(0, 2000) : null,
-      category: categoryName,
-      brandPref: brandName,
+      category: categoryName ?? (category ? String(category).trim().slice(0, 120) : null),
+      brandPref: brandName ?? (brandPref ? String(brandPref).trim().slice(0, 120) : null),
       transaction: transactionType || "SALE",
       budgetMin: toBigInt(budgetMin),
       budgetMax: toBigInt(budgetMax),
-      city: city ? String(city) : null,
-      province: province ? String(province) : null,
+      city: city ? String(city).slice(0, 120) : null,
+      province: province ? String(province).slice(0, 120) : null,
+      deadline: deadline ? String(deadline).slice(0, 120) : null,
+      requesterName: requesterName ? String(requesterName).slice(0, 120) : null,
+      requesterPhone: requesterPhone ? String(requesterPhone).slice(0, 40) : null,
       status: STATUS_PUBLISHED, // schema-active = publicly visible
       verified: false,
       userId,
@@ -247,8 +260,8 @@ export async function createWanted(params: {
         toBigInt(budgetMax) !== null ? toBigInt(budgetMax)!.toString() : null,
       categoryId: categoryId ?? null,
       brandId: brandId ?? null,
-      category: categoryName,
-      brandPref: brandName,
+      category: categoryName ?? category ?? null,
+      brandPref: brandName ?? brandPref ?? null,
       transactionType: transactionType || "SALE",
       province: province ?? null,
       city: city ?? null,
