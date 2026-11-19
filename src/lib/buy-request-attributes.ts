@@ -80,8 +80,6 @@ export async function validateBuyRequestAttributeValues(
     return { ok: false, error: "attributeId برای هر ویژگی الزامی است." };
   }
 
-  if (values.length === 0) return { ok: true, values: [] };
-
   // ── Resolve allowed attributes from category ancestry + model links ──
   const allowedCategoryIds: string[] = [];
   let categoryCursor = request.categoryId ?? null;
