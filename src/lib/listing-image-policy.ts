@@ -28,7 +28,7 @@ export async function getListingImagePolicy(userId: string): Promise<ListingImag
 
   const plan = await db.subscriptionPlan.findUnique({
     where: { code: subscription.plan.trim().toUpperCase() },
-    select: { active: true, priceMonthly: true, priceYearly: true },
+    select: { active: true, priceMonthly: true, priceYearly: true, maxListings: true },
   });
 
   const isPaidPlan = Boolean(
@@ -36,5 +36,7 @@ export async function getListingImagePolicy(userId: string): Promise<ListingImag
     ((plan.priceMonthly ?? 0n) > 0n || (plan.priceYearly ?? 0n) > 0n),
   );
 
-  return isPaidPlan ? PAID_LISTING_IMAGE_POLICY : FREE_LISTING_IMAGE_POLICY;
+  return isPaidPlan
+    ? { ...PAID_LISTING_IMAGE_POLICY, maxListings: Math.max(0, plan?.maxListings ?? PAID_LISTING_IMAGE_POLICY.maxListings) }
+    : FREE_LISTING_IMAGE_POLICY;
 }
