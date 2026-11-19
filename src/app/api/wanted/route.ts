@@ -266,22 +266,24 @@ export async function POST(req: Request) {
       city,
       provinceId,
       cityId,
+      countryId,
       deadline,
     } = body as Record<string, unknown>;
 
     const requestedProvinceId = provinceId ? String(provinceId) : null;
     const requestedCityId = cityId ? String(cityId) : null;
+    const requestedCountryId = countryId ? String(countryId) : null;
     const [selectedCity, selectedProvince] = await Promise.all([
       requestedCityId
         ? db.city.findUnique({
             where: { id: requestedCityId },
-            select: { id: true, name: true, province: { select: { id: true, name: true } } },
+            select: { id: true, name: true, province: { select: { id: true, name: true, countryId: true } } },
           })
         : Promise.resolve(null),
       requestedProvinceId
         ? db.province.findUnique({
             where: { id: requestedProvinceId },
-            select: { id: true, name: true },
+            select: { id: true, name: true, countryId: true },
           })
         : Promise.resolve(null),
     ]);
@@ -293,6 +295,9 @@ export async function POST(req: Request) {
     }
     if (selectedCity && selectedProvince && selectedCity.province.id !== selectedProvince.id) {
       return NextResponse.json({ error: "شهر با استان انتخاب‌شده مطابقت ندارد." }, { status: 400 });
+    }
+    if (requestedCountryId && selectedProvince && selectedProvince.countryId !== requestedCountryId) {
+      return NextResponse.json({ error: "استان انتخاب‌شده با کشور انتخاب‌شده مطابقت ندارد." }, { status: 400 });
     }
 
     const normalizedQuantity = quantity === undefined || quantity === null || quantity === ""
