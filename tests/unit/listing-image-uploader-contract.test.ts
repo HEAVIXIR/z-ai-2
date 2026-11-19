@@ -21,7 +21,11 @@ describe("Listing image upload contract", () => {
     const source = read("src/components/listings/ListingImageUploader.tsx");
     expect(source).toContain("<img");
     expect(source).toContain("onChange(images.filter");
-    expect(source).toContain("maxImages = 10");
+    expect(source).toContain("FREE_LISTING_IMAGE_POLICY");
+    expect(source).toContain("policyReady");
+    expect(source).toContain("const maxImages = policy.maxImages");
+    expect(source).toContain("prepareImageForUpload(source, policy.maxImageBytes)");
+    expect(source).toContain('fetch("/api/media/staging"');
   });
 
   it("uses the real uploader in the listing wizard instead of placeholder URLs", () => {
