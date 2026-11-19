@@ -43,7 +43,9 @@ export async function GET(
   try {
     const { id } = await params;
     const request = await getWanted(id);
-    return NextResponse.json({ success: true, data: request });
+    // Never expose internal account identifiers on the public detail API.
+    const { userId: _ownerId, ...publicRequest } = request;
+    return NextResponse.json({ success: true, data: publicRequest });
   } catch (err: any) {
     if (err instanceof WantedServiceError) {
       return NextResponse.json(
