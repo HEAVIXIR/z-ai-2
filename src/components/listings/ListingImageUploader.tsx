@@ -5,6 +5,8 @@ import { ImagePlus, Loader2, X } from "lucide-react";
 import { describeCompression, prepareImageForUpload } from "@/lib/browser-image-optimization";
 import {
   FREE_LISTING_IMAGE_POLICY,
+  PRO_LISTING_IMAGE_POLICY,
+  PREMIUM_LISTING_IMAGE_POLICY,
   type ListingImagePolicy,
 } from "@/lib/listing-image-policy-shared";
 
@@ -47,6 +49,12 @@ export default function ListingImageUploader({
         ) {
           setPolicy({
             tier: next.tier,
+            maxListings:
+              next.tier === "PREMIUM"
+                ? PREMIUM_LISTING_IMAGE_POLICY.maxListings
+                : next.tier === "PRO"
+                  ? PRO_LISTING_IMAGE_POLICY.maxListings
+                  : FREE_LISTING_IMAGE_POLICY.maxListings,
             maxImages: Math.min(8, Math.max(1, next.maxImages)),
             maxImageBytes: Math.min(2 * 1024 * 1024, Math.max(1, next.maxImageBytes)),
           });
