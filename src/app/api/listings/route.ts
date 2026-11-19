@@ -24,6 +24,7 @@ import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { rateLimitKey } from "@/lib/request-context";
 import { LISTING_CREATE } from "@/lib/rate-limit-presets";
 import { extractIdempotencyKey, findIdempotentResult } from "@/lib/idempotency";
+import { getListingImagePolicy } from "@/lib/listing-image-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -526,12 +527,18 @@ export async function POST(req: Request) {
       }
     }
 
-    // Listing image contract: one shared maximum of 10. Never silently slice.
+    // Image entitlements are resolved from the authenticated subscription.
+    // Never trust client tier fields or silently truncate a submitted list.
+    const imagePolicy = await getListingImagePolicy(user.id);
     const rawImages = Array.isArray(body.images) ? body.images : [];
     const rawAssetIds = Array.isArray(body.assetIds) ? body.assetIds : [];
-    if (rawImages.length > 10 || rawAssetIds.length > 10 || (rawImages.length > 0 && rawAssetIds.length > 0)) {
+    if (
+      rawImages.length > imagePolicy.maxImages ||
+      rawAssetIds.length > imagePolicy.maxImages ||
+      (rawImages.length > 0 && rawAssetIds.length > 0)
+    ) {
       return NextResponse.json(
-        { error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." },
+        { error: `حداکثر ${imagePolicy.maxImages} تصویر برای هر آگهی در پلن فعلی شما مجاز است.` },
         { status: 400 },
       );
     }
@@ -574,6 +581,7 @@ export async function POST(req: Request) {
         asset.uploadedBy !== user.id ||
         asset.visibility !== "PRIVATE" ||
         asset.status !== "STAGED" ||
+        asset.size > imagePolicy.maxImageBytes ||
         asset.entityType !== "Listing" ||
         asset.entityId !== null
       ) {
