@@ -432,5 +432,9 @@ describe("H.3 follow-up hardening: WANTED attribute transport and server enforce
     const svc = read("src/lib/wanted-service.ts");
     expect(svc).toContain("Always run server-side validation");
     expect(svc).toContain("true,  // enforceRequired");
+    const validator = read("src/lib/buy-request-attributes.ts");
+    // Empty payloads must still reach the required-field check.
+    expect(validator).not.toContain("if (values.length === 0) return { ok: true, values: [] }");
+    expect(validator.indexOf("// Required enforcement")).toBeGreaterThan(validator.indexOf("const values = incoming"));
   });
 });
