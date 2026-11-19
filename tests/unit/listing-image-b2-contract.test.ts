@@ -13,6 +13,8 @@ describe("seller B2 media staging contract", () => {
     expect(route).toContain("enforceRateLimit(user.id, UPLOAD)");
     expect(route).toContain('entityType: "Listing"');
     expect(route).toContain('visibility: "PRIVATE"');
+    expect(route).toContain("maxOutputBytes: policy.maxImageBytes");
+    expect(route).toContain("getListingImagePolicy(user.id)");
     expect(route).toContain("uploadedBy: user.id");
     expect(route).toContain("assetId: result.asset.id");
   });
@@ -28,7 +30,9 @@ describe("seller B2 media staging contract", () => {
 
   it("rejects oversized and unowned staged media before creating ListingImage rows", () => {
     const route = read("src/app/api/listings/route.ts");
-    expect(route).toContain("rawImages.length > 10");
+    expect(route).toContain("rawImages.length > imagePolicy.maxImages");
+    expect(route).toContain("rawAssetIds.length > imagePolicy.maxImages");
+    expect(route).toContain("asset.size > imagePolicy.maxImageBytes");
     expect(route).toContain("rawAssetIds.length > 10");
     expect(route).toContain("asset.uploadedBy !== user.id");
     expect(route).toContain('asset.visibility !== "PRIVATE"');
