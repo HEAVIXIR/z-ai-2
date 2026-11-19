@@ -1583,7 +1583,7 @@ export default function NewListingPage() {
                       ) : (
                         <>
                           {isRequestFlow && <p className="text-xs leading-6 text-white/45">برای استعلام قیمت، افزودن تصویر اختیاری است.</p>}
-                          <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} />
+                          <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} required={!isRequestFlow && !isServiceFlow} />
                         </>
                       )}
                     </div>
