@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import { toFa, faDate } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -36,7 +37,7 @@ export default async function SellerProfilePage({
       include: {
         company: { select: { id: true, name: true, slug: true, logoUrl: true, verified: true } },
         _count: {
-          select: { listings: { where: { status: "PUBLISHED" } } },
+          select: { listings: { where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } } } },
         },
       },
     }),
@@ -50,7 +51,7 @@ export default async function SellerProfilePage({
   if (!seller) notFound();
 
   const listings = await db.listing.findMany({
-    where: { sellerId: seller.id, status: "PUBLISHED" },
+    where: { sellerId: seller.id, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
     orderBy: [{ featured: "desc" }, { publishedAt: "desc" }],
     take: 12,
     include: {
@@ -63,7 +64,7 @@ export default async function SellerProfilePage({
   // Public statistics must include only published listings. Draft,
   // rejected, or hidden listing activity is not exposed on a public profile.
   const totalViews = await db.listing.aggregate({
-    where: { sellerId: seller.id, status: "PUBLISHED" },
+    where: { sellerId: seller.id, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
     _sum: { viewCount: true },
   });
 

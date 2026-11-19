@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import { getSEO } from "@/lib/seo";
 import { resolveBrandBySlugOrAlias } from "@/lib/brand-resolve";
 import {
@@ -83,7 +84,7 @@ export default async function BrandPage({
 
   const [listings, models] = await Promise.all([
     db.listing.findMany({
-      where: { status: "PUBLISHED", brandId: brand.id },
+      where: { status: "PUBLISHED", brandId: brand.id, listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       orderBy: [
         { featured: "desc" },
         { publishedAt: { sort: "desc", nulls: "last" } },

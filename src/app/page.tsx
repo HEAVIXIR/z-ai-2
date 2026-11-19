@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import type { Prisma } from "@prisma/client";
 import { toFa } from "@/lib/format";
 import Header from "@/components/layout/Header";
@@ -99,29 +100,29 @@ export default async function HomePage() {
     requestRows, articleRows, hotSearchRows, homeSections, heroConfig,
   ] = await Promise.all([
     withHomepageQueryDiagnostics("listing.featured", () => db.listing.findMany({
-      where: { status: "PUBLISHED", featured: true },
+      where: { status: "PUBLISHED", featured: true, listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
       take: 8,
       include: listingInclude,
     })),
     withHomepageQueryDiagnostics("listing.verified", () => db.listing.findMany({
       where: verifiedOnlyFlag
-        ? { status: "PUBLISHED", verified: true }
-        : { status: "PUBLISHED" },
+        ? { status: "PUBLISHED", verified: true, listingType: { in: [...SUPPLY_LISTING_TYPES] } }
+        : { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
       take: 8,
       include: listingInclude as any,
     })),
     withHomepageQueryDiagnostics("listing.latest", () => db.listing.findMany({
-      where: { status: "PUBLISHED", showInLatest: true },
+      where: { status: "PUBLISHED", showInLatest: true, listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
       take: 10,
       include: listingInclude as any,
     })),
-    withHomepageQueryDiagnostics("listing.published-count", () => db.listing.count({ where: { status: "PUBLISHED" } })),
+    withHomepageQueryDiagnostics("listing.published-count", () => db.listing.count({ where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } } })),
     withHomepageQueryDiagnostics("brand.active-count", getCachedBrandCount),
     withHomepageQueryDiagnostics("category.root-count", () => db.category.count({ where: { active: true, parentId: null, layer: "CATALOG" } })),
-    withHomepageQueryDiagnostics("listing.featured-count", () => db.listing.count({ where: { status: "PUBLISHED", featured: true } })),
+    withHomepageQueryDiagnostics("listing.featured-count", () => db.listing.count({ where: { status: "PUBLISHED", featured: true, listingType: { in: [...SUPPLY_LISTING_TYPES] } } })),
     withHomepageQueryDiagnostics("request.active", getCachedActiveRequests),
     withHomepageQueryDiagnostics("article.published", getCachedArticles),
     withHomepageQueryDiagnostics("search.hot", getCachedHotSearches),
@@ -173,7 +174,7 @@ export default async function HomePage() {
     getActiveStats({ listings: activeListings, brands: brandCount }),
     heroCardListingIds.length > 0
       ? withHomepageQueryDiagnostics("listing.hero-cards", () => db.listing.findMany({
-          where: { id: { in: heroCardListingIds }, status: "PUBLISHED" },
+          where: { id: { in: heroCardListingIds }, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
           include: {
             brand: { select: { name: true } },
             images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] as const, take: 1 },

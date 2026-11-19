@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import { getSEO } from "@/lib/seo";
 import { toFa, faDate } from "@/lib/format";
 import Header from "@/components/layout/Header";
@@ -37,7 +38,7 @@ export async function generateMetadata({
       slug: true,
       description: true,
       city: true,
-      _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+      _count: { select: { listings: { where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } } } } },
     },
   });
   if (!company) {
@@ -78,7 +79,7 @@ export default async function CompanyPage({
     db.company.findFirst({
       where: { slug, status: "ACTIVE" },
       include: {
-        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+        _count: { select: { listings: { where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } } } } },
       },
     }),
     db.category.findMany({
@@ -96,7 +97,7 @@ export default async function CompanyPage({
     .catch(() => {});
 
   const listings = await db.listing.findMany({
-    where: { companyId: company.id, status: "PUBLISHED" },
+    where: { companyId: company.id, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
     orderBy: [{ featured: "desc" }, { publishedAt: "desc" }],
     take: 24,
     include: {

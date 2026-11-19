@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import { trackEvent } from "@/lib/analytics";
 import {
   toFa,
@@ -51,7 +52,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params;
   const listing = await db.listing.findFirst({
-    where: { slug, status: "PUBLISHED" },
+    where: { slug, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
     select: {
       id: true,
       title: true,
@@ -100,8 +101,8 @@ export default async function ListingDetailPage({
   const { slug } = await params;
 
   const [listing, headerCats, currentUser] = await Promise.all([
-    db.listing.findUnique({
-      where: { slug },
+    db.listing.findFirst({
+      where: { slug, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       include: {
         brand: { select: { name: true, nameEn: true, country: true } },
         category: { select: { name: true, slug: true, icon: true } },

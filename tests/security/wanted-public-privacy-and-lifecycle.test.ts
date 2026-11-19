@@ -41,6 +41,20 @@ describe("WANTED public privacy and lifecycle safety", () => {
     expect(route).toContain("{ status: 404 }");
   });
 
+  it("filters public homepage, profile, brand, company, detail and recommendation feeds to supply", () => {
+    const sources = [
+      read("src/app/page.tsx"),
+      read("src/app/sellers/[id]/page.tsx"),
+      read("src/app/brands/[slug]/page.tsx"),
+      read("src/app/companies/[slug]/page.tsx"),
+      read("src/app/listings/[slug]/page.tsx"),
+      read("src/lib/recommendations.ts"),
+    ];
+    for (const source of sources) {
+      expect(source).toContain("SUPPLY_LISTING_TYPES");
+    }
+  });
+
   it("filters both public listing search paths to supply-side transaction types", () => {
     const search = read("src/lib/search.ts");
     const route = read("src/app/api/listings/route.ts");
