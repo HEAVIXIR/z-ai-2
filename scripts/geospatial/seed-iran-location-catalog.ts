@@ -68,6 +68,10 @@ export function buildIranLocationSeedPlan(
   if (actualSha256 !== manifest.sha256) {
     throw new Error("Location dataset SHA-256 does not match the committed manifest.");
   }
+  const parsedDataset = JSON.parse(Buffer.from(datasetBytes).toString("utf8")) as LocationDataset;
+  if (JSON.stringify(parsedDataset) !== JSON.stringify(dataset)) {
+    throw new Error("Parsed dataset object does not match the exact SHA-256-verified dataset bytes.");
+  }
   if (dataset.schemaVersion !== 1) throw new Error("Unsupported location dataset schemaVersion.");
   if (dataset.countries.length !== 1 || manifest.countries !== 1) {
     throw new Error("Iran location seed requires exactly one country.");
