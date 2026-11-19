@@ -413,7 +413,8 @@ describe("H.3 follow-up hardening: WANTED attribute transport and server enforce
   it("submits MULTI_SELECT option IDs as a typed array instead of textValue", () => {
     const ui = read("src/components/listings/AttributeFields.tsx");
     expect(ui).toContain("entry.selectedOptionIds = arr.map(String)");
-    expect(ui).not.toContain('entry.textValue = arr.filter(Boolean).join(",");');
+    // Ordinary listings still consume the legacy textValue representation.
+    expect(ui).toContain('entry.textValue = entry.selectedOptionIds.join(",");');
   });
 
   it("normalizes legacy MULTI_SELECT text without treating it as the TEXT slot", () => {
