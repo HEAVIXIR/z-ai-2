@@ -594,6 +594,7 @@ type PayloadEntry = {
   booleanValue?: boolean | null;
   dateValue?: string | null;
   optionId?: string | null;
+  selectedOptionIds?: string[];
   unit?: string | null;
   sourceType: string;
 };
@@ -620,8 +621,11 @@ export function buildAttributePayload(
         entry.optionId = String(raw);
         break;
       case "MULTI_SELECT": {
+        // Persist option IDs as a typed array. The WANTED API stores these
+        // in BuyRequestAttributeOption child rows; serializing them into
+        // textValue makes type validation ambiguous and loses relational shape.
         const arr = Array.isArray(raw) ? raw : String(raw).split("|");
-        entry.textValue = arr.filter(Boolean).join(",");
+        entry.selectedOptionIds = arr.map(String).map((v) => v.trim()).filter(Boolean);
         break;
       }
       case "RANGE": {
