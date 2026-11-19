@@ -27,6 +27,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mock state ──────────────────────────────────────────────
 let mockCurrentUser: { id: string; mobile: string; firstName: string; role: string } | null = null;
 let mockIsAdminResult: boolean = false;
+let mockPaymentRecord: { id: string; status: string; amountIrr: number; refId: string | null } = {
+  id: "pay-1",
+  status: "PENDING",
+  amountIrr: 1000000,
+  refId: null,
+};
 
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: async () => mockCurrentUser,
@@ -58,15 +64,26 @@ const mockStoreDb = {
     findMany: vi.fn(async () => []),
     update: vi.fn(async () => ({})),
   },
-  customer: {
-    findUnique: vi.fn(async () => null),
-    upsert: vi.fn(async () => ({ id: "cust-1", phone: "09120000000", userId: null })),
-  },
   payment: {
     create: vi.fn(async (args: any) => ({ id: "pay-1", ...args.data })),
     findFirst: vi.fn(async () => null),
+    findUnique: vi.fn(async () => ({ ...mockPaymentRecord })),
     findMany: vi.fn(async () => []),
     update: vi.fn(async () => ({})),
+    updateMany: vi.fn(async ({ where, data }: any) => {
+      if (mockPaymentRecord.id !== where.id || mockPaymentRecord.status !== where.status) return { count: 0 };
+      mockPaymentRecord = { ...mockPaymentRecord, ...data };
+      return { count: 1 };
+    }),
+    count: vi.fn(async () => 0),
+    aggregate: vi.fn(async () => ({ _sum: { amountIrr: 0 } })),
+  },
+  auditOutbox: {
+    create: vi.fn(async () => ({ id: "outbox-1" })),
+  },
+  customer: {
+    findUnique: vi.fn(async () => null),
+    upsert: vi.fn(async () => ({ id: "cust-1", phone: "09120000000", userId: null })),
   },
   wishlist: {
     findMany: vi.fn(async () => []),
@@ -75,11 +92,12 @@ const mockStoreDb = {
   },
   part: { findUnique: vi.fn(async () => ({ id: "part-1" })) },
   $transaction: vi.fn(async (fn: any) => {
-    // Mock transaction: pass a mock tx that has same methods as storeDb
     const tx = {
       payment: mockStoreDb.payment,
       order: mockStoreDb.order,
       customer: mockStoreDb.customer,
+      auditOutbox: mockStoreDb.auditOutbox,
+      $queryRaw: vi.fn(async () => []),
     };
     return fn(tx);
   }),
@@ -98,6 +116,7 @@ vi.mock("@/lib/store-zarinpal", () => ({
 
 // Import AFTER mocks
 const storeAuth = await import("@/lib/store-auth");
+const storeZarinpal = await import("@/lib/store-zarinpal");
 const ordersIdRoute = await import("@/app/api/store/orders/[id]/route");
 const wishlistRoute = await import("@/app/api/store/wishlist/route");
 const paymentsManualRoute = await import("@/app/api/store/payments/manual/route");
@@ -113,6 +132,19 @@ beforeEach(() => {
   mockStoreDb.customer.findUnique.mockResolvedValue(null);
   mockStoreDb.customer.upsert.mockResolvedValue({ id: "cust-1", phone: "09120000000", userId: null });
   mockStoreDb.payment.create.mockResolvedValue({ id: "pay-1" });
+  mockStoreDb.payment.findFirst.mockResolvedValue(null);
+  mockPaymentRecord = { id: "pay-1", status: "PENDING", amountIrr: 1000000, refId: null };
+  mockStoreDb.payment.findUnique.mockImplementation(async () => ({ ...mockPaymentRecord }));
+  mockStoreDb.payment.updateMany.mockImplementation(async ({ where, data }: any) => {
+    if (mockPaymentRecord.id !== where.id || mockPaymentRecord.status !== where.status) return { count: 0 };
+    mockPaymentRecord = { ...mockPaymentRecord, ...data };
+    return { count: 1 };
+  });
+  mockStoreDb.payment.count.mockResolvedValue(0);
+  mockStoreDb.payment.aggregate.mockResolvedValue({ _sum: { amountIrr: 0 } });
+  mockStoreDb.auditOutbox.create.mockResolvedValue({ id: "outbox-1" });
+  mockStoreDb.order.update.mockImplementation(async ({ where, data }: any) => ({ ...mockOrder, id: where.id, ...data }));
+  vi.mocked(storeZarinpal.verifyPayment).mockResolvedValue({ success: true, refId: "ref-123" });
   mockStoreDb.wishlist.findMany.mockResolvedValue([]);
 });
 
@@ -373,7 +405,8 @@ describe("PR #41: POST /api/store/payments/gateway/request — security", () => 
       gatewayUrl: "https://gateway.example.com/start/auth-existing",
       gateway: "ZARINPAL",
     };
-    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, payments: [existingPayment] });
+    mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
+    mockStoreDb.payment.findFirst.mockResolvedValue(existingPayment);
     const res = await gatewayRequestRoute.POST(makePostReq("http://localhost/api/store/payments/gateway/request", { orderId: "order-1" }));
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -391,6 +424,34 @@ describe("PR #41: POST /api/store/payments/gateway/request — security", () => 
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.paymentId).toBeTruthy();
+    expect(mockStoreDb.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockStoreDb.payment.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ amountIrr: 1000000, method: "GATEWAY", status: "PENDING" }),
+    }));
+    expect(mockStoreDb.auditOutbox.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("NEGATIVE: pending manual receipt blocks a second gateway channel", async () => {
+    mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
+    mockIsAdminResult = false;
+    mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
+    mockStoreDb.payment.findFirst.mockResolvedValue(null);
+    mockStoreDb.payment.count.mockResolvedValue(1);
+    const res = await gatewayRequestRoute.POST(makePostReq("http://localhost/api/store/payments/gateway/request", { orderId: "order-1" }));
+    expect(res.status).toBe(409);
+    expect(mockStoreDb.payment.create).not.toHaveBeenCalled();
+  });
+
+  it("POSITIVE: gateway amount is the remaining approved balance, not the original total", async () => {
+    mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
+    mockIsAdminResult = false;
+    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, paymentStatus: "PARTIAL" });
+    mockStoreDb.payment.aggregate.mockResolvedValue({ _sum: { amountIrr: 400000 } });
+    const res = await gatewayRequestRoute.POST(makePostReq("http://localhost/api/store/payments/gateway/request", { orderId: "order-1" }));
+    expect(res.status).toBe(200);
+    expect(mockStoreDb.payment.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ amountIrr: 600000 }),
+    }));
   });
 });
 
@@ -419,7 +480,7 @@ describe("PR #41: GET /api/store/payments/gateway/callback — replay prevention
     expect(mockStoreDb.payment.update).not.toHaveBeenCalled();
   });
 
-  it("NEGATIVE: cancelled order → redirect to failed", async () => {
+  it("records a successful gateway capture after cancellation and flags manual reconciliation", async () => {
     const pendingPayment = {
       id: "pay-1",
       method: "GATEWAY",
@@ -429,12 +490,93 @@ describe("PR #41: GET /api/store/payments/gateway/callback — replay prevention
       amountIrr: 1000000,
     };
     mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, status: "CANCELLED", payments: [pendingPayment] });
+    mockStoreDb.payment.aggregate.mockResolvedValueOnce({ _sum: { amountIrr: 1000000 } });
+    mockStoreDb.payment.count.mockResolvedValueOnce(0);
     const res = await gatewayCallbackRoute.GET(
       makeReq("http://localhost/api/store/payments/gateway/callback?orderId=order-1&Authority=auth-123&Status=OK"),
     );
     expect(res.status).toBeGreaterThanOrEqual(300);
-    // Verify payment was NOT approved
-    expect(mockStoreDb.payment.update).not.toHaveBeenCalled();
+    expect(res.headers.get("location")).toContain("review=1");
+    expect(mockStoreDb.payment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "pay-1", status: "PENDING" },
+      data: expect.objectContaining({ status: "APPROVED", refId: "ref-123" }),
+    }));
+    expect(mockStoreDb.order.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "order-1" },
+      data: { paymentStatus: "PAID", status: "CANCELLED" },
+    }));
+    expect(mockStoreDb.auditOutbox.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("commits successful payment verification, order ledger recalculation, and audits together", async () => {
+    const pendingPayment = {
+      id: "pay-1",
+      method: "GATEWAY",
+      status: "PENDING",
+      authority: "auth-123",
+      gateway: "ZARINPAL",
+      amountIrr: 1000000,
+    };
+    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, payments: [pendingPayment] });
+    mockStoreDb.payment.aggregate.mockResolvedValueOnce({ _sum: { amountIrr: 1000000 } });
+    mockStoreDb.payment.count.mockResolvedValueOnce(0);
+    const res = await gatewayCallbackRoute.GET(
+      makeReq("http://localhost/api/store/payments/gateway/callback?orderId=order-1&Authority=auth-123&Status=OK"),
+    );
+    expect(res.status).toBeGreaterThanOrEqual(300);
+    expect(mockStoreDb.$transaction).toHaveBeenCalledTimes(1);
+    expect(mockStoreDb.order.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { paymentStatus: "PAID", status: "CONFIRMED" },
+    }));
+    expect(mockStoreDb.auditOutbox.create).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves a partial remaining balance after an earlier payment was refunded", async () => {
+    const pendingPayment = {
+      id: "pay-1",
+      method: "GATEWAY",
+      status: "PENDING",
+      authority: "auth-123",
+      gateway: "ZARINPAL",
+      amountIrr: 500000,
+    };
+    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, totalIrr: 1000000, payments: [pendingPayment] });
+    mockStoreDb.payment.aggregate.mockResolvedValueOnce({ _sum: { amountIrr: 500000 } });
+    mockStoreDb.payment.count.mockResolvedValueOnce(1);
+    const res = await gatewayCallbackRoute.GET(
+      makeReq("http://localhost/api/store/payments/gateway/callback?orderId=order-1&Authority=auth-123&Status=OK"),
+    );
+    expect(res.status).toBeGreaterThanOrEqual(300);
+    expect(mockStoreDb.order.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { paymentStatus: "PARTIAL", status: "CONFIRMED" },
+    }));
+  });
+
+  it("atomically rejects failed verification and recalculates the remaining order balance", async () => {
+    const pendingPayment = {
+      id: "pay-1",
+      method: "GATEWAY",
+      status: "PENDING",
+      authority: "auth-123",
+      gateway: "ZARINPAL",
+      amountIrr: 1000000,
+    };
+    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, payments: [pendingPayment] });
+    vi.mocked(storeZarinpal.verifyPayment).mockResolvedValueOnce({ success: false, refId: null });
+    mockStoreDb.payment.aggregate.mockResolvedValueOnce({ _sum: { amountIrr: 0 } });
+    mockStoreDb.payment.count.mockResolvedValueOnce(0);
+    const res = await gatewayCallbackRoute.GET(
+      makeReq("http://localhost/api/store/payments/gateway/callback?orderId=order-1&Authority=auth-123&Status=NOK"),
+    );
+    expect(res.status).toBeGreaterThanOrEqual(300);
+    expect(mockStoreDb.payment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "pay-1", status: "PENDING" },
+      data: expect.objectContaining({ status: "REJECTED" }),
+    }));
+    expect(mockStoreDb.order.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { paymentStatus: "UNPAID", status: "PENDING" },
+    }));
+    expect(mockStoreDb.auditOutbox.create).toHaveBeenCalledTimes(1);
   });
 });
 
