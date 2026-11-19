@@ -32,7 +32,9 @@
  * Run:
  *   bunx tsx prisma/seed-test-fixtures.ts
  */
-import { db } from "../src/lib/db";
+import { createPrismaClient } from "./prismaClient";
+
+const db = createPrismaClient();
 import bcrypt from "bcryptjs";
 
 async function main() {

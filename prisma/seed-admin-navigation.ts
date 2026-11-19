@@ -10,9 +10,10 @@
  * Usage: bunx tsx prisma/seed-admin-navigation.ts
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client'
+import { createPrismaClient } from './prismaClient';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 type Item = { titleFa: string; href: string; permissionKey?: string; icon?: string };
 type Group = { key: string; titleFa: string; icon: string; sortOrder: number; items: Item[] };

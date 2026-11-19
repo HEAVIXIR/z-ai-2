@@ -20,6 +20,7 @@
  *
  * ──────────────────────────────────────────────────────────────────────── */
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 async function main(): Promise<void> {
   const url = process.env.PROBE_DATABASE_URL;
@@ -29,10 +30,8 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const prisma = new PrismaClient({
-    datasources: { db: { url } },
-    log: ['error', 'warn'],
-  });
+  const adapter = new PrismaPg({ connectionString: url });
+  const prisma = new PrismaClient({ adapter, log: ['error', 'warn'] });
 
   try {
     await prisma.$queryRaw`SELECT 1 as proof`;

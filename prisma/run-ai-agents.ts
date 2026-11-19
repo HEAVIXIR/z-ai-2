@@ -36,7 +36,8 @@
    or:
      bun run run:ai-agents
 */
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '@prisma/client'
+import { createPrismaClient } from './prismaClient';
 import {
   runAgent,
   listAgents,
@@ -49,7 +50,7 @@ import {
    agents themselves use `@/lib/db` (the singleton) — both clients
    point at the same SQLite file, so writes from one are visible to
    the other on the next query. */
-const db = new PrismaClient();
+const db = createPrismaClient();
 
 const AGENT_KEYS = [
   "listing-enricher",
