@@ -271,7 +271,9 @@ describe("listing creation wizard media recovery wiring", () => {
   const wizard = readFileSync("src/app/listings/new/page.tsx", "utf8");
 
   it("calls the canonical listing media retry endpoint and displays pending state", () => {
-    expect(wizard).toContain('`/api/listings/${encodeURIComponent(mediaRepairListingId)}/media`');
+    expect(wizard).toContain("const mediaRetryPath = isDemandSubmission");
+    expect(wizard).toContain('`/api/listings/${encodeURIComponent(mediaRepairEntityId)}/media`');
+    expect(wizard).toContain('`/api/wanted/${encodeURIComponent(mediaRepairEntityId)}/media`');
     expect(wizard).toContain("result.pendingCount");
     expect(wizard).toContain("retryMediaAttachment");
   });
