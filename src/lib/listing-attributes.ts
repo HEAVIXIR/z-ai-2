@@ -235,11 +235,31 @@ export async function validateListingAttributeValues(
         }
         break;
       case "MULTI_SELECT":
-      case "RANGE":
         if (!hasText || incompatible(["text"])) {
           return { ok: false, error: "مقدار متنی ویژگی با نوع آن سازگار نیست." };
         }
         break;
+      case "RANGE": {
+        if (!hasText || incompatible(["text"])) {
+          return { ok: false, error: "مقدار بازه‌ای ویژگی با نوع آن سازگار نیست." };
+        }
+        const rangeParts = String(value.textValue).split("|");
+        if (rangeParts.length !== 2) {
+          return { ok: false, error: "بازهٔ واردشده معتبر نیست؛ حداقل یا حداکثر را بررسی کنید." };
+        }
+        const [minRaw, maxRaw] = rangeParts.map((part) => part.trim());
+        const min = minRaw === "" ? null : Number(minRaw);
+        const max = maxRaw === "" ? null : Number(maxRaw);
+        if (
+          (minRaw !== "" && !Number.isFinite(min)) ||
+          (maxRaw !== "" && !Number.isFinite(max)) ||
+          (min === null && max === null) ||
+          (min !== null && max !== null && min > max)
+        ) {
+          return { ok: false, error: "حداقل و حداکثر بازه معتبر نیستند؛ مقادیر عددی و ترتیب آن‌ها را بررسی کنید." };
+        }
+        break;
+      }
       case "DATE":
       case "DATETIME":
         if (!hasDate || incompatible(["date"])) {
