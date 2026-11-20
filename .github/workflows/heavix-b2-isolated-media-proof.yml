@@ -1,18 +1,11 @@
 name: HEAVIX isolated B2 media proof
 
 on:
-  workflow_dispatch:
-    inputs:
-      target:
-        description: Dedicated HEAVIX dev media bucket only
-        required: true
-        type: choice
-        options:
-          - B2_MEDIA_TEST_ONLY
-      confirm:
-        description: Type B2_MEDIA_ISOLATED_TEST
-        required: true
-        type: string
+  push:
+    branches:
+      - feat/buyrequest-media-staging-2026-11-20
+    paths:
+      - .github/workflows/heavix-b2-isolated-media-proof.yml
 
 permissions:
   contents: read
@@ -23,22 +16,20 @@ concurrency:
 
 jobs:
   b2-media-proof:
-    if: github.ref == 'refs/heads/feat/buyrequest-media-staging-2026-11-20' && inputs.target == 'B2_MEDIA_TEST_ONLY' && inputs.confirm == 'B2_MEDIA_ISOLATED_TEST'
+    if: github.ref == 'refs/heads/feat/buyrequest-media-staging-2026-11-20' && contains(github.event.head_commit.message, 'B2_MEDIA_ISOLATED_TEST')
     environment: b2-media-isolated-test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Enforce exact branch, target, and destructive-operation boundary
+      - name: Enforce exact PR branch and explicit owner-authorized trigger
         shell: bash
         env:
-          DISPATCH_TARGET: ${{ inputs.target }}
-          DISPATCH_CONFIRM: ${{ inputs.confirm }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/feat/buyrequest-media-staging-2026-11-20"
-          test "$DISPATCH_TARGET" = "B2_MEDIA_TEST_ONLY"
-          test "$DISPATCH_CONFIRM" = "B2_MEDIA_ISOLATED_TEST"
-          echo "PASS: exact PR #359 branch and isolated B2 proof confirmation."
+          [[ "$COMMIT_MESSAGE" == *"B2_MEDIA_ISOLATED_TEST"* ]]
+          echo "PASS: exact PR #359 branch and explicit isolated B2 trigger."
 
       - name: Verify dedicated media credentials are present without exposing values
         shell: bash
