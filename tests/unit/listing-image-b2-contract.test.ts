@@ -11,7 +11,9 @@ describe("seller B2 media staging contract", () => {
     expect(route).toContain("getCurrentUser()");
     expect(route).toContain("checkCsrf(request)");
     expect(route).toContain("enforceRateLimit(user.id, UPLOAD)");
-    expect(route).toContain('entityType: "Listing"');
+    expect(route).toContain('const requestedEntityType = formData.get("entityType")?.toString() || "Listing"');
+    expect(route).toContain('requestedEntityType !== "Listing" && requestedEntityType !== "BuyRequest"');
+    expect(route).toContain("entityType: requestedEntityType");
     expect(route).toContain('visibility: "PRIVATE"');
     expect(route).toContain("maxOutputBytes: policy.maxImageBytes");
     expect(route).toContain("getListingImagePolicy(user.id)");
