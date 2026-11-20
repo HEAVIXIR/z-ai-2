@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { toFa, faDate } from "@/lib/format";
 import DashboardNav from "@/components/dashboard/DashboardNav";
+import Image from "next/image";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +79,10 @@ export default async function DashboardWantedPage() {
       brandRef: { select: { name: true } },
       modelRef: { select: { name: true } },
       serviceTypeRef: { select: { nameFa: true } },
+      images: {
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, url: true, alt: true, isPrimary: true, sortOrder: true },
+      },
     },
   });
 
@@ -153,6 +158,29 @@ export default async function DashboardWantedPage() {
                         {(r.city || r.province) && <><span>·</span><span>{[r.province, r.city].filter(Boolean).join("، ")}</span></>}
                         {r.deadline && <><span>·</span><span>مهلت: {r.deadline}</span></>}
                       </div>
+                      {r.images.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2" aria-label="تصاویر درخواست">
+                          {r.images.map((image) => (
+                            <a
+                              key={image.id}
+                              href={image.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={image.alt ?? "تصویر درخواست"}
+                              className="relative h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-white/5"
+                            >
+                              <Image
+                                src={image.url}
+                                alt={image.alt ?? "تصویر درخواست"}
+                                fill
+                                sizes="64px"
+                                className="object-cover"
+                                unoptimized
+                              />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                       {r.description && (
                         <p className="mt-2 line-clamp-2 text-xs text-white/40">{r.description}</p>
                       )}
