@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import { validateBuyRequestAttributeValues } from "@/lib/buy-request-attributes";
 
-type CategoryLink = { categoryId: string; attributeId: string; required: boolean };
+type CategoryLink = { categoryId: string; attributeId: string; active?: boolean; required: boolean };
 type Attribute = {
   id: string;
   type: string;
@@ -13,16 +13,23 @@ type Attribute = {
 function fakeDb(options: {
   categoryLinks?: CategoryLink[];
   attributes?: Attribute[];
+  parents?: Record<string, string | null>;
+  inactiveCategories?: string[];
+  modelLinks?: Array<{ attributeId: string; required: boolean }>;
 } = {}): PrismaClient {
   return {
     category: {
-      findUnique: async () => ({ parentId: null }),
+      findUnique: async ({ where }: { where: { id: string } }) => ({
+        parentId: options.parents?.[where.id] ?? null,
+        active: !options.inactiveCategories?.includes(where.id),
+      }),
     },
     categoryAttribute: {
-      findMany: async () => options.categoryLinks ?? [],
+      findMany: async ({ where }: { where: { categoryId: { in: string[] } } }) =>
+        (options.categoryLinks ?? []).filter((link) => where.categoryId.in.includes(link.categoryId)),
     },
     productModelAttribute: {
-      findMany: async () => [],
+      findMany: async () => options.modelLinks ?? [],
     },
     attributeDefinition: {
       findMany: async () => options.attributes ?? [],
@@ -114,6 +121,63 @@ describe("validateBuyRequestAttributeValues — behavioral contracts", () => {
       true,
     );
     expect(result.ok).toBe(false);
+  });
+
+  it("does not accept a value from a category attribute explicitly disabled by the owner/admin", async () => {
+    const result = await validateBuyRequestAttributeValues(
+      fakeDb({ categoryLinks: [{ ...category, active: false }] }),
+      { categoryId: "cat-1" },
+      [{ attributeId: "attr-1", textValue: "disabled" }],
+      false,
+      true,
+    );
+    expect(result).toMatchObject({ ok: false });
+  });
+
+  it("does not require an inherited field when the selected leaf explicitly disables it", async () => {
+    const result = await validateBuyRequestAttributeValues(
+      fakeDb({
+        parents: { leaf: "parent", parent: null },
+        categoryLinks: [
+          { ...category, categoryId: "parent", active: true, required: true },
+          { ...category, categoryId: "leaf", active: false, required: true },
+        ],
+      }),
+      { categoryId: "leaf" },
+      [],
+      false,
+      true,
+    );
+    expect(result).toEqual({ ok: true, values: [] });
+  });
+
+  it("stops inheriting request fields from an inactive ancestor category", async () => {
+    const result = await validateBuyRequestAttributeValues(
+      fakeDb({
+        parents: { leaf: "inactive-parent", "inactive-parent": null },
+        inactiveCategories: ["inactive-parent"],
+        categoryLinks: [{ ...category, categoryId: "inactive-parent", active: true, required: true }],
+      }),
+      { categoryId: "leaf" },
+      [],
+      false,
+      true,
+    );
+    expect(result).toEqual({ ok: true, values: [] });
+  });
+
+  it("does not let a model-specific link revive a category-disabled request field", async () => {
+    const result = await validateBuyRequestAttributeValues(
+      fakeDb({
+        categoryLinks: [{ ...category, active: false, required: false }],
+        modelLinks: [{ attributeId: "attr-1", required: true }],
+      }),
+      { categoryId: "cat-1", modelId: "model-1" },
+      [{ attributeId: "attr-1", textValue: "disabled" }],
+      false,
+      true,
+    );
+    expect(result).toMatchObject({ ok: false });
   });
 
   it("rejects values outside the selected category/model attribute membership", async () => {
