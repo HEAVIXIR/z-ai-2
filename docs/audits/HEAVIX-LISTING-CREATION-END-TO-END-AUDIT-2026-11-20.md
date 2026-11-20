@@ -5,7 +5,7 @@
 
 **Status: PARTIAL — NOT YET APPROVED for Preview acceptance or Integration release.**
 
-The seller listing flow has a coherent implementation path across the seven-step wizard, canonical taxonomy and attribute APIs, authenticated creation endpoints, private B2 staging, durable ListingImage manifest rows, and seller retry recovery. Two correctness gaps were closed in this audit pass: empty-but-successfully-loaded category attribute forms no longer dead-end the wizard, and canonical province selection is now enforced by both supply-listing and wanted-request create APIs.
+The seller listing flow has a coherent implementation path across the seven-step wizard, canonical taxonomy and attribute APIs, authenticated creation endpoints, private B2 staging, durable ListingImage manifest rows, and seller retry recovery. Additional source-level safeguards have since been added: Listing idempotency receipts are now committed atomically with the Listing transaction, exact machine-serial duplicates are flagged for human moderation, empty-but-successfully-loaded category attribute forms can proceed, and canonical province selection is enforced by both supply-listing and wanted-request APIs.
 
 This is a source-level review of the current stacked branch. It is **not** a runtime, database, browser E2E, B2 integration, or Preview acceptance certification. No test suite was executed from this review session.
 
@@ -13,7 +13,7 @@ This is a source-level review of the current stacked branch. It is **not** a run
 
 - Repository: `HEAVIXIR/z-ai-2`
 - Reviewed head branch: `feat/listing-media-recovery-retry-2026-11-20`
-- Reviewed head after audit fixes: recorded in the containing PR's latest commit
+- Reviewed head after audit fixes: `5350f4f399779a9c2f05ae98f9bddcdf8f6f643d` (PR #357)
 - Integration root: PR #340, branch `integration/preview-readiness-workerd-2026-11-15`
 - Stacked capability PRs: #350 → #351 → #352 → #353 → #354 → #355 → #356 → #357
 - All reviewed PRs remain Draft/open/unmerged.
