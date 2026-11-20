@@ -8,6 +8,8 @@ on:
       - .github/workflows/heavix-wanted-media-browser-e2e.yml
       - scripts/e2e/wanted-media-browser-acceptance.ts
       - scripts/e2e/initialize-image-wasm.mjs
+      - src/app/listings/new/page.tsx
+      - src/components/listings/ListingImageUploader.tsx
 
 permissions:
   contents: read
