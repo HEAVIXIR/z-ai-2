@@ -26,6 +26,8 @@ export type LocationValue = {
   countryLabel?: string;
   provinceLabel?: string;
   cityLabel?: string;
+  latitude?: string;
+  longitude?: string;
 };
 
 type Country = { id: string; name: string; nameEn: string | null; code: string | null };
@@ -77,7 +79,7 @@ export default function LocationPicker({
           const iran =
             countryList.find((c) => c.code === "IR" || c.name === "ایران") ??
             countryList[0];
-          onChange({ ...value, countryId: iran.id, provinceId: "", cityId: "", countryLabel: iran.name, provinceLabel: undefined, cityLabel: undefined });
+          onChange({ ...value, countryId: iran.id, provinceId: "", cityId: "", countryLabel: iran.name, provinceLabel: undefined, cityLabel: undefined, latitude: "", longitude: "" });
         }
       } catch {
         if (alive) setCountryError(true);
@@ -186,7 +188,7 @@ export default function LocationPicker({
             value={value.countryId}
             onChange={(e) => {
               const selected = countries.find((c) => c.id === e.target.value);
-              onChange({ countryId: e.target.value, provinceId: "", cityId: "", countryLabel: selected?.name, provinceLabel: undefined, cityLabel: undefined });
+              onChange({ ...value, countryId: e.target.value, provinceId: "", cityId: "", countryLabel: selected?.name, provinceLabel: undefined, cityLabel: undefined, latitude: "", longitude: "" });
             }}
             className={selectCls}
             disabled={loadingCountries}
@@ -227,6 +229,8 @@ export default function LocationPicker({
                 provinceLabel: selected?.name,
                 cityId: "",
                 cityLabel: undefined,
+                latitude: "",
+                longitude: "",
               });
             }}
             className={selectCls}
@@ -272,6 +276,8 @@ export default function LocationPicker({
                 provinceLabel: value.provinceLabel,
                 cityId: e.target.value,
                 cityLabel: selected?.name,
+                latitude: "",
+                longitude: "",
               });
             }}
             className={selectCls}
@@ -298,6 +304,51 @@ export default function LocationPicker({
           <p role="alert" className="mt-2 text-xs text-red-300">
             فهرست شهرهای این استان دریافت نشد یا خالی است.
             <button type="button" onClick={() => setCityRetry((current) => current + 1)} className="mr-2 underline">تلاش مجدد</button>
+          </p>
+        )}
+      </div>
+      <div className="sm:col-span-3 rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="mb-2 text-xs font-bold text-white/75">نقطهٔ دقیق محل دستگاه (اختیاری)</div>
+        <p className="mb-3 text-[11px] leading-6 text-white/45">
+          این مختصات باید محل واقعی دستگاه باشد؛ مختصات مرکز شهر به‌صورت خودکار جایگزین نمی‌شود.
+          تا زمان راه‌اندازی نقشهٔ اختصاصی HEAVIX، می‌توانید مختصات را دستی وارد کنید.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className={labelCls}>
+            عرض جغرافیایی (Latitude)
+            <input
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min="-90"
+              max="90"
+              value={value.latitude ?? ""}
+              onChange={(event) => onChange({ ...value, latitude: event.target.value })}
+              placeholder="مثلاً 35.6892"
+              className={selectCls + " mt-1.5"}
+            />
+          </label>
+          <label className={labelCls}>
+            طول جغرافیایی (Longitude)
+            <input
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min="-180"
+              max="180"
+              value={value.longitude ?? ""}
+              onChange={(event) => onChange({ ...value, longitude: event.target.value })}
+              placeholder="مثلاً 51.3890"
+              className={selectCls + " mt-1.5"}
+            />
+          </label>
+        </div>
+        {(Boolean(value.latitude?.trim()) !== Boolean(value.longitude?.trim())) && (
+          <p role="alert" className="mt-2 text-xs text-red-300">برای ثبت نقطهٔ دقیق، هر دو مختصات عرض و طول باید وارد شوند.</p>
+        )}
+        {value.latitude?.trim() && value.longitude?.trim() && (
+          <p className="mt-2 text-[11px] text-emerald-300">
+            نقطهٔ واردشده: {value.latitude} ، {value.longitude}
           </p>
         )}
       </div>
