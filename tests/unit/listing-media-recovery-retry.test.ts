@@ -284,6 +284,14 @@ describe("canonical listing submission gates", () => {
   const listingApi = readFileSync("src/app/api/listings/route.ts", "utf8");
   const wantedApi = readFileSync("src/app/api/wanted/route.ts", "utf8");
 
+  it("persists the seller-scoped idempotency receipt in the listing transaction", () => {
+    expect(listingApi).toContain('createHash("sha256").update(`${user.id}:${idempotencyKey}`).digest("hex")');
+    expect(listingApi).toContain("await logAuditStrict({");
+    expect(listingApi).toContain("}, tx);");
+    expect(listingApi).toContain("if (!durableIdempotencyKey)");
+    expect(listingApi).not.toContain("idempotencyKey: idempotencyKey ?? null");
+  });
+
   it("allows a successfully loaded category with no configured technical attributes", () => {
     expect(wizard).toContain("return attributesLoaded && Object.keys(errs).length === 0;");
     expect(wizard).not.toContain("attributesLoaded && attributeDefs.length > 0");
