@@ -439,7 +439,24 @@ export default function NewListingPage() {
       // must never pass review as if its specifications were complete.
       return attributesLoaded && attributeDefs.length > 0 && Object.keys(errs).length === 0;
     }
-    if (step === 5) return Boolean(location.provinceId);
+    if (step === 5) {
+      if (!location.provinceId) return false;
+      const hasLatitude = Boolean(location.latitude?.trim());
+      const hasLongitude = Boolean(location.longitude?.trim());
+      if (hasLatitude !== hasLongitude) return false;
+      if (!hasLatitude) return true;
+      const latitude = Number(location.latitude);
+      const longitude = Number(location.longitude);
+      return Boolean(
+        location.cityId &&
+        Number.isFinite(latitude) &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        Number.isFinite(longitude) &&
+        longitude >= -180 &&
+        longitude <= 180
+      );
+    }
     if (step === 6) {
       if (imagesUploading) return false;
       if (isServiceFlow) {
@@ -579,6 +596,8 @@ export default function NewListingPage() {
         countryId: location.countryId || undefined,
         provinceId: location.provinceId || undefined,
         cityId: location.cityId || undefined,
+        locationLatitude: location.latitude?.trim() ? Number(location.latitude) : undefined,
+        locationLongitude: location.longitude?.trim() ? Number(location.longitude) : undefined,
         brandId: brandId || undefined,
         categoryId: categoryId || undefined,
         modelId: modelId || undefined,
