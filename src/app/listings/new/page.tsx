@@ -103,7 +103,7 @@ export default function NewListingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attributeWarning, setAttributeWarning] = useState<string | null>(null);
-  const [mediaRepairListingId, setMediaRepairListingId] = useState<string | null>(null);
+  const [mediaRepairEntityId, setMediaRepairEntityId] = useState<string | null>(null);
   const [mediaWarning, setMediaWarning] = useState<string | null>(null);
   const [mediaRepairing, setMediaRepairing] = useState(false);
   const [images, setImages] = useState<string[]>([]);
@@ -424,7 +424,7 @@ export default function NewListingPage() {
     setSubmitError(null);
     setAttributeWarning(null);
     setMediaWarning(null);
-    setMediaRepairListingId(null);
+    setMediaRepairEntityId(null);
     setSubmitting(false);
     setCreatedId(null);
     setCreatedSlug(null);
@@ -686,9 +686,10 @@ export default function NewListingPage() {
       }
 
       if (data.mediaStatus === "PENDING" && data.id) {
-        setMediaRepairListingId(String(data.id));
+        setMediaRepairEntityId(String(data.id));
+        const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی";
         setMediaWarning(
-          `${Number(data.mediaPendingCount) || 0} تصویر ثبت شده اما انتقال نهایی آن‌ها کامل نشده است. آگهی ذخیره شده؛ می‌توانید بازیابی تصاویر را دوباره امتحان کنید.`,
+          `${Number(data.mediaPendingCount) || 0} تصویر ثبت شده اما انتقال نهایی آن‌ها کامل نشده است. ${mediaEntityLabel} ذخیره شده است؛ می‌توانید بازیابی تصاویر را دوباره امتحان کنید.`,
         );
       }
       // P0-B: always capture the created id + slug for the success-screen link.
@@ -707,25 +708,28 @@ export default function NewListingPage() {
   };
 
   const retryMediaAttachment = async () => {
-    if (!mediaRepairListingId || mediaRepairing) return;
+    if (!mediaRepairEntityId || mediaRepairing) return;
     setMediaRepairing(true);
     setMediaWarning(null);
     try {
-      const response = await fetch(
-        `/api/listings/${encodeURIComponent(mediaRepairListingId)}/media`,
-        { method: "POST" },
-      );
+      const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST";
+      const mediaRetryPath = isDemandSubmission
+        ? `/api/wanted/${encodeURIComponent(mediaRepairEntityId)}/media`
+        : `/api/listings/${encodeURIComponent(mediaRepairEntityId)}/media`;
+      const response = await fetch(mediaRetryPath, { method: "POST" });
       const result = await response.json().catch(() => ({}));
       if (!response.ok && response.status !== 202) {
         throw new Error(result.error ?? "بازیابی تصاویر ناموفق بود.");
       }
       if (Number(result.pendingCount) > 0) {
+        const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی";
         setMediaWarning(
-          `${result.pendingCount} تصویر هنوز منتقل نشده است. بعداً دوباره تلاش کنید؛ آگهی شما ذخیره شده است.`,
+          `${result.pendingCount} تصویر هنوز منتقل نشده است. بعداً دوباره تلاش کنید؛ ${mediaEntityLabel} شما ذخیره شده است.`,
         );
       } else {
-        setMediaWarning("همه تصاویر با موفقیت به آگهی متصل شدند.");
-        setMediaRepairListingId(null);
+        const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی";
+        setMediaWarning(`همه تصاویر با موفقیت به ${mediaEntityLabel} متصل شدند.`);
+        setMediaRepairEntityId(null);
       }
     } catch (error) {
       setMediaWarning(
@@ -777,7 +781,7 @@ export default function NewListingPage() {
               {mediaWarning && (
                 <div className="mx-auto mt-5 max-w-md rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-right text-xs leading-6 text-amber-200">
                   <div>{mediaWarning}</div>
-                  {mediaRepairListingId && (
+                  {mediaRepairEntityId && (
                     <button
                       type="button"
                       onClick={retryMediaAttachment}
