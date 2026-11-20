@@ -7,13 +7,13 @@
 
 The seller listing flow has a coherent implementation path across the seven-step wizard, canonical taxonomy and attribute APIs, authenticated creation endpoints, private B2 staging, durable ListingImage manifest rows, and seller retry recovery. Additional source-level safeguards have since been added: Listing idempotency receipts are now committed atomically with the Listing transaction, exact machine-serial duplicates are flagged for human moderation, empty-but-successfully-loaded category attribute forms can proceed, and canonical province selection is enforced by both supply-listing and wanted-request APIs.
 
-This is a source-level review of the current stacked branch. It is **not** a runtime, database, browser E2E, B2 integration, or Preview acceptance certification. No test suite was executed from this review session.
+This is a source-level review plus CI verification for the exact PR #357 head. CI run #4232 (`44777105704`) completed successfully on `dd58b0f36e1898e941a4bd62d8501d09ef1ed2e`, including verify, unit/contract tests, integration tests, migration proof on isolated databases, production build, Docker, TLS, and Workerd smoke. It is **not** runtime, browser E2E, live B2 integration, or Preview acceptance certification.
 
 ## 1. Scope and evidence baseline
 
 - Repository: `HEAVIXIR/z-ai-2`
 - Reviewed head branch: `feat/listing-media-recovery-retry-2026-11-20`
-- Reviewed head after audit fixes: `5350f4f399779a9c2f05ae98f9bddcdf8f6f643d` (PR #357)
+- Reviewed head after audit fixes: `dd58b0f36e1898e941a4bd62d8501d09ef1ed2e` (PR #357; CI run #4232 passed)
 - Integration root: PR #340, branch `integration/preview-readiness-workerd-2026-11-15`
 - Stacked capability PRs: #350 → #351 → #352 → #353 → #354 → #355 → #356 → #357
 - All reviewed PRs remain Draft/open/unmerged.
@@ -44,7 +44,7 @@ The product contract is the HEAVIX Taxonomy V1 / Listing Creation Flow: Transact
 1. **Empty technical form handling:** a category whose attribute request succeeds but returns no configured attributes can now continue. Previously the wizard required `attributeDefs.length > 0`, making a valid category with no configured technical fields impossible to submit. Required fields remain enforced by the server; a failed attribute fetch still fails closed.
 2. **Supply location enforcement:** `POST /api/listings` now rejects submissions without a resolved canonical Province. A supplied City must still belong to that Province. City and exact coordinates remain optional to match the current wizard.
 3. **Demand location enforcement:** `POST /api/wanted` now rejects requests without a resolved canonical Province. A supplied City must still belong to that Province.
-4. **Regression contract coverage:** added tests asserting the empty-attribute wizard behavior, both server-side province guards, atomic idempotency receipt wiring, and exact-serial duplicate review flag. These tests have been authored but were not executed in this review.\n5. **Durable Listing idempotency:** the listing route now hashes the caller key together with the authenticated seller ID, checks the namespaced key, and writes a strict AuditLog receipt through the same Prisma transaction as the Listing, image manifest, children, and typed attributes. The post-commit best-effort audit is skipped when a durable receipt was written. Existing globally unique `AuditLog.idempotencyKey` is reused; no schema migration is introduced. Concurrent unique/serialization conflicts attempt to resolve to the winning Listing. This is source-level implementation only until tests/CI are executed.
+4. **Regression contract coverage:** added tests asserting the empty-attribute wizard behavior, both server-side province guards, atomic idempotency receipt wiring, and exact-serial duplicate review flag. These regression tests were executed in CI run #4232 and passed.\n5. **Durable Listing idempotency:** the listing route now hashes the caller key together with the authenticated seller ID, checks the namespaced key, and writes a strict AuditLog receipt through the same Prisma transaction as the Listing, image manifest, children, and typed attributes. The post-commit best-effort audit is skipped when a durable receipt was written. Existing globally unique `AuditLog.idempotencyKey` is reused; no schema migration is introduced. Concurrent unique/serialization conflicts attempt to resolve to the winning Listing. This is source-level implementation; CI run #4232 passed, but dedicated behavioral retry/rollback/concurrency proof remains outstanding.
 
 ## 4. Release-blocking and follow-up findings
 
@@ -54,7 +54,7 @@ The listing route now derives a seller-scoped SHA-256 delivery key from the auth
 
 This reuses the existing globally unique `AuditLog.idempotencyKey` column without a schema migration. The seller namespace is hashed to avoid collisions when different sellers happen to submit the same raw key.
 
-**Remaining gate:** execute behavioral transaction tests and final-head CI, including sequential retry, concurrent retry, receipt-write failure rollback, and cross-seller same-raw-key isolation. The UI currently sends a stable key for each submission attempt; API callers that omit the header still use legacy non-idempotent behavior.
+**Remaining gate:** execute dedicated behavioral transaction tests, including sequential retry, concurrent retry, receipt-write failure rollback, and cross-seller same-raw-key isolation. General CI run #4232 passed, but these targeted cases are not yet evidenced. The UI currently sends a stable key for each submission attempt; API callers that omit the header still use legacy non-idempotent behavior.
 
 ### P1 — Duplicate detection: PARTIAL
 
@@ -77,7 +77,7 @@ The source-level tests and unit contracts do not prove a real browser journey ac
 - PR #340 is Draft/open/unmerged and mergeable. Its head `7492b8993207ff9bd80f6fc560ef859f8e46908e` had successful `CI` and `OpenNext runtime integration proof` workflow runs at the time of inspection.
 - PR #340's Integration branch is 1 commit behind current `main` and has diverged (1,136 commits ahead, 1 behind). It must be reconciled with the current protected main head before final release review.
 - PRs #350–#357 are stacked in order, all Draft/open/unmerged/mergeable at inspection.
-- The latest commits of #350–#357 returned no PR workflow runs and no combined status checks in the inspected GitHub responses. The root PR #340 green checks therefore do not certify the later stacked commits.
+- PR #357 head `dd58b0f36e1898e941a4bd62d8501d09ef1ed2e` has successful CI run #4232; the remaining stacked PRs still require final-head checks. The root PR #340 green checks therefore do not certify the later stacked commits.
 - Current `main` is protected. Required checks observed: `verify`, `audit-transaction`, `phase-tests`, `docker-build-proof`, and `tls-proof`.
 
 ### Preview controls
