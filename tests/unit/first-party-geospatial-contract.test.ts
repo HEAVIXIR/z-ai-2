@@ -16,6 +16,8 @@ const architecture = readFileSync(
   join(process.cwd(), "docs/architecture/FIRST_PARTY_GEOSPATIAL.md"),
   "utf8",
 );
+const locationsRoute = readFileSync(join(process.cwd(), "src/app/api/locations/route.ts"), "utf8");
+const locationItemRoute = readFileSync(join(process.cwd(), "src/app/api/locations/[id]/route.ts"), "utf8");
 
 describe("first-party geospatial contract", () => {
   it("stores exact coordinates separately from administrative city centroids", () => {
@@ -48,6 +50,23 @@ describe("first-party geospatial contract", () => {
     expect(schema).toMatch(/model GeoZone \{/);
     expect(schema).toMatch(/boundaryGeoJson\s+String/);
     expect(migration).toContain('CREATE TABLE "GeoZone"');
+  });
+
+  it("protects all location mutations with the fail-closed CSRF guard", () => {
+    expect(locationsRoute).toContain('import { checkCsrf } from "@/lib/csrf"');
+    expect(locationsRoute).toMatch(/export async function POST[\\s\\S]*?checkCsrf\\(req\\)/);
+    expect(locationItemRoute).toContain('import { checkCsrf } from "@/lib/csrf"');
+    expect(locationItemRoute).toMatch(/export async function PATCH[\\s\\S]*?checkCsrf\\(req\\)/);
+    expect(locationItemRoute).toMatch(/export async function DELETE[\\s\\S]*?checkCsrf\\(req\\)/);
+  });
+
+  it("rejects incomplete and out-of-range city coordinate pairs", () => {
+    for (const source of [locationsRoute, locationItemRoute]) {
+      expect(source).toContain("latitude and longitude must be provided together");
+      expect(source).toContain("coordinates are outside valid WGS84 bounds");
+      expect(source).toContain("latitude < -90");
+      expect(source).toContain("longitude > 180");
+    }
   });
 
   it("does not silently enable extensions, external tile services or perform data imports", () => {
