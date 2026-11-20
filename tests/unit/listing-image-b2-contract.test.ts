@@ -112,7 +112,7 @@ describe("seller B2 media staging contract", () => {
 
   it("fails closed when the one-migration Preview workflow sees later unapproved DDL", () => {
     const workflow = read(".github/workflows/app-preview-wanted-structural-migration.yml");
-    expect(workflow).toContain("prisma migrate deploy applies every pending migration");
+    expect(workflow).toContain("Prisma migrate deploy applies EVERY pending migration.");
     expect(workflow).toContain('later_migrations=(');
     expect(workflow).toContain('"20261119190000_first_party_geospatial_foundation"');
     expect(workflow).toContain('"20261120113000_location_source_codes"');
