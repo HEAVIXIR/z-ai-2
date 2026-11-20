@@ -313,6 +313,7 @@ export default function AttributesManager({
           id: l.id,
           categoryId: l.categoryId,
           category: l.category,
+          active: l.active !== false,
           required: l.required,
           filterable: l.filterable,
           searchable: l.searchable,
