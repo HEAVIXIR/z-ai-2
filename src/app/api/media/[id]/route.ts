@@ -70,10 +70,16 @@ export async function GET(_request: Request, { params }: RouteContext) {
         listingOwnerId === user.id ||
         buyRequestOwnerId === user.id
       );
+      // Request reviewers need to inspect attached BuyRequest images
+      // while a request is pending moderation. This is scoped to a real,
+      // attached BuyRequest row; staged/unassociated uploads remain private.
+      const isRequestReviewer = !!user && isBuyRequestAsset && !!buyRequestOwnerId
+        ? await can(user.id, "request.read")
+        : false;
       const isMediaAdmin = !!user && !isOwner
         ? await can(user.id, "media.read")
         : false;
-      if (!isOwner && !isMediaAdmin) {
+      if (!isOwner && !isMediaAdmin && !isRequestReviewer) {
         // Avoid leaking the existence of staged/private media.
         return new NextResponse(null, { status: 404 });
       }
