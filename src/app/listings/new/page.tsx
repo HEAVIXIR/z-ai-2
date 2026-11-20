@@ -446,7 +446,7 @@ export default function NewListingPage() {
       const errs = validateAttributeFields(attributeDefs, attributes);
       // Fail closed: a selected category without a resolved technical form
       // must never pass review as if its specifications were complete.
-      return attributesLoaded && attributeDefs.length > 0 && Object.keys(errs).length === 0;
+      return attributesLoaded && Object.keys(errs).length === 0;
     }
     if (step === 5) {
       if (!location.provinceId) return false;
