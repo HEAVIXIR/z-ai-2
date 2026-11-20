@@ -33,7 +33,8 @@ import { HOMEPAGE_CACHE_TAGS } from "@/lib/homepage-cache-tags";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { getAsset, attachAsset } from "@/lib/media-service";
+import { getAsset } from "@/lib/media-service";
+import { retryBuyRequestMediaAttachments } from "@/lib/wanted-media";
 import { getListingImagePolicy } from "@/lib/listing-image-policy";
 import { getCurrentUserId } from "@/lib/auth";
 import { checkCsrf } from "@/lib/csrf";
@@ -240,12 +241,28 @@ export async function POST(req: Request) {
         actorId: userId,
       });
       if (prior) {
+        // A successful request may have committed its relational image manifest
+        // while a B2 sidecar attachment was temporarily unavailable. Replays
+        // must reconcile that manifest rather than returning a false success.
+        let mediaResult = { attachedCount: 0, pendingCount: 1 };
+        try {
+          const result = await retryBuyRequestMediaAttachments(prior.id, userId);
+          mediaResult = {
+            attachedCount: result.attachedCount,
+            pendingCount: result.pendingCount,
+          };
+        } catch {
+          // The BuyRequest already exists. Keep the idempotent response
+          // successful while accurately reporting media as pending.
+        }
         return NextResponse.json({
           ok: true,
           success: true,
           id: prior.id,
           status: prior.status,
           idempotentReplay: true,
+          mediaStatus: mediaResult.pendingCount ? "PENDING" : "ATTACHED",
+          mediaPendingCount: mediaResult.pendingCount,
         });
       }
     }
@@ -579,19 +596,21 @@ export async function POST(req: Request) {
       idempotencyKey,
     });
 
-    const mediaPendingIds: string[] = [];
-    for (const asset of stagedAssets) {
-      try {
-        const attached = await attachAsset(asset.assetId, "BuyRequest", created.id, userId);
-        if (!attached.ok) mediaPendingIds.push(asset.assetId);
-      } catch (mediaError) {
-        mediaPendingIds.push(asset.assetId);
-        console.error("[wanted] media attachment deferred for retry", {
-          assetId: asset.assetId,
-          buyRequestId: created.id,
-          error: mediaError instanceof Error ? mediaError.message : "unknown",
-        });
-      }
+    // Reconcile only the database-owned image manifest. This is important
+    // for concurrent idempotent submissions: a losing request must never
+    // attach its unpersisted staged assets to the winner's BuyRequest.
+    let mediaResult = { attachedCount: 0, pendingCount: stagedAssets.length };
+    try {
+      const result = await retryBuyRequestMediaAttachments(created.id, userId);
+      mediaResult = {
+        attachedCount: result.attachedCount,
+        pendingCount: result.pendingCount,
+      };
+    } catch (mediaError) {
+      console.error("[wanted] media attachment deferred for retry", {
+        buyRequestId: created.id,
+        error: mediaError instanceof Error ? mediaError.message : "unknown",
+      });
     }
 
     // Invalidate the homepage "requests" cache tag so the new
@@ -607,8 +626,8 @@ export async function POST(req: Request) {
       success: true,
       id: created.id,
       status: created.status,
-      mediaStatus: mediaPendingIds.length ? "PENDING" : "ATTACHED",
-      mediaPendingCount: mediaPendingIds.length,
+      mediaStatus: mediaResult.pendingCount ? "PENDING" : "ATTACHED",
+      mediaPendingCount: mediaResult.pendingCount,
     });
   } catch (err: any) {
     if (err instanceof WantedServiceError) {
