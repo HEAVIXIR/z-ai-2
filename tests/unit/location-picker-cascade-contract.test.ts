@@ -19,7 +19,7 @@ describe("first-party country → province → city picker", () => {
   });
 
   it("clears dependent selections and labels when a parent selection changes", () => {
-    expect(picker).toContain('onChange({ countryId: e.target.value, provinceId: "", cityId: "", countryLabel: selected?.name, provinceLabel: undefined, cityLabel: undefined })');
+    expect(picker).toContain('onChange({ ...value, countryId: e.target.value, provinceId: "", cityId: "", countryLabel: selected?.name, provinceLabel: undefined, cityLabel: undefined, latitude: "", longitude: "" });');
     expect(picker).toContain('provinceId: e.target.value,');
     expect(picker).toContain('cityId: "",');
     expect(picker).toContain('cityLabel: undefined,');
