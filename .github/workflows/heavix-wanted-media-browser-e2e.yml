@@ -55,7 +55,6 @@ jobs:
       B2_MEDIA_PREFIX: heavix-media/
       B2_REGION: us-east-005
       B2_S3_ENDPOINT: https://s3.us-east-005.backblazeb2.com
-      PLAYWRIGHT_INSTALL_DIR: ${{ runner.temp }}/heavix-playwright/node_modules
     steps:
       - name: Enforce isolated branch, disposable database, and scoped B2 configuration
         shell: bash
@@ -124,6 +123,8 @@ jobs:
           fi
           echo "PASS: local application is responding on 127.0.0.1:3000."
       - name: Run Chromium BuyRequest media acceptance journey
+        env:
+          PLAYWRIGHT_INSTALL_DIR: ${{ runner.temp }}/heavix-playwright/node_modules
         run: bunx tsx scripts/e2e/wanted-media-browser-acceptance.ts
       - name: Stop local Next.js app
         if: always()
