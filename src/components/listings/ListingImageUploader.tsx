@@ -17,6 +17,7 @@ type Props = {
   onChange: (images: string[]) => void;
   onUploadingChange?: (uploading: boolean) => void;
   required?: boolean;
+  entityType?: "Listing" | "BuyRequest";
 };
 
 export default function ListingImageUploader({
@@ -24,6 +25,7 @@ export default function ListingImageUploader({
   onChange,
   onUploadingChange,
   required = false,
+  entityType = "Listing",
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -101,6 +103,7 @@ export default function ListingImageUploader({
         const prepared = await prepareImageForUpload(source, policy.maxImageBytes);
         const body = new FormData();
         body.append("file", prepared.file);
+        body.append("entityType", entityType);
 
         const response = await fetch("/api/media/staging", {
           method: "POST",
@@ -140,7 +143,7 @@ export default function ListingImageUploader({
   return (
     <div>
       <label className="mb-1.5 block text-xs font-bold text-white/60">
-        تصاویر دستگاه{required ? " *" : " (اختیاری)"}
+        تصاویر{required ? " *" : " (اختیاری)"}
       </label>
       <button
         type="button"
@@ -159,7 +162,7 @@ export default function ListingImageUploader({
           <ImagePlus className="mb-3 h-10 w-10 text-white/30" />
         )}
         <span className="text-sm font-bold text-white/60">
-          {uploading ? "در حال آپلود تصاویر واقعی..." : !policyReady ? "در حال بررسی سطح اشتراک..." : "تصاویر دستگاه را انتخاب کنید"}
+          {uploading ? "در حال آپلود تصاویر واقعی..." : !policyReady ? "در حال بررسی سطح اشتراک..." : "تصاویر را انتخاب کنید"}
         </span>
         <span className="mt-1 text-[11px] text-white/30">
           {policy.tier === "PREMIUM" ? "اشتراک پریمیوم" : policy.tier === "PRO" ? "اشتراک حرفه‌ای" : "اشتراک پایه"} · حداکثر {maxImages} عکس · هر عکس تا {policy.maxImageBytes / (1024 * 1024)} مگابایت · بهینه‌سازی خودکار
@@ -202,7 +205,7 @@ export default function ListingImageUploader({
             >
               <img
                 src={imageUrl}
-                alt={`تصویر دستگاه ${index + 1}`}
+                alt={`تصویر ${index + 1}`}
                 className="h-full w-full object-cover"
                 loading="lazy"
               />
