@@ -309,13 +309,22 @@ jobs:
           PGSSLMODE: verify-full
         run: |
           set -euo pipefail
-          # Prisma migrate deploy applies every pending migration in the checkout.
-          # Once the later BuyRequestImage migration is present, this one-migration
-          # gate must stop rather than silently applying an unapproved second DDL.
-          if [[ -f prisma/migrations/20261120150000_buy_request_images/migration.sql ]]; then
-            echo "::error::A later BuyRequestImage migration is present. Use a separately reviewed and explicitly approved paired migration gate."
-            exit 1
-          fi
+          # Prisma migrate deploy applies EVERY pending migration in this checkout.
+          # This workflow is approved only for 20261119160000_wanted_structural_storage.
+          # Any later migration must be applied through its own reviewed/approved gate;
+          # otherwise this command would silently batch unrelated DDL into App Preview.
+          later_migrations=(
+            "20261119190000_first_party_geospatial_foundation"
+            "20261120113000_location_source_codes"
+            "20261120130000_category_attribute_active_policy"
+            "20261120150000_buy_request_images"
+          )
+          for migration in "${later_migrations[@]}"; do
+            if [[ -f "prisma/migrations/$migration/migration.sql" ]]; then
+              echo "::error::Later migration $migration is present. This one-migration workflow is blocked; use a separately reviewed and explicitly approved migration gate."
+              exit 1
+            fi
+          done
           # The preflight proves seven exact successful migrations. Store schema/URL are never supplied.
           bunx prisma migrate deploy --schema=prisma/schema.prisma
 
