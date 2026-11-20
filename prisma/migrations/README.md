@@ -10,7 +10,7 @@ HEAVIX maintains two PostgreSQL schemas and two separately configured databases:
 - Main application: `prisma/schema.prisma`, connection via `DATABASE_URL`.
 - Store/Outbox: `prisma/store/schema.prisma`, connection via `STORE_DATABASE_URL`.
 
-The active main migration history currently includes nine append-only PostgreSQL migrations:
+The active main migration history currently includes ten append-only PostgreSQL migrations:
 
 - `20261025081255_init_postgresql_baseline/migration.sql`
 - `20261025193000_add_auditlog_idempotency_key/migration.sql`
