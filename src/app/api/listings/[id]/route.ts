@@ -286,7 +286,10 @@ export async function PATCH(req: Request, { params }: Args) {
       }
     });
 
-    // Image management (seller can add/remove/reorder/primary)
+    // Image management (seller can add/remove/reorder/primary).
+    // Keep manifest rows when finalization fails: the canonical /media retry
+    // endpoint needs these rows to discover and safely re-attach staged assets.
+    let mediaPendingCount = 0;
     if (body.addImages && Array.isArray(body.addImages)) {
       const additions = body.addImages;
       if (additions.filter((image: any) => image?.isPrimary === true).length > 1) {
@@ -350,10 +353,13 @@ export async function PATCH(req: Request, { params }: Args) {
         });
       }
       for (const asset of staged) {
-        const attached = await attachAsset(asset.id, "Listing", id, auth.userId);
-        if (!attached.ok) {
-          await db.listingImage.deleteMany({ where: { listingId: id, url: asset.url } });
-          return NextResponse.json({ error: attached.error ?? "اتصال تصویر ناموفق بود." }, { status: 409 });
+        try {
+          const attached = await attachAsset(asset.id, "Listing", id, auth.userId);
+          if (!attached.ok) mediaPendingCount += 1;
+        } catch (attachError) {
+          // The staged asset and its ListingImage manifest row remain intact.
+          // The seller can retry through POST /api/listings/[id]/media.
+          mediaPendingCount += 1;
         }
       }
     }
@@ -449,15 +455,20 @@ export async function PATCH(req: Request, { params }: Args) {
         images: { orderBy: { sortOrder: "asc" } },
       },
     });
-    return NextResponse.json({
-      ok: true,
-      listing: fresh
-        ? {
-            ...fresh,
-            price: fresh.price ? fresh.price.toString() : null,
-          }
-        : null,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        mediaStatus: mediaPendingCount > 0 ? "PENDING" : "ATTACHED",
+        mediaPendingCount,
+        listing: fresh
+          ? {
+              ...fresh,
+              price: fresh.price ? fresh.price.toString() : null,
+            }
+          : null,
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
   }
