@@ -143,7 +143,7 @@ export async function GET(req: Request) {
           serviceTypeName: r.serviceTypeRef?.nameFa ?? null,
           images: r.images,
         })),
-      });
+      }, { headers: { "Cache-Control": "private, no-store" } });
     }
 
     // Public callers may only enumerate active requests. Non-active
