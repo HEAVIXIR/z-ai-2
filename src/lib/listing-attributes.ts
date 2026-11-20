@@ -44,14 +44,14 @@ export async function validateListingAttributeValues(
   for (let depth = 0; categoryCursor && depth < 16; depth += 1) {
     if (seenCategories.has(categoryCursor)) break;
     seenCategories.add(categoryCursor);
-    allowedCategoryIds.push(categoryCursor);
     const parent = await db.category.findUnique({
       where: { id: categoryCursor },
       select: { parentId: true, active: true },
     });
-    // Match the public category-attribute resolver: inactive ancestors
-    // terminate inheritance and cannot impose hidden or required fields.
+    // Match the public category-attribute resolver: inactive categories and
+    // ancestors terminate inheritance before their links enter the policy.
     if (!parent || parent.active === false) break;
+    allowedCategoryIds.push(categoryCursor);
     categoryCursor = parent.parentId ?? null;
   }
 
