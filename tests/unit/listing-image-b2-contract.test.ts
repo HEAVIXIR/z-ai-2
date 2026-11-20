@@ -113,7 +113,12 @@ describe("seller B2 media staging contract", () => {
   it("fails closed when the one-migration Preview workflow sees later unapproved DDL", () => {
     const workflow = read(".github/workflows/app-preview-wanted-structural-migration.yml");
     expect(workflow).toContain("prisma migrate deploy applies every pending migration");
-    expect(workflow).toContain("if [[ -f prisma/migrations/20261120150000_buy_request_images/migration.sql ]]");
-    expect(workflow).toContain("separately reviewed and explicitly approved paired migration gate");
+    expect(workflow).toContain('later_migrations=(');
+    expect(workflow).toContain('"20261119190000_first_party_geospatial_foundation"');
+    expect(workflow).toContain('"20261120113000_location_source_codes"');
+    expect(workflow).toContain('"20261120130000_category_attribute_active_policy"');
+    expect(workflow).toContain('"20261120150000_buy_request_images"');
+    expect(workflow).toContain("separately reviewed and explicitly approved migration gate");
+    expect(read("prisma/migrations/README.md")).toContain("currently includes twelve append-only PostgreSQL migrations");
   });
 });
