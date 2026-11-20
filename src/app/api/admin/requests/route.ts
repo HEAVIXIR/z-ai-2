@@ -60,6 +60,12 @@ export async function GET(req: Request) {
         orderBy: { createdAt: "desc" },
         take: limit,
         skip: offset,
+        include: {
+          images: {
+            orderBy: { sortOrder: "asc" },
+            select: { id: true, url: true, alt: true, isPrimary: true, sortOrder: true },
+          },
+        },
       }),
       db.buyRequest.count({ where }),
       {
