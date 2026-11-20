@@ -376,6 +376,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "بدنه درخواست معتبر نیست." }, { status: 400 });
     }
 
+    // Reject malformed technical-attribute payloads instead of silently
+    // coercing objects/strings to an empty list. Otherwise optional values
+    // could be discarded without the seller noticing.
+    if (
+      body.attributeValues !== undefined &&
+      body.attributeValues !== null &&
+      !Array.isArray(body.attributeValues)
+    ) {
+      return NextResponse.json(
+        { error: "ساختار مشخصات فنی معتبر نیست؛ لطفاً فرم را دوباره بررسی کنید." },
+        { status: 400 },
+      );
+    }
+
     // H.2.4e: idempotency. If the client sent an Idempotency-Key header,
     // resolve to the prior listing result on retry instead of creating a
     // duplicate listing (which would mint a fresh slug). The check runs
