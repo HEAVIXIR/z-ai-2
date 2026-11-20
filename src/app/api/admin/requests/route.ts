@@ -88,7 +88,7 @@ export async function GET(req: Request) {
       requests: data,
       total,
       stats,
-    });
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
