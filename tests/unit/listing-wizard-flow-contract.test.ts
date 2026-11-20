@@ -22,7 +22,8 @@ describe("HEAVIX listing wizard end-to-end source contract", () => {
     for (const step of [1, 2, 3, 4, 5, 6]) {
       expect(page).toContain(`if (step === ${step})`);
     }
-    expect(page).toContain("attributesLoaded && attributeDefs.length > 0 && Object.keys(errs).length === 0");
+    expect(page).toContain("return attributesLoaded && Object.keys(errs).length === 0;");
+    expect(page).not.toContain("attributesLoaded && attributeDefs.length > 0 && Object.keys(errs).length === 0");
     expect(page).toContain("if (imagesUploading) return false");
     expect(page).toContain("const next = () => canProceed() && setStep((s) => Math.min(7, s + 1))");
   });

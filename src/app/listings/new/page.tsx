@@ -1021,8 +1021,8 @@ export default function NewListingPage() {
                       />
                     </div>
                     {attributesLoaded && attributeDefs.length === 0 && (
-                      <div role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-xs leading-6 text-red-200">
-                        برای این دسته‌بندی هنوز فرم مشخصات فنی فعالی تعریف نشده است. برای جلوگیری از ثبت آگهی ناقص، ادامه ثبت تا تکمیل فرم این دسته‌بندی ممکن نیست.
+                      <div role="status" className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-white/55">
+                        برای این دسته‌بندی ویژگی فنی فعالی تعریف نشده است؛ می‌توانید بدون مشخصات فنی ادامه دهید. در صورت نیاز، مدیر سامانه می‌تواند بعداً ویژگی‌های این دسته‌بندی را تنظیم کند.
                       </div>
                     )}
                     <p className="mt-4 text-[11px] text-white/40">
