@@ -28,6 +28,7 @@ import { logAuditStrict, type AuditActorType } from "@/lib/audit";
 
 const ALLOWED_ENTITY_TYPES = new Set([
   "Listing",
+  "BuyRequest",
   "Product",
   "Part",
   "Brand",
