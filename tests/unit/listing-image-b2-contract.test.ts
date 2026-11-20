@@ -101,7 +101,12 @@ describe("seller B2 media staging contract", () => {
     expect(service).toContain("assetId: image.assetId");
     expect(route).toContain('asset.entityType !== "BuyRequest"');
     expect(route).toContain("asset.uploadedBy !== userId");
-    expect(route).toContain('attachAsset(asset.assetId, "BuyRequest", created.id, userId)');
-    expect(route).toContain("mediaPendingCount: mediaPendingIds.length");
+    const mediaRetry = read("src/lib/wanted-media.ts");
+    const retryRoute = read("src/app/api/wanted/[id]/media/route.ts");
+    expect(mediaRetry).toContain('attachAsset(asset.id, "BuyRequest", request.id, userId)');
+    expect(route).toContain("retryBuyRequestMediaAttachments(created.id, userId)");
+    expect(route).toContain("mediaPendingCount: mediaResult.pendingCount");
+    expect(retryRoute).toContain("retryBuyRequestMediaAttachments(id, user.id)");
+    expect(retryRoute).toContain('status: result.pendingCount === 0 ? 200 : 202');
   });
 });
