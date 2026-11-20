@@ -86,13 +86,16 @@ export async function GET(_request: Request, { params }: RouteContext) {
     }
 
     // The asset sidecar is already loaded above; sign its key directly.
-    const signedUrl = await createB2MediaReadUrl(asset.relativePath, 300);
+    // BuyRequest visibility is lifecycle-controlled (moderation/expiry).
+    // Avoid caching redirects and keep signed URLs shorter so a close/reject
+    // transition cannot leave a long-lived cached public media capability.
+    const signedUrl = await createB2MediaReadUrl(asset.relativePath, isBuyRequestAsset ? 60 : 300);
     if (!signedUrl) return new NextResponse(null, { status: 404 });
 
     return NextResponse.redirect(signedUrl, {
       status: 302,
       headers: {
-        "Cache-Control": isPublic ? "public, max-age=60, s-maxage=60" : "private, no-store",
+        "Cache-Control": isBuyRequestAsset ? "private, no-store" : isPublic ? "public, max-age=60, s-maxage=60" : "private, no-store",
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
       },
