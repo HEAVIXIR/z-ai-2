@@ -113,6 +113,23 @@ describe("BuyRequest media public visibility gate", () => {
     expect(mocks.createB2MediaReadUrl).not.toHaveBeenCalled();
   });
 
+  it("allows request.read reviewers to inspect attached pending BuyRequest media privately", async () => {
+    mocks.getCurrentUser.mockResolvedValue({ id: "reviewer-1" });
+    mocks.can.mockImplementation(async (_userId: string, permission: string) => permission === "request.read");
+    mocks.buyRequestFindUnique.mockResolvedValue({
+      userId: owner.id,
+      status: "PENDING",
+      publishedAt: null,
+      expiresAt: null,
+    });
+
+    const response = await readMedia();
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(mocks.can).toHaveBeenCalledWith("reviewer-1", "request.read");
+  });
+
   it("allows the owner to read their own pending request media privately", async () => {
     mocks.getCurrentUser.mockResolvedValue(owner);
     mocks.buyRequestFindUnique.mockResolvedValue({
