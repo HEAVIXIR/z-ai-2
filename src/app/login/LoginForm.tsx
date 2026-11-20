@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
+import { safeInternalRedirect } from "@/lib/auth-redirect";
 
 function kind(v: string): "email" | "mobile" {
   if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) return "email";
@@ -49,7 +50,8 @@ export default function LoginForm() {
         setError(data.error || `ورود ناموفق بود (HTTP ${res.status}).`);
         return;
       }
-      router.push(data.role === "admin" ? "/admin/dashboard" : "/dashboard");
+      const requestedRedirect = safeInternalRedirect(sp.get("redirect"), "");
+      router.push(requestedRedirect || (data.role === "admin" ? "/admin/dashboard" : "/dashboard"));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? "ارتباط با سرور برقرار نشد. اتصال را بررسی و دوباره تلاش کنید." : "خطای غیرمنتظره در ارتباط با سرور.");
@@ -75,7 +77,7 @@ export default function LoginForm() {
         <Link href="/verify-email" className="text-xs font-bold text-white/55 hover:text-[#F58220]">دریافت کد تأیید ایمیل</Link>
       </div>
       <div className="mt-3 text-center">
-        <Link href="/register" className="text-xs font-bold text-white/55 hover:text-[#F58220]">حساب ندارید؟ ثبت‌نام کنید</Link>
+        <Link href={sp.get("redirect") ? `/register?redirect=${encodeURIComponent(safeInternalRedirect(sp.get("redirect"), ""))}` : "/register"} className="text-xs font-bold text-white/55 hover:text-[#F58220]">حساب ندارید؟ ثبت‌نام کنید</Link>
       </div>
       <p className="mt-5 text-center text-[11px] text-white/35">
         مدیران نیز با حساب کاربری دارای نقش ADMIN در RBAC وارد می‌شوند.
