@@ -45,7 +45,10 @@ describe("canonical location integrity across listing and demand creation", () =
 
   it("uses the same country → province → city picker in the listing wizard", () => {
     expect(listingWizard).toContain("import LocationPicker");
-    expect(listingWizard).toContain("<LocationPicker value={location} onChange={setLocation} />");
+    expect(listingWizard).toContain("<LocationPicker");
+    expect(listingWizard).toContain("value={location}");
+    expect(listingWizard).toContain("onChange={setLocation}");
+    expect(listingWizard).toContain('showExactPoint={["SALE", "RENT", "AUCTION"].includes(transactionType)}');
     expect(listingWizard).toContain("countryId: location.countryId");
     expect(listingWizard).toContain("provinceId: location.provinceId");
     expect(listingWizard).toContain("cityId: location.cityId");
