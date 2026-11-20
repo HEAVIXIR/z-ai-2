@@ -435,7 +435,9 @@ export default function NewListingPage() {
       // Category-specific attributes are loaded before the user can continue; brand/model are optional.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
       const errs = validateAttributeFields(attributeDefs, attributes);
-      return attributesLoaded && Object.keys(errs).length === 0;
+      // Fail closed: a selected category without a resolved technical form
+      // must never pass review as if its specifications were complete.
+      return attributesLoaded && attributeDefs.length > 0 && Object.keys(errs).length === 0;
     }
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
@@ -989,6 +991,11 @@ export default function NewListingPage() {
                         onAttributesLoaded={(defs) => { setAttributeDefs(defs); setAttributesLoaded(true); }}
                       />
                     </div>
+                    {attributesLoaded && attributeDefs.length === 0 && (
+                      <div role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-xs leading-6 text-red-200">
+                        برای این دسته‌بندی هنوز فرم مشخصات فنی فعالی تعریف نشده است. برای جلوگیری از ثبت آگهی ناقص، ادامه ثبت تا تکمیل فرم این دسته‌بندی ممکن نیست.
+                      </div>
+                    )}
                     <p className="mt-4 text-[11px] text-white/40">
                       ویژگی‌های دارای علامت * الزامی هستند. ویژگی‌های «فیلترپذیر» در صفحهٔ آگهی‌ها قابل
                       فیلتر کردن خواهند بود.
