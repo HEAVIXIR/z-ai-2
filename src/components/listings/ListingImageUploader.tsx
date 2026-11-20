@@ -12,9 +12,13 @@ import {
 
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
+type UploadedMediaAsset = { assetId: string; url: string };
+
 type Props = {
   images: string[];
   onChange: (images: string[]) => void;
+  /** Stable staging identifiers for canonical attach/retry flows. */
+  onAssetsChange?: (assets: UploadedMediaAsset[]) => void;
   onUploadingChange?: (uploading: boolean) => void;
   required?: boolean;
   entityType?: "Listing" | "BuyRequest";
@@ -91,6 +95,7 @@ export default function ListingImageUploader({
     onUploadingChange?.(true);
     setProgress({ completed: 0, total: accepted.length });
     const uploaded: string[] = [];
+    const uploadedAssets: UploadedMediaAsset[] = [];
     const compressionNotes: string[] = [];
 
     try {
@@ -110,24 +115,35 @@ export default function ListingImageUploader({
           body,
         });
         const result = await response.json().catch(() => null);
-        if (!response.ok || !result?.url) {
+        if (
+          !response.ok ||
+          typeof result?.url !== "string" ||
+          typeof result?.assetId !== "string"
+        ) {
           throw new Error(result?.error ?? `آپلود تصویر «${source.name}» ناموفق بود.`);
         }
 
-        uploaded.push(result.url as string);
+        uploaded.push(result.url);
+        uploadedAssets.push({ assetId: result.assetId, url: result.url });
         const compression = describeCompression(prepared);
         if (compression) compressionNotes.push(compression);
         setProgress({ completed: index + 1, total: accepted.length });
       }
 
-      if (uploaded.length) onChange([...images, ...uploaded]);
+      if (uploaded.length) {
+        onChange([...images, ...uploaded]);
+        onAssetsChange?.(uploadedAssets);
+      }
       if (compressionNotes.length) {
         setNotice(`${uploaded.length} تصویر با موفقیت آپلود شد. ${compressionNotes[0]}`);
       } else if (uploaded.length) {
         setNotice(`${uploaded.length} تصویر با موفقیت آپلود شد.`);
       }
     } catch (uploadError) {
-      if (uploaded.length) onChange([...images, ...uploaded].slice(0, maxImages));
+      if (uploaded.length) {
+        onChange([...images, ...uploaded].slice(0, maxImages));
+        onAssetsChange?.(uploadedAssets);
+      }
       setError(
         uploadError instanceof Error
           ? `${uploadError.message}${uploaded.length ? ` ${uploaded.length} تصویر قبلی با موفقیت آپلود شدند.` : ""}`
