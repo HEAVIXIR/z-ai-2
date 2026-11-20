@@ -21,8 +21,15 @@ type PageLike = {
   goto(url: string, options?: { waitUntil?: string }): Promise<{ status(): number } | null>;
   evaluate<Arg, Result>(fn: (arg: Arg) => Result | Promise<Result>, arg: Arg): Promise<Awaited<Result>>;
 };
+type APIResponseLike = {
+  status(): number;
+  headers(): Promise<Record<string, string>>;
+};
 type ContextLike = {
   addCookies(cookies: Array<{ name: string; value: string; url: string; httpOnly: boolean; sameSite: "Lax" }>): Promise<void>;
+  request: {
+    get(url: string, options: { maxRedirects: number }): Promise<APIResponseLike>;
+  };
   newPage(): Promise<PageLike>;
   close(): Promise<void>;
 };
@@ -189,6 +196,20 @@ async function browserFetch(
   }, input);
 }
 
+async function browserRedirectFetch(context: ContextLike, mediaPath: string): Promise<FetchResult> {
+  // Browser fetch() intentionally exposes manual redirects as opaqueredirect
+  // (status 0, no headers). Use the context-bound API client instead; it shares
+  // this browser context's cookie jar and can inspect the actual 302/404.
+  const response = await context.request.get(`${baseUrl}${mediaPath}`, { maxRedirects: 0 });
+  const headers = await response.headers();
+  return {
+    status: response.status(),
+    body: null,
+    cacheControl: headers["cache-control"] ?? null,
+    location: headers.location ?? null,
+  };
+}
+
 async function loadImage(page: PageLike, mediaUrl: string): Promise<{ width: number; height: number }> {
   return page.evaluate(async (src) => {
     const image = new Image();
@@ -329,10 +350,7 @@ async function main(): Promise<void> {
     assert.equal(attachedAsset.entityId, requestId);
     assert.equal(attachedAsset.uploadedBy, buyer.id);
 
-    const ownerRead = await browserFetch(buyerBrowser.page, {
-      path: `/api/media/${assetId}`,
-      redirect: "manual",
-    });
+    const ownerRead = await browserRedirectFetch(buyerBrowser.context, `/api/media/${assetId}`);
     assert.equal(ownerRead.status, 302, "owner must receive a private signed redirect before moderation");
     assert.match(ownerRead.cacheControl ?? "", /private,\s*no-store/i);
     const ownerImage = await loadImage(buyerBrowser.page, `/api/media/${assetId}`);
@@ -349,19 +367,13 @@ async function main(): Promise<void> {
     assert.equal(reviewImages.length, 1);
     assert.equal(reviewImages[0].url, `/api/media/${assetId}`);
 
-    const reviewerRead = await browserFetch(reviewerBrowser.page, {
-      path: `/api/media/${assetId}`,
-      redirect: "manual",
-    });
+    const reviewerRead = await browserRedirectFetch(reviewerBrowser.context, `/api/media/${assetId}`);
     assert.equal(reviewerRead.status, 302, "request.read reviewer must receive a private signed redirect");
     assert.match(reviewerRead.cacheControl ?? "", /private,\s*no-store/i);
     const reviewerImage = await loadImage(reviewerBrowser.page, `/api/media/${assetId}`);
     assert.ok(reviewerImage.width > 0 && reviewerImage.height > 0, "reviewer browser must render the pending private image");
 
-    const anonymousBeforePublish = await browserFetch(publicBrowser.page, {
-      path: `/api/media/${assetId}`,
-      redirect: "manual",
-    });
+    const anonymousBeforePublish = await browserRedirectFetch(publicBrowser.context, `/api/media/${assetId}`);
     assert.equal(anonymousBeforePublish.status, 404, "anonymous users must not read pending BuyRequest media");
     const publicListBefore = await browserFetch(publicBrowser.page, { path: "/api/wanted?limit=100" });
     const publicRowsBefore = Array.isArray(publicListBefore.body?.data) ? publicListBefore.body.data as Array<Record<string, unknown>> : [];
@@ -383,10 +395,7 @@ async function main(): Promise<void> {
     const publicRowsAfter = Array.isArray(publicListAfter.body?.data) ? publicListAfter.body.data as Array<Record<string, unknown>> : [];
     assert.ok(publicRowsAfter.some((row) => row.id === requestId), "published request must appear in public feed");
 
-    const publicMediaRead = await browserFetch(publicBrowser.page, {
-      path: `/api/media/${assetId}`,
-      redirect: "manual",
-    });
+    const publicMediaRead = await browserRedirectFetch(publicBrowser.context, `/api/media/${assetId}`);
     assert.equal(publicMediaRead.status, 302, "public media route must issue a signed redirect after moderation");
     assert.match(publicMediaRead.cacheControl ?? "", /private,\s*no-store/i);
     const publicImage = await loadImage(publicBrowser.page, `/api/media/${assetId}`);
