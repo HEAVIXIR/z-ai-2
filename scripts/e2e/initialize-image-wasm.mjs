@@ -40,4 +40,4 @@ Object.defineProperty(globalThis, "__HEAVIX_WASM_MODULES__", {
   writable: false,
 });
 
-console.log("PASS: all five production jSquash WebAssembly codecs initialized for isolated Node E2E.");
+console.error("PASS: all five production jSquash WebAssembly codecs initialized for isolated Node E2E.");
