@@ -56,7 +56,7 @@ export async function validateListingAttributeValues(
     allowedCategoryIds.length
       ? db.categoryAttribute.findMany({
           where: { categoryId: { in: allowedCategoryIds } },
-          select: { categoryId: true, attributeId: true, required: true },
+          select: { categoryId: true, attributeId: true, required: true, active: true },
         })
       : Promise.resolve([]),
     listing.modelId
@@ -66,15 +66,10 @@ export async function validateListingAttributeValues(
         })
       : Promise.resolve([]),
   ]);
-  const allowedAttributeIds = new Set([
-    ...categoryLinks.map((link: { attributeId: string }) => link.attributeId),
-    ...modelLinks.map((link: { attributeId: string }) => link.attributeId),
-  ]);
-  // Match the category-attribute API: the nearest category link wins.
-  // allowedCategoryIds is leaf-first, so process root-to-leaf and let each
-  // more-specific link replace the previous required flag.
+  // Category links form an explicit per-category policy. The nearest
+  // category link overrides both active and required flags from ancestors.
   const categoryDepth = new Map(allowedCategoryIds.map((id, index) => [id, index]));
-  const effectiveRequired = new Map<string, boolean>();
+  const effectiveCategoryPolicy = new Map<string, { active: boolean; required: boolean }>();
   const orderedCategoryLinks = [...categoryLinks].sort(
     (a: { categoryId: string }, b: { categoryId: string }) =>
       (categoryDepth.get(b.categoryId) ?? 0) - (categoryDepth.get(a.categoryId) ?? 0),
@@ -82,18 +77,35 @@ export async function validateListingAttributeValues(
   for (const link of orderedCategoryLinks as Array<{
     categoryId: string;
     attributeId: string;
+    active?: boolean;
     required?: boolean;
   }>) {
-    effectiveRequired.set(link.attributeId, Boolean(link.required));
+    effectiveCategoryPolicy.set(link.attributeId, {
+      active: link.active !== false,
+      required: Boolean(link.required),
+    });
   }
+
+  const allowedAttributeIds = new Set<string>();
+  for (const [attributeId, policy] of effectiveCategoryPolicy) {
+    if (policy.active) allowedAttributeIds.add(attributeId);
+  }
+  // Model-level links can add model-specific attributes, but cannot revive
+  // a field explicitly disabled by the selected category or an ancestor.
+  for (const link of modelLinks as Array<{ attributeId: string; required?: boolean }>) {
+    const categoryPolicy = effectiveCategoryPolicy.get(link.attributeId);
+    if (!categoryPolicy || categoryPolicy.active) allowedAttributeIds.add(link.attributeId);
+  }
+
   const requiredAttributeIds = new Set(
-    [...effectiveRequired.entries()]
-      .filter(([, required]) => required)
+    [...effectiveCategoryPolicy.entries()]
+      .filter(([, policy]) => policy.active && policy.required)
       .map(([attributeId]) => attributeId),
   );
-  // Model-level flags override category defaults for attributes explicitly
-  // configured on that model.
+  // Model-level required flags override category defaults only for fields
+  // that remain active and in scope.
   for (const link of modelLinks as Array<{ attributeId: string; required?: boolean }>) {
+    if (!allowedAttributeIds.has(link.attributeId)) continue;
     if (link.required) requiredAttributeIds.add(link.attributeId);
     else requiredAttributeIds.delete(link.attributeId);
   }
@@ -112,7 +124,16 @@ export async function validateListingAttributeValues(
       ].some((item) => item !== undefined && item !== null && item !== "");
     });
     if (missingRequired.length > 0) {
-      return { ok: false, error: "لطفاً تمام ویژگی‌های الزامی این دسته‌بندی را تکمیل کنید." };
+      const definitions = await db.attributeDefinition.findMany({
+        where: { id: { in: missingRequired } },
+        select: { id: true, name: true, labelFa: true },
+      });
+      const labels = new Map(definitions.map((item: any) => [item.id, item.labelFa ?? item.name]));
+      const missingLabels = missingRequired.map((id) => labels.get(id) ?? id);
+      return {
+        ok: false,
+        error: `لطفاً این مشخصات الزامی را تکمیل کنید: ${missingLabels.join("، ")}`,
+      };
     }
   }
 
