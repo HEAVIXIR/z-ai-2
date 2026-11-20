@@ -712,7 +712,7 @@ export default function NewListingPage() {
     setMediaWarning(null);
     try {
       const response = await fetch(
-        `/api/listings/${encodeURIComponent(mediaRepairListingId)}/media-retry`,
+        `/api/listings/${encodeURIComponent(mediaRepairListingId)}/media`,
         { method: "POST" },
       );
       const result = await response.json().catch(() => ({}));
