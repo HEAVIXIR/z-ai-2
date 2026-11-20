@@ -86,7 +86,7 @@ export async function logAudit(params: LogAuditParams): Promise<void> {
  * Required audit write for operations that must not report success without
  * a durable audit row. Unlike logAudit(), this helper deliberately throws.
  */
-export async function logAuditStrict(params: LogAuditParams): Promise<void> {
+export async function logAuditStrict(params: LogAuditParams, client: any = db): Promise<void> {
   let ip = params.ip ?? null;
   let ua = params.userAgent ?? null;
   try {
@@ -97,7 +97,7 @@ export async function logAuditStrict(params: LogAuditParams): Promise<void> {
     // Non-request callers still get a durable audit row; request metadata is optional.
   }
 
-  await db.auditLog.create({
+  await client.auditLog.create({
     data: {
       actorId: params.actorId ?? null,
       actorType: params.actorType ?? 'USER',
