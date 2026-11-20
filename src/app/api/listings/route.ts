@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { checkCsrf } from "@/lib/csrf";
-import { logAudit } from "@/lib/audit";
+import { logAudit, logAuditStrict } from "@/lib/audit";
 import { categoryLayerForTransactionType, isRequestTransactionType, requiresListingImage, requiresListingPrice, SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import { getCurrentUser } from "@/lib/auth";
 import { toPublicListingDTO } from "@/lib/public-listing-dto";
@@ -26,7 +26,6 @@ import { rateLimitKey } from "@/lib/request-context";
 import { LISTING_CREATE } from "@/lib/rate-limit-presets";
 import { extractIdempotencyKey, findIdempotentResult } from "@/lib/idempotency";
 import { createHash } from "node:crypto";
-import { logAuditStrict } from "@/lib/audit";
 import { getListingImagePolicy } from "@/lib/listing-image-policy";
 
 export const runtime = "nodejs";
@@ -332,6 +331,8 @@ export async function GET(req: Request) {
    from the authenticated session — never from the request body. Anonymous
    listing creation is rejected with 401. */
 export async function POST(req: Request) {
+  let durableIdempotencyKey: string | null = null;
+  let listingCreateActorId: string | null = null;
   try {
     // W-03 FIX: Authenticate FIRST, before any data processing.
     const user = await getCurrentUser();
@@ -341,6 +342,7 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
+    listingCreateActorId = user.id;
 
     if (!checkCsrf(req)) {
       return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
@@ -400,7 +402,7 @@ export async function POST(req: Request) {
     // AuditLog currently has a globally unique delivery key. Namespace the
     // caller key by authenticated owner before storing/looking it up, so
     // identical client keys from different sellers cannot collide.
-    const durableIdempotencyKey = idempotencyKey
+    durableIdempotencyKey = idempotencyKey
       ? createHash("sha256").update(`${user.id}:${idempotencyKey}`).digest("hex")
       : null;
     if (durableIdempotencyKey) {
@@ -1182,14 +1184,14 @@ export async function POST(req: Request) {
     if (err?.code === "LISTING_ATTRIBUTE_POLICY_INVALID") {
       return NextResponse.json({ error: err.message }, { status: 400 });
     }
-    if ((err?.code === "P2034" || err?.code === "P2002") && durableIdempotencyKey) {
+    if ((err?.code === "P2034" || err?.code === "P2002") && durableIdempotencyKey && listingCreateActorId) {
       // A concurrent request may win the unique receipt race. Resolve the
       // winner rather than surfacing a generic conflict to a valid replay.
       try {
         const prior = await findIdempotentResult({
           key: durableIdempotencyKey,
           action: "marketplace.listing.create",
-          actorId: user.id,
+          actorId: listingCreateActorId,
         });
         if (prior) {
           const cached = await db.listing.findUnique({
