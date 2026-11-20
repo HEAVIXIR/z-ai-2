@@ -77,6 +77,8 @@ describe.skipIf(!RUN)("Listing quota — concurrent HTTP creates (real PostgreSQ
   let categoryId: string | undefined;
   let serviceTypeId: string | undefined;
   let transactionTypeId: string | undefined;
+  let countryId: string | undefined;
+  let provinceId: string | undefined;
   let createdTransactionType = false;
   let postListing: ((label: string) => Promise<Response>) | undefined;
 
@@ -93,6 +95,28 @@ describe.skipIf(!RUN)("Listing quota — concurrent HTTP creates (real PostgreSQ
     });
     sellerId = user.id;
     mocks.getCurrentUser.mockResolvedValue({ id: sellerId });
+
+    // Listing creation now enforces canonical country/province selection at
+    // the HTTP boundary. Keep this real-PostgreSQL fixture aligned with that
+    // contract rather than weakening the production validation.
+    const country = await db.country.create({
+      data: {
+        name: `Quota Test Country ${suffix}`,
+        nameEn: `Quota Test Country ${suffix}`,
+        code: `QT${suffix.toUpperCase()}`,
+      },
+      select: { id: true },
+    });
+    countryId = country.id;
+    const province = await db.province.create({
+      data: {
+        countryId,
+        name: `Quota Test Province ${suffix}`,
+        nameEn: `Quota Test Province ${suffix}`,
+      },
+      select: { id: true },
+    });
+    provinceId = province.id;
 
     let transactionType = await db.transactionType.findUnique({
       where: { key: "SERVICE_OFFER" },
@@ -148,6 +172,8 @@ describe.skipIf(!RUN)("Listing quota — concurrent HTTP creates (real PostgreSQ
             transactionType: "SERVICE_OFFER",
             categoryId,
             serviceTypeId,
+            countryId,
+            provinceId,
             title: `Quota concurrency ${label} ${suffix}`,
             slug: `${slugPrefix}${label}`,
             description: "Disposable PostgreSQL integration fixture",
@@ -170,6 +196,14 @@ describe.skipIf(!RUN)("Listing quota — concurrent HTTP creates (real PostgreSQ
       () =>
         categoryId
           ? db.category.delete({ where: { id: categoryId } })
+          : Promise.resolve(),
+      () =>
+        provinceId
+          ? db.province.delete({ where: { id: provinceId } })
+          : Promise.resolve(),
+      () =>
+        countryId
+          ? db.country.delete({ where: { id: countryId } })
           : Promise.resolve(),
       () =>
         serviceTypeId
