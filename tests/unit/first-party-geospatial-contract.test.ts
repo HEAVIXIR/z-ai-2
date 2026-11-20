@@ -21,6 +21,7 @@ const locationItemRoute = readFileSync(join(process.cwd(), "src/app/api/location
 const listingsRoute = readFileSync(join(process.cwd(), "src/app/api/listings/route.ts"), "utf8");
 const listingLocationPicker = readFileSync(join(process.cwd(), "src/components/listings/LocationPicker.tsx"), "utf8");
 const newListingPage = readFileSync(join(process.cwd(), "src/app/listings/new/page.tsx"), "utf8");
+const publicListingDto = readFileSync(join(process.cwd(), "src/lib/public-listing-dto.ts"), "utf8");
 
 describe("first-party geospatial contract", () => {
   it("stores exact coordinates separately from administrative city centroids", () => {
@@ -87,6 +88,12 @@ describe("first-party geospatial contract", () => {
     expect(listingsRoute).toContain("locationLatitude,");
     expect(listingsRoute).toContain("locationLongitude,");
     expect(listingsRoute).toContain("locationUpdatedAt: locationLatitude !== null ? new Date() : null");
+  });
+
+  it("keeps exact equipment coordinates out of unauthenticated listing DTOs", () => {
+    expect(publicListingDto).not.toContain("locationLatitude");
+    expect(publicListingDto).not.toContain("locationLongitude");
+    expect(publicListingDto).not.toContain("...listing");
   });
 
   it("does not silently enable extensions, external tile services or perform data imports", () => {
