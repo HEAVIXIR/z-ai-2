@@ -300,6 +300,9 @@ export async function POST(req: Request) {
     // Resolve and validate the complete canonical hierarchy once. When only a
     // city is supplied, its province/country are derived from the City relation.
     const resolvedProvince = selectedProvince ?? selectedCity?.province ?? null;
+    if (!resolvedProvince) {
+      return NextResponse.json({ error: "انتخاب کشور و استان برای ثبت درخواست الزامی است." }, { status: 400 });
+    }
     if (requestedCountryId && resolvedProvince && resolvedProvince.countryId !== requestedCountryId) {
       return NextResponse.json({ error: "استان انتخاب‌شده با کشور انتخاب‌شده مطابقت ندارد." }, { status: 400 });
     }
