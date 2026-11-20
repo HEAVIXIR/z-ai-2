@@ -29,3 +29,13 @@ describe("seller listing media recovery endpoint contract", () => {
     expect(route).toContain('mediaStatus: pending.length ? "PENDING" : "ATTACHED"');
   });
 });
+
+const wizard = readFileSync("src/app/listings/new/page.tsx", "utf8");
+
+describe("listing creation wizard media recovery wiring", () => {
+  it("calls the dedicated media-retry endpoint and displays pending retry state", () => {
+    expect(wizard).toContain('`/api/listings/${encodeURIComponent(mediaRepairListingId)}/media-retry`');
+    expect(wizard).toContain("result.pendingCount");
+    expect(wizard).toContain("retryMediaAttachment");
+  });
+});
