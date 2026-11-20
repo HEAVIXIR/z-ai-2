@@ -422,7 +422,7 @@ export async function POST(req: Request) {
       requestedCategoryId
         ? db.category.findUnique({
             where: { id: requestedCategoryId },
-            select: { id: true, active: true, name: true },
+            select: { id: true, active: true, name: true, layer: true },
           })
         : Promise.resolve(null),
       requestedBrandId
@@ -457,6 +457,10 @@ export async function POST(req: Request) {
     // A wanted request must target a selectable leaf, not a navigation parent.
     // This is enforced server-side even if a client bypasses the wizard.
     if (requestedCategoryId) {
+      const expectedLayer = intentStr === "SERVICE_REQUEST" ? "SERVICE" : "MARKETPLACE";
+      if (categoryRow && categoryRow.layer !== expectedLayer) {
+        return NextResponse.json({ error: intentStr === "SERVICE_REQUEST" ? "برای درخواست خدمات، دسته‌بندی خدمات را انتخاب کنید." : "برای درخواست کالا، دسته‌بندی بازار را انتخاب کنید." }, { status: 400 });
+      }
       const activeChild = await db.category.findFirst({
         where: { parentId: requestedCategoryId, active: true },
         select: { id: true },
