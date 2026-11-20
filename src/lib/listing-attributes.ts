@@ -47,9 +47,12 @@ export async function validateListingAttributeValues(
     allowedCategoryIds.push(categoryCursor);
     const parent = await db.category.findUnique({
       where: { id: categoryCursor },
-      select: { parentId: true },
+      select: { parentId: true, active: true },
     });
-    categoryCursor = parent?.parentId ?? null;
+    // Match the public category-attribute resolver: inactive ancestors
+    // terminate inheritance and cannot impose hidden or required fields.
+    if (!parent || parent.active === false) break;
+    categoryCursor = parent.parentId ?? null;
   }
 
   const [categoryLinks, modelLinks] = await Promise.all([
