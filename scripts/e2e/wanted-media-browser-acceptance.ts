@@ -129,8 +129,9 @@ async function browserContext(browser: BrowserLike, rawToken?: string): Promise<
     }]);
   }
   const page = await context.newPage();
-  const response = await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  assert.ok(response && response.status() < 500, "local Next.js app must respond");
+  const response = await page.goto(`${baseUrl}/api/media/staging`, { waitUntil: "domcontentloaded" });
+  assert.ok(response, "local Next.js app must respond");
+  assert.equal(response.status(), rawToken ? 200 : 401, "browser context must resolve its canonical session state");
   return { context, page };
 }
 
