@@ -3,6 +3,7 @@ import { validateListingAttributeValues } from "../../src/lib/listing-attributes
 
 type Fixture = {
   parents?: Record<string, string | null>;
+  inactiveCategories?: string[];
   links?: Array<{
     categoryId: string;
     attributeId: string;
@@ -17,10 +18,12 @@ function makeDb(fixture: Fixture) {
     category: {
       findUnique: async ({ where }: { where: { id: string } }) => ({
         parentId: fixture.parents?.[where.id] ?? null,
+        active: !fixture.inactiveCategories?.includes(where.id),
       }),
     },
     categoryAttribute: {
-      findMany: async () => fixture.links ?? [],
+      findMany: async ({ where }: { where: { categoryId: { in: string[] } } }) =>
+        (fixture.links ?? []).filter((link) => where.categoryId.in.includes(link.categoryId)),
     },
     productModelAttribute: {
       findMany: async () => [],
@@ -57,6 +60,38 @@ describe("category attribute runtime policy", () => {
 
     const result = await validateListingAttributeValues(db, { categoryId: "leaf" }, [], false, true);
     expect(result).toEqual({ ok: true, values: [] });
+  });
+
+  it("stops inheriting required and active policy from an inactive ancestor", async () => {
+    const db = makeDb({
+      parents: { leaf: "inactive-parent", "inactive-parent": null },
+      inactiveCategories: ["inactive-parent"],
+      links: [
+        { categoryId: "inactive-parent", attributeId: "weight", active: true, required: true },
+      ],
+      attributes: [{
+        id: "weight",
+        name: "Operating weight",
+        labelFa: "وزن عملیاتی",
+        type: "INTEGER",
+        options: [],
+      }],
+    });
+
+    const omitted = await validateListingAttributeValues(db, { categoryId: "leaf" }, [], false, true);
+    expect(omitted).toEqual({ ok: true, values: [] });
+
+    const submitted = await validateListingAttributeValues(
+      db,
+      { categoryId: "leaf" },
+      [{ attributeId: "weight", numberValue: 12000 }],
+      false,
+      true,
+    );
+    expect(submitted).toEqual({
+      ok: false,
+      error: "یکی از ویژگی‌ها به دسته‌بندی یا مدل این آگهی متصل نیست.",
+    });
   });
 
   it("returns the Persian labels of missing required attributes", async () => {
