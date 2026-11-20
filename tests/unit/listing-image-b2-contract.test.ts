@@ -109,4 +109,11 @@ describe("seller B2 media staging contract", () => {
     expect(retryRoute).toContain("retryBuyRequestMediaAttachments(id, user.id)");
     expect(retryRoute).toContain('status: result.pendingCount === 0 ? 200 : 202');
   });
+
+  it("fails closed when the one-migration Preview workflow sees later unapproved DDL", () => {
+    const workflow = read(".github/workflows/app-preview-wanted-structural-migration.yml");
+    expect(workflow).toContain("prisma migrate deploy applies every pending migration");
+    expect(workflow).toContain("if [[ -f prisma/migrations/20261120150000_buy_request_images/migration.sql ]]");
+    expect(workflow).toContain("separately reviewed and explicitly approved paired migration gate");
+  });
 });
