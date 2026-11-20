@@ -87,19 +87,22 @@ export async function validateBuyRequestAttributeValues(
   for (let depth = 0; categoryCursor && depth < 16; depth += 1) {
     if (seenCategories.has(categoryCursor)) break;
     seenCategories.add(categoryCursor);
-    allowedCategoryIds.push(categoryCursor);
-    const parent = await db.category.findUnique({
+    const category = await db.category.findUnique({
       where: { id: categoryCursor },
-      select: { parentId: true },
+      select: { parentId: true, active: true },
     });
-    categoryCursor = parent?.parentId ?? null;
+    // Inactive categories terminate the same ancestry used by the public
+    // resolver; they cannot impose hidden required fields on a child.
+    if (!category || category.active === false) break;
+    allowedCategoryIds.push(categoryCursor);
+    categoryCursor = category.parentId ?? null;
   }
 
   const [categoryLinks, modelLinks] = await Promise.all([
     allowedCategoryIds.length
       ? db.categoryAttribute.findMany({
           where: { categoryId: { in: allowedCategoryIds } },
-          select: { categoryId: true, attributeId: true, required: true },
+          select: { categoryId: true, attributeId: true, active: true, required: true },
         })
       : Promise.resolve([]),
     request.modelId
@@ -109,14 +112,11 @@ export async function validateBuyRequestAttributeValues(
         })
       : Promise.resolve([]),
   ]);
-  const allowedAttributeIds = new Set([
-    ...categoryLinks.map((link: { attributeId: string }) => link.attributeId),
-    ...modelLinks.map((link: { attributeId: string }) => link.attributeId),
-  ]);
 
-  // ── Required enforcement ──
+  // Nearest category policy wins. Inactive links are authoritative disables:
+  // neither ancestor inheritance nor model-specific links may revive them.
   const categoryDepth = new Map(allowedCategoryIds.map((id, index) => [id, index]));
-  const effectiveRequired = new Map<string, boolean>();
+  const effectiveCategoryPolicy = new Map<string, { active: boolean; required: boolean }>();
   const orderedCategoryLinks = [...categoryLinks].sort(
     (a: { categoryId: string }, b: { categoryId: string }) =>
       (categoryDepth.get(b.categoryId) ?? 0) - (categoryDepth.get(a.categoryId) ?? 0),
@@ -124,16 +124,32 @@ export async function validateBuyRequestAttributeValues(
   for (const link of orderedCategoryLinks as Array<{
     categoryId: string;
     attributeId: string;
+    active?: boolean;
     required?: boolean;
   }>) {
-    effectiveRequired.set(link.attributeId, Boolean(link.required));
+    effectiveCategoryPolicy.set(link.attributeId, {
+      active: link.active !== false,
+      required: Boolean(link.required),
+    });
   }
+
+  const allowedAttributeIds = new Set<string>();
+  for (const [attributeId, policy] of effectiveCategoryPolicy) {
+    if (policy.active) allowedAttributeIds.add(attributeId);
+  }
+  for (const link of modelLinks as Array<{ attributeId: string; required?: boolean }>) {
+    const categoryPolicy = effectiveCategoryPolicy.get(link.attributeId);
+    if (!categoryPolicy || categoryPolicy.active) allowedAttributeIds.add(link.attributeId);
+  }
+
+  // ── Required enforcement ──
   const requiredAttributeIds = new Set(
-    [...effectiveRequired.entries()]
-      .filter(([, required]) => required)
+    [...effectiveCategoryPolicy.entries()]
+      .filter(([, policy]) => policy.active && policy.required)
       .map(([attributeId]) => attributeId),
   );
   for (const link of modelLinks as Array<{ attributeId: string; required?: boolean }>) {
+    if (!allowedAttributeIds.has(link.attributeId)) continue;
     if (link.required) requiredAttributeIds.add(link.attributeId);
     else requiredAttributeIds.delete(link.attributeId);
   }
