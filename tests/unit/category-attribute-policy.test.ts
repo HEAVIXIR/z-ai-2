@@ -101,6 +101,55 @@ describe("category attribute runtime policy", () => {
     if (!result.ok) expect(result.error).toContain("به دسته‌بندی یا مدل");
   });
 
+  it("rejects empty, malformed, and reversed numeric ranges", async () => {
+    const db = makeDb({
+      parents: { loader: null },
+      links: [{ categoryId: "loader", attributeId: "yearRange", active: true, required: true }],
+      attributes: [{
+        id: "yearRange",
+        name: "Year range",
+        labelFa: "بازه سال ساخت",
+        type: "RANGE",
+        options: [],
+      }],
+    });
+
+    for (const textValue of ["|", "abc|2020", "2020|2010", "2010|2020|2030"]) {
+      const result = await validateListingAttributeValues(
+        db,
+        { categoryId: "loader" },
+        [{ attributeId: "yearRange", textValue }],
+        false,
+        true,
+      );
+      expect(result.ok).toBe(false);
+    }
+  });
+
+  it("accepts a valid numeric range with one open endpoint", async () => {
+    const db = makeDb({
+      parents: { loader: null },
+      links: [{ categoryId: "loader", attributeId: "yearRange", active: true, required: true }],
+      attributes: [{
+        id: "yearRange",
+        name: "Year range",
+        labelFa: "بازه سال ساخت",
+        type: "RANGE",
+        options: [],
+      }],
+    });
+
+    const result = await validateListingAttributeValues(
+      db,
+      { categoryId: "loader" },
+      [{ attributeId: "yearRange", textValue: "|2020" }],
+      false,
+      true,
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
   it("accepts zero and false as completed values for required numeric and boolean fields", async () => {
     const db = makeDb({
       parents: { loader: null },
