@@ -65,7 +65,8 @@ describe("seller B2 media staging contract", () => {
     expect(service).toContain("asset.uploadedBy !== userId");
     expect(service).toContain('asset.status !== "STAGED"');
     expect(service).toContain("asset.entityId !== null");
-    expect(route).toContain("createB2MediaReadUrl(asset.relativePath, 300)");
+    expect(route).toContain("createB2MediaReadUrl(asset.relativePath, isBuyRequestAsset ? 60 : 300)");
+    expect(route).toContain('isBuyRequestAsset ? "private, no-store" : isPublic ? "public, max-age=60, s-maxage=60"');
     expect(route).not.toContain("getAssetReadUrl(id)");
     expect(route).toContain('status: 404');
     expect(route).toContain('"private, no-store"');
