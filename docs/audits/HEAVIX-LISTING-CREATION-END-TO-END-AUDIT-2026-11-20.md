@@ -36,7 +36,7 @@ The product contract is the HEAVIX Taxonomy V1 / Listing Creation Flow: Transact
 | B2 finalization / recovery | Staged assets are attached after the Listing transaction. Failures retain the manifest row and return explicit pending state. Canonical seller-owned `POST /api/listings/[id]/media` retries safely and is idempotent for an asset already attached to that exact listing. Seller editor exposes recovery. | IMPLEMENTED — source reviewed; runtime unverified |
 | Demand persistence | `/api/wanted` validates canonical taxonomy, demand intent, budget, location hierarchy, and required typed attributes. BuyRequest and its attribute parent/child rows are committed atomically; BuyRequest has owner-scoped database idempotency. | IMPLEMENTED — source reviewed |
 | Moderation / publication | New supply listings are created as PENDING and seller edits cannot self-publish a pending listing. BuyRequest creation is also PENDING and remains outside public/matching feeds until the admin publication transition. | IMPLEMENTED — source reviewed; admin acceptance workflow not browser-tested |
-| Duplicate detection | The canonical Listing POST path reviewed here does not show an explicit duplicate-detection gate before creating the Listing. | GAP — required by the documented flow; must be implemented or explicitly waived |
+| Duplicate detection | Exact case-insensitive MachinePassport serial-number matches against PENDING/PUBLISHED/ACTIVE listings are detected inside the Listing transaction and recorded in internal `adminNotes` with candidate IDs; creation is flagged for human review and is not auto-rejected. | PARTIAL — deterministic serial signal added; fuzzy/category/brand/model/year signals and moderation UI verification remain open |
 | Documents | The current wizard does not demonstrate a complete seller document-upload and verification workflow for every listing type. | PARTIAL — not certified end-to-end |
 
 ## 3. Changes made during this audit
@@ -44,23 +44,23 @@ The product contract is the HEAVIX Taxonomy V1 / Listing Creation Flow: Transact
 1. **Empty technical form handling:** a category whose attribute request succeeds but returns no configured attributes can now continue. Previously the wizard required `attributeDefs.length > 0`, making a valid category with no configured technical fields impossible to submit. Required fields remain enforced by the server; a failed attribute fetch still fails closed.
 2. **Supply location enforcement:** `POST /api/listings` now rejects submissions without a resolved canonical Province. A supplied City must still belong to that Province. City and exact coordinates remain optional to match the current wizard.
 3. **Demand location enforcement:** `POST /api/wanted` now rejects requests without a resolved canonical Province. A supplied City must still belong to that Province.
-4. **Regression contract coverage:** added tests asserting the empty-attribute wizard behavior and both server-side province guards. These tests have been authored but were not executed in this review.
+4. **Regression contract coverage:** added tests asserting the empty-attribute wizard behavior, both server-side province guards, atomic idempotency receipt wiring, and exact-serial duplicate review flag. These tests have been authored but were not executed in this review.\n5. **Durable Listing idempotency:** the listing route now hashes the caller key together with the authenticated seller ID, checks the namespaced key, and writes a strict AuditLog receipt through the same Prisma transaction as the Listing, image manifest, children, and typed attributes. The post-commit best-effort audit is skipped when a durable receipt was written. Existing globally unique `AuditLog.idempotencyKey` is reused; no schema migration is introduced. Concurrent unique/serialization conflicts attempt to resolve to the winning Listing. This is source-level implementation only until tests/CI are executed.
 
 ## 4. Release-blocking and follow-up findings
 
-### P0 — Listing idempotency is not durably coupled to the Listing transaction
+### P0 — Listing idempotency transaction coupling: IMPLEMENTED IN SOURCE, NOT YET VERIFIED
 
-The listing wizard sends an `Idempotency-Key`, but the current generic `findIdempotentResult` reads the AuditLog. The Listing create transaction commits before the listing-create audit call, and that audit call is best-effort. If the Listing commits and the audit write fails, a sequential retry with the same key may not find the prior Listing and can create a duplicate.
+The listing route now derives a seller-scoped SHA-256 delivery key from the authenticated seller ID and client `Idempotency-Key`. It checks that key before validation and inserts a strict AuditLog receipt through the same Prisma transaction as the Listing, image manifest, optional children, and typed attributes. If the receipt insert fails, the transaction rolls back rather than committing a Listing without a replay record. The old post-commit best-effort listing audit is retained only for callers that omit an idempotency key. Concurrent unique/serialization conflicts attempt to resolve to the already committed result.
 
-BuyRequest already has an owner-scoped database unique key (`@@unique([userId, idempotencyKey])`); Listing does not have an equivalent durable key in the reviewed schema.
+This reuses the existing globally unique `AuditLog.idempotencyKey` column without a schema migration. The seller namespace is hashed to avoid collisions when different sellers happen to submit the same raw key.
 
-**Required before acceptance:** add a migration-safe, seller-scoped idempotency record/unique key for Listing creation, or persist the idempotency record in the same database transaction as the Listing. Do not treat best-effort AuditLog as the sole idempotency source.
+**Remaining gate:** execute behavioral transaction tests and final-head CI, including sequential retry, concurrent retry, receipt-write failure rollback, and cross-seller same-raw-key isolation. The UI currently sends a stable key for each submission attempt; API callers that omit the header still use legacy non-idempotent behavior.
 
-### P1 — Duplicate detection is absent from the inspected Listing create path
+### P1 — Duplicate detection: PARTIAL
 
-The documented Listing Creation Flow explicitly includes duplicate detection before moderation/publication. The inspected `POST /api/listings` route validates taxonomy, ownership, price, location, attributes, media, and quota, but does not invoke a duplicate detection service before creating the Listing.
+The Listing transaction now checks exact case-insensitive MachinePassport serial-number matches against active moderation/publication statuses. A match does not reject or merge the new Listing; it adds an internal `AUTO_DUPLICATE_REVIEW` note with candidate Listing IDs and returns `duplicateReviewRequired: true`.
 
-**Required before acceptance:** define deterministic duplicate signals (for example canonical serial number when present, plus conservative category/brand/model/year/seller signals), return a review flag rather than silently rejecting uncertain matches, and add false-positive/false-negative tests. Do not use a destructive auto-merge.
+**Remaining gate:** extend conservative matching to category/brand/model/year/seller signals where no serial exists, ensure the moderation UI visibly surfaces the internal review marker, and execute false-positive/false-negative tests. The current exact-serial rule is a narrow deterministic first layer, not complete duplicate intelligence.
 
 ### P1 — Demand media is not yet supported by the wizard
 
