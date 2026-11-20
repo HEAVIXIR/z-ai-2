@@ -278,6 +278,28 @@ describe("listing creation wizard media recovery wiring", () => {
 });
 
 
+
+describe("canonical listing submission gates", () => {
+  const wizard = readFileSync("src/app/listings/new/page.tsx", "utf8");
+  const listingApi = readFileSync("src/app/api/listings/route.ts", "utf8");
+  const wantedApi = readFileSync("src/app/api/wanted/route.ts", "utf8");
+
+  it("allows a successfully loaded category with no configured technical attributes", () => {
+    expect(wizard).toContain("return attributesLoaded && Object.keys(errs).length === 0;");
+    expect(wizard).not.toContain("attributesLoaded && attributeDefs.length > 0");
+  });
+
+  it("enforces canonical province selection for supply listing creation", () => {
+    expect(listingApi).toContain('if (!selectedProvince)');
+    expect(listingApi).toContain("انتخاب کشور و استان برای ثبت آگهی الزامی است.");
+  });
+
+  it("enforces canonical province selection for wanted request creation", () => {
+    expect(wantedApi).toContain('if (!resolvedProvince)');
+    expect(wantedApi).toContain("انتخاب کشور و استان برای ثبت درخواست الزامی است.");
+  });
+});
+
 describe("listing edit media recovery wiring", () => {
   const editRoute = readFileSync("src/app/api/listings/[id]/route.ts", "utf8");
   const editForm = readFileSync("src/app/admin/listings/[id]/edit/ListingEditForm.tsx", "utf8");
