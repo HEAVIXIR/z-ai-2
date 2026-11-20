@@ -100,8 +100,6 @@ describe("category attribute runtime policy", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("به دسته‌بندی یا مدل");
   });
-});
-
 
   it("accepts zero and false as completed values for required numeric and boolean fields", async () => {
     const db = makeDb({
