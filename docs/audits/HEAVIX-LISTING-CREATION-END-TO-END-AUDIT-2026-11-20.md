@@ -1,0 +1,102 @@
+# HEAVIX — Listing Creation End-to-End Audit
+## 20 November 2026
+
+### Executive decision
+
+**Status: PARTIAL — NOT YET APPROVED for Preview acceptance or Integration release.**
+
+The seller listing flow has a coherent implementation path across the seven-step wizard, canonical taxonomy and attribute APIs, authenticated creation endpoints, private B2 staging, durable ListingImage manifest rows, and seller retry recovery. Two correctness gaps were closed in this audit pass: empty-but-successfully-loaded category attribute forms no longer dead-end the wizard, and canonical province selection is now enforced by both supply-listing and wanted-request create APIs.
+
+This is a source-level review of the current stacked branch. It is **not** a runtime, database, browser E2E, B2 integration, or Preview acceptance certification. No test suite was executed from this review session.
+
+## 1. Scope and evidence baseline
+
+- Repository: `HEAVIXIR/z-ai-2`
+- Reviewed head branch: `feat/listing-media-recovery-retry-2026-11-20`
+- Reviewed head after audit fixes: recorded in the containing PR's latest commit
+- Integration root: PR #340, branch `integration/preview-readiness-workerd-2026-11-15`
+- Stacked capability PRs: #350 → #351 → #352 → #353 → #354 → #355 → #356 → #357
+- All reviewed PRs remain Draft/open/unmerged.
+
+The product contract is the HEAVIX Taxonomy V1 / Listing Creation Flow: TransactionType, Category, Brand/Model, dynamic attributes, condition/details, price, canonical location, media/documents, validation, duplicate detection, moderation, then publication. Category, Product, Brand, Model, Listing, TransactionType, Service, and Industry remain distinct concepts.
+
+## 2. End-to-end flow review
+
+| Stage | Current implementation | Audit result |
+|---|---|---|
+| Entry / authentication | `/listings/new` is protected by the auth gate in PR #356; login/register preserve a safe internal return path. Creation APIs independently authenticate and derive seller identity from the session. | IMPLEMENTED — source reviewed |
+| Transaction intent | Wizard loads active transaction types and separates supply listings from demand-side BuyRequest. WANTED and SERVICE_REQUEST use `/api/wanted`; QUOTE is represented as an RFQ attached to a supply Listing; SERVICE_OFFER remains a supply/service listing. | IMPLEMENTED — source reviewed |
+| Taxonomy | `GET /api/taxonomy` supplies active CATALOG/MARKETPLACE/SERVICE roots, transaction types, and service types. Wizard uses cascading category selection and clears dependent state when transaction intent changes. Server requires an active leaf category and validates its layer against transaction type. | IMPLEMENTED — source reviewed |
+| Brand / model | Brand search is alias-aware and category-filtered. Model lookup is scoped to the selected brand/category. APIs reject inactive brands/models and mismatched brand/model/category combinations. Both selectors are optional in the wizard; when supplied they are validated. | IMPLEMENTED — optional by design |
+| Dynamic attributes | `GET /api/categories/[id]/attributes` composes ancestor-to-leaf CategoryAttribute policy and optional model-level overrides. Client renders typed controls. Supply and demand APIs independently validate active scope, required fields, value type, and option ownership; writes are persisted atomically with the parent entity. | IMPLEMENTED — source reviewed |
+| Location | Country/province/city are loaded from HEAVIX-owned location APIs. Exact WGS84 coordinates are optional and accepted only as a complete valid pair with a selected city. | HARDENED in this audit — province is now required server-side; city and exact point remain optional |
+| Details / price | Wizard checks title/summary, transaction-specific budget, price, rental period, auction dates/increments, and image requirements. APIs independently validate critical price, budget, quantity, rental, and auction values. | IMPLEMENTED — source reviewed |
+| Media upload | Seller uploads go through authenticated `POST /api/media/staging`, are private, owner-bound STAGED assets in B2, and use stable `/api/media/{id}` URLs. The private read gate permits the uploader to preview staged assets. | IMPLEMENTED — source reviewed; B2 runtime not re-executed |
+| Listing persistence | Listing row, ListingImage manifest rows, optional Auction/RFQ child, and typed attributes are written in a database transaction. Listing begins in PENDING; seller identity is derived from session. | IMPLEMENTED — source reviewed |
+| B2 finalization / recovery | Staged assets are attached after the Listing transaction. Failures retain the manifest row and return explicit pending state. Canonical seller-owned `POST /api/listings/[id]/media` retries safely and is idempotent for an asset already attached to that exact listing. Seller editor exposes recovery. | IMPLEMENTED — source reviewed; runtime unverified |
+| Demand persistence | `/api/wanted` validates canonical taxonomy, demand intent, budget, location hierarchy, and required typed attributes. BuyRequest and its attribute parent/child rows are committed atomically; BuyRequest has owner-scoped database idempotency. | IMPLEMENTED — source reviewed |
+| Moderation / publication | New supply listings are created as PENDING and seller edits cannot self-publish a pending listing. BuyRequest creation is also PENDING and remains outside public/matching feeds until the admin publication transition. | IMPLEMENTED — source reviewed; admin acceptance workflow not browser-tested |
+| Duplicate detection | The canonical Listing POST path reviewed here does not show an explicit duplicate-detection gate before creating the Listing. | GAP — required by the documented flow; must be implemented or explicitly waived |
+| Documents | The current wizard does not demonstrate a complete seller document-upload and verification workflow for every listing type. | PARTIAL — not certified end-to-end |
+
+## 3. Changes made during this audit
+
+1. **Empty technical form handling:** a category whose attribute request succeeds but returns no configured attributes can now continue. Previously the wizard required `attributeDefs.length > 0`, making a valid category with no configured technical fields impossible to submit. Required fields remain enforced by the server; a failed attribute fetch still fails closed.
+2. **Supply location enforcement:** `POST /api/listings` now rejects submissions without a resolved canonical Province. A supplied City must still belong to that Province. City and exact coordinates remain optional to match the current wizard.
+3. **Demand location enforcement:** `POST /api/wanted` now rejects requests without a resolved canonical Province. A supplied City must still belong to that Province.
+4. **Regression contract coverage:** added tests asserting the empty-attribute wizard behavior and both server-side province guards. These tests have been authored but were not executed in this review.
+
+## 4. Release-blocking and follow-up findings
+
+### P0 — Listing idempotency is not durably coupled to the Listing transaction
+
+The listing wizard sends an `Idempotency-Key`, but the current generic `findIdempotentResult` reads the AuditLog. The Listing create transaction commits before the listing-create audit call, and that audit call is best-effort. If the Listing commits and the audit write fails, a sequential retry with the same key may not find the prior Listing and can create a duplicate.
+
+BuyRequest already has an owner-scoped database unique key (`@@unique([userId, idempotencyKey])`); Listing does not have an equivalent durable key in the reviewed schema.
+
+**Required before acceptance:** add a migration-safe, seller-scoped idempotency record/unique key for Listing creation, or persist the idempotency record in the same database transaction as the Listing. Do not treat best-effort AuditLog as the sole idempotency source.
+
+### P1 — Duplicate detection is absent from the inspected Listing create path
+
+The documented Listing Creation Flow explicitly includes duplicate detection before moderation/publication. The inspected `POST /api/listings` route validates taxonomy, ownership, price, location, attributes, media, and quota, but does not invoke a duplicate detection service before creating the Listing.
+
+**Required before acceptance:** define deterministic duplicate signals (for example canonical serial number when present, plus conservative category/brand/model/year/seller signals), return a review flag rather than silently rejecting uncertain matches, and add false-positive/false-negative tests. Do not use a destructive auto-merge.
+
+### P1 — Demand media is not yet supported by the wizard
+
+The wizard explicitly disables image attachment for WANTED and SERVICE_REQUEST because there is no canonical BuyRequest media-association workflow. This is a known limitation, not an upload success. Decide whether demand posts require optional evidence/media; if yes, implement a separate owner-bound BuyRequest media association and moderation/read policy before enabling the UI.
+
+### P1 — Full end-to-end proof is missing
+
+The source-level tests and unit contracts do not prove a real browser journey across auth, database writes, B2 upload/read/attach/retry, seller edit, admin moderation, and public visibility. A Playwright or equivalent E2E journey plus isolated Preview runtime proof is still required.
+
+## 5. Integration and Preview readiness
+
+### GitHub state observed
+
+- PR #340 is Draft/open/unmerged and mergeable. Its head `7492b8993207ff9bd80f6fc560ef859f8e46908e` had successful `CI` and `OpenNext runtime integration proof` workflow runs at the time of inspection.
+- PR #340's Integration branch is 1 commit behind current `main` and has diverged (1,136 commits ahead, 1 behind). It must be reconciled with the current protected main head before final release review.
+- PRs #350–#357 are stacked in order, all Draft/open/unmerged/mergeable at inspection.
+- The latest commits of #350–#357 returned no PR workflow runs and no combined status checks in the inspected GitHub responses. The root PR #340 green checks therefore do not certify the later stacked commits.
+- Current `main` is protected. Required checks observed: `verify`, `audit-transaction`, `phase-tests`, `docker-build-proof`, and `tls-proof`.
+
+### Preview controls
+
+PR #340 explicitly states that Cloudflare Workers Builds is disconnected, Preview builds are disabled, and reconnecting Workers Builds requires release gates plus separate owner approval. No Preview deployment, database migration/seed, Production deployment, or Worker build was performed or authorized during this audit.
+
+### Decision
+
+**The branch chain is prepared as a Draft integration candidate, but it is NOT approved for Preview acceptance yet.** Do not merge or deploy. Do not migrate/seed either database. Keep the PR chain Draft until the P0/P1 items, final-head CI, protected-main synchronization, and exact isolated Preview runtime/dual-database proof are complete.
+
+## 6. Required next gates
+
+1. Implement durable seller-scoped Listing idempotency inside the canonical transaction boundary.
+2. Add non-destructive duplicate detection and moderation evidence.
+3. Decide and implement (or formally defer) BuyRequest media/document support.
+4. Add/execute browser E2E for supply SALE, RENT, AUCTION, QUOTE and demand WANTED/SERVICE_REQUEST paths, including negative authorization and validation cases.
+5. Execute B2 staging → manifest → attach → retry → private/public read checks against isolated Preview resources.
+6. Reconcile Integration branch with current protected `main`, then run all required checks on the final stacked head.
+7. Obtain explicit owner approval before reconnecting Preview build infrastructure; no Production action is implied.
+
+---
+*This report distinguishes source inspection from executed verification. “Implemented” means code is present and its contract was inspected; it does not mean CI, live Preview, or Production has passed.*
