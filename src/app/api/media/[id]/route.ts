@@ -24,7 +24,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
 
     let isPublic = asset.visibility === "PUBLIC";
     let listingOwnerId: string | null = null;
-    if (!isPublic) {
+    let buyRequestOwnerId: string | null = null;
+    if (!isPublic && asset.entityType === "Listing") {
       const listingImage = await db.listingImage.findFirst({
         where: { url: asset.url },
         select: { listing: { select: { sellerId: true, status: true } } },
@@ -34,11 +35,28 @@ export async function GET(_request: Request, { params }: RouteContext) {
         isPublic = listingImage.listing.status === "PUBLISHED";
       }
     }
+    // BuyRequest media remains private until its owning request is approved.
+    // The sidecar's entity reference is authoritative only after attachAsset
+    // has moved the asset to ATTACHED; an unassociated staged upload is never
+    // made public by a guessed or client-supplied entityId.
+    if (!isPublic && asset.entityType === "BuyRequest" &&
+        asset.status === "ATTACHED" && asset.entityId) {
+      const buyRequest = await db.buyRequest.findUnique({
+        where: { id: asset.entityId },
+        select: { userId: true, status: true },
+      });
+      if (buyRequest) {
+        buyRequestOwnerId = buyRequest.userId;
+        isPublic = buyRequest.status === "ACTIVE";
+      }
+    }
 
     if (!isPublic) {
       const user = await getCurrentUser();
       const isOwner = !!user && (
-        asset.uploadedBy === user.id || listingOwnerId === user.id
+        asset.uploadedBy === user.id ||
+        listingOwnerId === user.id ||
+        buyRequestOwnerId === user.id
       );
       const isMediaAdmin = !!user && !isOwner
         ? await can(user.id, "media.read")
