@@ -635,6 +635,7 @@ export async function listWanted(params: {
         brandRef: { select: { name: true } },
         modelRef: { select: { name: true } },
         serviceTypeRef: { select: { nameFa: true } },
+        images: { orderBy: { sortOrder: "asc" }, select: { id: true, url: true, alt: true, isPrimary: true, sortOrder: true } },
       },
     }),
     db.buyRequest.count({ where }),
@@ -666,6 +667,7 @@ export async function listWanted(params: {
       brandName: r.brandRef?.name ?? null,
       modelName: r.modelRef?.name ?? null,
       serviceTypeName: r.serviceTypeRef?.nameFa ?? null,
+      images: r.images,
     })),
     total,
   };
