@@ -67,12 +67,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "حجم فایل خالی یا بیش از حد مجاز است." }, { status: 413 });
     }
 
+    const requestedEntityType = formData.get("entityType")?.toString() || "Listing";
+    if (requestedEntityType !== "Listing" && requestedEntityType !== "BuyRequest") {
+      return NextResponse.json({ error: "نوع موجودیت رسانه نامعتبر است." }, { status: 400 });
+    }
+
     const result = await uploadAsset({
       file: Buffer.from(await file.arrayBuffer()),
       uploadedBy: user.id,
       actorType: "USER",
       originalFilename: file.name,
-      entityType: "Listing",
+      entityType: requestedEntityType,
       visibility: "PRIVATE",
       maxOutputBytes: policy.maxImageBytes,
       altText: formData.get("altText")?.toString() || undefined,
