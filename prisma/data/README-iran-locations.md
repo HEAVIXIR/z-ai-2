@@ -67,8 +67,9 @@ bun run db:seed-iran-locations
 
 This is a **dry-run by default**. It verifies the exact dataset bytes against
 the manifest SHA-256, checks the 1 + 31 + 1,479 hierarchy and stable source
-codes, prints the proposed upsert counts, and does not instantiate Prisma or
-open a database connection.
+codes, reports catalog counts and approval status only. Existing-versus-new
+upsert counts require database inspection and are intentionally not computed in
+dry-run. It does not instantiate Prisma or open a database connection.
 
 The apply path is deliberately gated and is not part of normal deployment:
 
