@@ -689,6 +689,7 @@ model BuyRequest {
 
   // ── H.3 typed-attribute relation (parent rows; see BuyRequestAttributeOption child) ──
   attributeValues BuyRequestAttributeValue[]
+  images          BuyRequestImage[]
 
   // Idempotency keys are scoped to the authenticated owner; different users
   // may legitimately generate the same client-side key without colliding.
@@ -701,6 +702,21 @@ model BuyRequest {
   @@index([intent])
   @@index([countryId, provinceId, cityId])
   @@index([locationLatitude, locationLongitude])
+}
+
+model BuyRequestImage {
+  id           String      @id @default(cuid())
+  buyRequestId String
+  assetId      String      @unique
+  url          String
+  alt          String?
+  isPrimary    Boolean     @default(false)
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+  buyRequest  BuyRequest  @relation(fields: [buyRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([buyRequestId, sortOrder])
+  @@index([buyRequestId])
 }
 
 /// H.3: Parent attribute-value row — one per (BuyRequest, AttributeDefinition).
