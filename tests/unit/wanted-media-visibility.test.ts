@@ -145,6 +145,51 @@ describe("BuyRequest media public visibility gate", () => {
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
   });
 
+  it("denies a signed-in non-owner without request.read or media.read", async () => {
+    mocks.getCurrentUser.mockResolvedValue({ id: "unprivileged-1" });
+    mocks.can.mockResolvedValue(false);
+    mocks.buyRequestFindUnique.mockResolvedValue({
+      userId: owner.id,
+      status: "PENDING",
+      publishedAt: null,
+      expiresAt: null,
+    });
+
+    const response = await readMedia();
+
+    expect(response.status).toBe(404);
+    expect(mocks.createB2MediaReadUrl).not.toHaveBeenCalled();
+    expect(mocks.can).toHaveBeenCalledWith("unprivileged-1", "request.read");
+    expect(mocks.can).toHaveBeenCalledWith("unprivileged-1", "media.read");
+  });
+
+  it("does not let request.read reviewers inspect unassociated staged uploads", async () => {
+    mocks.getCurrentUser.mockResolvedValue({ id: "reviewer-1" });
+    mocks.can.mockImplementation(async (_userId: string, permission: string) => permission === "request.read");
+    mocks.getAsset.mockResolvedValue({
+      ...asset,
+      status: "STAGED",
+      entityId: null,
+    });
+
+    const response = await readMedia();
+
+    expect(response.status).toBe(404);
+    expect(mocks.buyRequestFindUnique).not.toHaveBeenCalled();
+    expect(mocks.createB2MediaReadUrl).not.toHaveBeenCalled();
+  });
+
+  it("does not let request.read reviewers inspect media whose BuyRequest row is missing", async () => {
+    mocks.getCurrentUser.mockResolvedValue({ id: "reviewer-1" });
+    mocks.can.mockImplementation(async (_userId: string, permission: string) => permission === "request.read");
+    mocks.buyRequestFindUnique.mockResolvedValue(null);
+
+    const response = await readMedia();
+
+    expect(response.status).toBe(404);
+    expect(mocks.createB2MediaReadUrl).not.toHaveBeenCalled();
+  });
+
   it("never exposes an unassociated staged BuyRequest asset", async () => {
     mocks.getAsset.mockResolvedValue({
       ...asset,
