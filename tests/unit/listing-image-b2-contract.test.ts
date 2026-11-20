@@ -79,6 +79,7 @@ describe("seller B2 media staging contract", () => {
     expect(adapter).toContain('const EXPECTED_ENDPOINT = "https://s3.us-east-005.backblazeb2.com"');
     expect(adapter).toContain('requiredEnv("B2_APPLICATION_KEY")');
     expect(adapter).toContain("createB2MediaReadUrl");
+  });
 
   it("persists BuyRequest image associations with matching main and Preview schemas", () => {
     const main = read("prisma/schema.prisma");
@@ -102,6 +103,5 @@ describe("seller B2 media staging contract", () => {
     expect(route).toContain("asset.uploadedBy !== userId");
     expect(route).toContain('attachAsset(asset.assetId, "BuyRequest", created.id, userId)');
     expect(route).toContain("mediaPendingCount: mediaPendingIds.length");
-  });
   });
 });
