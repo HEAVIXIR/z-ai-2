@@ -52,6 +52,7 @@ export default async function AttributesPage() {
       id: l.id,
       categoryId: l.categoryId,
       category: l.category,
+      active: l.active,
       required: l.required,
       filterable: l.filterable,
       searchable: l.searchable,
