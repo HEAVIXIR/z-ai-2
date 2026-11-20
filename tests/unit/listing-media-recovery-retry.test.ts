@@ -294,5 +294,6 @@ describe("listing edit media recovery wiring", () => {
     expect(editForm).toContain('`/api/listings/${encodeURIComponent(initial.id)}/media`');
     expect(editForm).toContain("بررسی و بازیابی تصاویر");
     expect(editForm).toContain("setMediaPendingCount");
+    expect(editForm).toContain('endpoint={isAdmin ? "/api/admin/upload" : "/api/media/staging"}');
   });
 });
