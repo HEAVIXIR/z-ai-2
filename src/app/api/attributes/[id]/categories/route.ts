@@ -218,19 +218,34 @@ export async function DELETE(req: Request, { params }: Args) {
     const categoryId = (url.searchParams.get("categoryId") ?? "").trim();
     const linkId = (url.searchParams.get("linkId") ?? "").trim();
 
+    let where: { attributeId: string; categoryId?: string; id?: string };
     if (categoryId) {
-      await db.categoryAttribute.deleteMany({
-        where: { attributeId: id, categoryId },
-      });
+      where = { attributeId: id, categoryId };
     } else if (linkId) {
-      await db.categoryAttribute.deleteMany({
-        where: { id: linkId, attributeId: id },
-      });
+      where = { id: linkId, attributeId: id };
     } else {
       return NextResponse.json(
         { error: "categoryId or linkId query param is required" },
         { status: 400 },
       );
+    }
+
+    const existingLinks = await db.categoryAttribute.findMany({ where });
+    await db.categoryAttribute.deleteMany({ where });
+    for (const existing of existingLinks) {
+      await logAuditStrict({
+        actorId: __auth.user.id,
+        actorType: "ADMIN",
+        action: "taxonomy.category_attribute.delete",
+        entityType: "CategoryAttribute",
+        entityId: existing.id,
+        before: {
+          categoryId: existing.categoryId,
+          attributeId: existing.attributeId,
+          active: existing.active,
+          required: existing.required,
+        },
+      });
     }
 
     return NextResponse.json({ ok: true });
