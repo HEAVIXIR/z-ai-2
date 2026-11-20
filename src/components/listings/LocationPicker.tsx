@@ -41,9 +41,11 @@ const labelCls = "mb-1.5 block text-xs font-bold text-white/60";
 export default function LocationPicker({
   value,
   onChange,
+  showExactPoint = true,
 }: {
   value: LocationValue;
   onChange: (v: LocationValue) => void;
+  showExactPoint?: boolean;
 }) {
   const [countries, setCountries] = useState<Country[]>([]);
   const [provinces, setProvinces] = useState<Province[]>([]);
@@ -307,6 +309,7 @@ export default function LocationPicker({
           </p>
         )}
       </div>
+      {showExactPoint && (
       <div className="sm:col-span-3 rounded-2xl border border-white/10 bg-black/20 p-4">
         <div className="mb-2 text-xs font-bold text-white/75">نقطهٔ دقیق محل دستگاه (اختیاری)</div>
         <p className="mb-3 text-[11px] leading-6 text-white/45">
@@ -352,6 +355,7 @@ export default function LocationPicker({
           </p>
         )}
       </div>
+      )}
     </div>
   );
 }
