@@ -22,7 +22,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
     const asset = await getAsset(id);
     if (!asset) return new NextResponse(null, { status: 404 });
 
-    let isPublic = asset.visibility === "PUBLIC";
+    // BuyRequest media must follow the request's full public-visibility
+    // predicate; a sidecar visibility flag alone must never bypass moderation.
+    const isBuyRequestAsset = asset.entityType === "BuyRequest";
+    let isPublic = !isBuyRequestAsset && asset.visibility === "PUBLIC";
     let listingOwnerId: string | null = null;
     let buyRequestOwnerId: string | null = null;
     if (!isPublic && asset.entityType === "Listing") {
@@ -39,15 +42,24 @@ export async function GET(_request: Request, { params }: RouteContext) {
     // The sidecar's entity reference is authoritative only after attachAsset
     // has moved the asset to ATTACHED; an unassociated staged upload is never
     // made public by a guessed or client-supplied entityId.
-    if (!isPublic && asset.entityType === "BuyRequest" &&
-        asset.status === "ATTACHED" && asset.entityId) {
+    if (isBuyRequestAsset && asset.status === "ATTACHED" && asset.entityId) {
       const buyRequest = await db.buyRequest.findUnique({
         where: { id: asset.entityId },
-        select: { userId: true, status: true },
+        select: { userId: true, status: true, publishedAt: true, expiresAt: true },
       });
       if (buyRequest) {
         buyRequestOwnerId = buyRequest.userId;
-        isPublic = buyRequest.status === "ACTIVE";
+        const now = Date.now();
+        const isPublished =
+          buyRequest.publishedAt instanceof Date &&
+          Number.isFinite(buyRequest.publishedAt.getTime()) &&
+          buyRequest.publishedAt.getTime() <= now;
+        const isUnexpired =
+          buyRequest.expiresAt === null ||
+          (buyRequest.expiresAt instanceof Date &&
+            Number.isFinite(buyRequest.expiresAt.getTime()) &&
+            buyRequest.expiresAt.getTime() > now);
+        isPublic = buyRequest.status === "ACTIVE" && isPublished && isUnexpired;
       }
     }
 
