@@ -931,6 +931,26 @@ export async function POST(req: Request) {
     // Listing, optional machine passport, and image rows commit together.
     // This prevents orphan listings when nested media-row creation fails.
     const listingResult = await db.$transaction(async (tx) => {
+      // Re-read the current category/model policy inside the same serializable
+      // transaction as the listing write. The earlier validation provides a
+      // fast response, while this check closes the admin-policy update race:
+      // the listing cannot commit against a stale required/active snapshot.
+      const currentAttributeValidation = await validateListingAttributeValues(
+        tx,
+        {
+          categoryId: body.categoryId ? String(body.categoryId) : null,
+          modelId: body.modelId ? String(body.modelId) : null,
+        },
+        Array.isArray(body.attributeValues) ? body.attributeValues : [],
+        false,
+        true,
+      );
+      if (!currentAttributeValidation.ok) {
+        throw Object.assign(new Error(currentAttributeValidation.error), {
+          code: "LISTING_ATTRIBUTE_POLICY_INVALID",
+        });
+      }
+
       // Recheck within the write transaction to reduce races between parallel creates.
       if (imagePolicy.maxListings > 0) {
         const currentActiveCount = await tx.listing.count({ where: activeListingWhere });
@@ -963,9 +983,9 @@ export async function POST(req: Request) {
 
       // createMany uses scalar foreign keys and stays inside this same
       // transaction, so an attribute write failure rolls the listing back.
-      if (attributeValidation.values.length) {
+      if (currentAttributeValidation.values.length) {
         await tx.listingAttributeValue.createMany({
-          data: attributeValidation.values.map((value) => ({
+          data: currentAttributeValidation.values.map((value) => ({
             ...value,
             listingId: created.id,
           })),
@@ -1086,6 +1106,9 @@ export async function POST(req: Request) {
       rfqId: listing.rfq?.id ?? null,
     });
   } catch (err: any) {
+    if (err?.code === "LISTING_ATTRIBUTE_POLICY_INVALID") {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     if (err?.code === "P2034") {
       return NextResponse.json(
         { error: "درخواست هم‌زمان دیگری در حال ثبت است؛ لطفاً دوباره تلاش کنید.", code: "LISTING_CREATE_CONFLICT" },
