@@ -1704,6 +1704,12 @@ export default function NewListingPage() {
                             .join(" / ") || "—"
                         }
                       />
+                      {location.latitude?.trim() && location.longitude?.trim() && (
+                        <ReviewRow
+                          label="نقطهٔ دقیق دستگاه"
+                          value={`${location.latitude} ، ${location.longitude}`}
+                        />
+                      )}
                       {form.shortDesc && (
                         <ReviewRow label="خلاصه" value={form.shortDesc} />
                       )}
