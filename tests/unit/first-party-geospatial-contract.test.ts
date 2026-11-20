@@ -18,6 +18,9 @@ const architecture = readFileSync(
 );
 const locationsRoute = readFileSync(join(process.cwd(), "src/app/api/locations/route.ts"), "utf8");
 const locationItemRoute = readFileSync(join(process.cwd(), "src/app/api/locations/[id]/route.ts"), "utf8");
+const listingsRoute = readFileSync(join(process.cwd(), "src/app/api/listings/route.ts"), "utf8");
+const listingLocationPicker = readFileSync(join(process.cwd(), "src/components/listings/LocationPicker.tsx"), "utf8");
+const newListingPage = readFileSync(join(process.cwd(), "src/app/listings/new/page.tsx"), "utf8");
 
 describe("first-party geospatial contract", () => {
   it("stores exact coordinates separately from administrative city centroids", () => {
@@ -67,6 +70,23 @@ describe("first-party geospatial contract", () => {
       expect(source).toContain("latitude < -90");
       expect(source).toContain("longitude > 180");
     }
+  });
+
+  it("collects a manual exact point separately from city selection and submits it", () => {
+    expect(listingLocationPicker).toContain("نقطهٔ دقیق محل دستگاه");
+    expect(listingLocationPicker).toContain("مختصات مرکز شهر");
+    expect(newListingPage).toContain("locationLatitude: location.latitude?.trim() ? Number(location.latitude) : undefined");
+    expect(newListingPage).toContain("locationLongitude: location.longitude?.trim() ? Number(location.longitude) : undefined");
+  });
+
+  it("validates and persists exact listing coordinates without substituting city centroids", () => {
+    expect(listingsRoute).toContain("hasLocationLatitude !== hasLocationLongitude");
+    expect(listingsRoute).toContain("typeof body.locationLatitude !== \"number\"");
+    expect(listingsRoute).toContain("body.locationLatitude < -90");
+    expect(listingsRoute).toContain("body.locationLongitude > 180");
+    expect(listingsRoute).toContain("locationLatitude,");
+    expect(listingsRoute).toContain("locationLongitude,");
+    expect(listingsRoute).toContain("locationUpdatedAt: locationLatitude !== null ? new Date() : null");
   });
 
   it("does not silently enable extensions, external tile services or perform data imports", () => {
