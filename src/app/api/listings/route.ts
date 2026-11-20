@@ -661,6 +661,9 @@ export async function POST(req: Request) {
     if (selectedCity && selectedProvince?.id !== selectedCity.province.id) {
       return NextResponse.json({ error: "شهر با استان انتخاب‌شده مطابقت ندارد." }, { status: 400 });
     }
+    if (!selectedProvince) {
+      return NextResponse.json({ error: "انتخاب کشور و استان برای ثبت آگهی الزامی است." }, { status: 400 });
+    }
 
     // Exact equipment coordinates are independent from city centroids.
     // Accept only a complete numeric WGS84 pair, and require a canonical city
