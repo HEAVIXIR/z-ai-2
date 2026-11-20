@@ -107,7 +107,19 @@ export default function NewListingPage() {
   const [mediaWarning, setMediaWarning] = useState<string | null>(null);
   const [mediaRepairing, setMediaRepairing] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [stagedMediaAssets, setStagedMediaAssets] = useState<Array<{ assetId: string; url: string }>>([]);
   const [imagesUploading, setImagesUploading] = useState(false);
+  const handleImagesChange = (nextImages: string[]) => {
+    setImages(nextImages);
+    setStagedMediaAssets((current) => current.filter((asset) => nextImages.includes(asset.url)));
+  };
+  const handleStagedAssetsChange = (assets: Array<{ assetId: string; url: string }>) => {
+    setStagedMediaAssets((current) => {
+      const merged = new Map(current.map((asset) => [asset.assetId, asset]));
+      for (const asset of assets) merged.set(asset.assetId, asset);
+      return Array.from(merged.values());
+    });
+  };
 
   // Form state — V1.1
   // The first step is valid only after an active transaction type is loaded and selected.
@@ -418,6 +430,7 @@ export default function NewListingPage() {
     // switches. Images, rental fields, form fields, and transient UI flags
     // must not persist when the user picks a different transaction type.
     setImages([]);
+    setStagedMediaAssets([]);
     setImagesUploading(false);
     setRental({ deposit: "", minimumRentalPeriod: "", operatorIncluded: false, fuelIncluded: false, transportIncluded: false, availabilityStart: "", availabilityEnd: "" });
     setForm({ brandLabel: "", title: "", shortDesc: "", description: "", condition: "USED", year: "", hours: "", price: "", priceType: "NEGOTIABLE", rentalPeriod: "", serialNumber: "", sellerName: "", sellerPhone: "" });
@@ -621,6 +634,9 @@ export default function NewListingPage() {
 
       const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST";
       if (isDemandSubmission) {
+        // Demand media is persisted from the server-owned staging manifest;
+        // never send client URLs as the canonical BuyRequest image record.
+        body.assetIds = stagedMediaAssets.map((asset) => asset.assetId);
         // BuyRequest has one canonical description field; preserve the wizard summary too.
         body.description = [form.shortDesc.trim(), form.description.trim()].filter(Boolean).join("\n\n") || undefined;
         body.listingType = "WANTED";
@@ -1627,14 +1643,20 @@ export default function NewListingPage() {
                       </div>
 
                       {/* Media */}
-                      {transactionType === "WANTED" || isServiceRequest ? (
-                        <p className="text-xs leading-6 text-white/45">پیوست تصویر برای درخواست خرید یا خدمات هنوز در مسیر کانونیکال ذخیره‌سازی نشده است؛ برای جلوگیری از بارگذاری بی‌اثر، فعلاً امکان افزودن تصویر در این نوع درخواست غیرفعال است.</p>
-                      ) : (
-                        <>
-                          {isRequestFlow && <p className="text-xs leading-6 text-white/45">برای استعلام قیمت، افزودن تصویر اختیاری است.</p>}
-                          <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} required={!isRequestFlow && !isServiceFlow} />
-                        </>
-                      )}
+                      <>
+                        {(transactionType === "WANTED" || isServiceRequest) && (
+                          <p className="text-xs leading-6 text-white/45">تصاویر درخواست ابتدا به‌صورت خصوصی بارگذاری می‌شوند و پس از ثبت، فقط پس از تأیید کارشناسان برای عموم قابل مشاهده خواهند بود.</p>
+                        )}
+                        {isRequestFlow && transactionType !== "WANTED" && <p className="text-xs leading-6 text-white/45">برای استعلام قیمت، افزودن تصویر اختیاری است.</p>}
+                        <ListingImageUploader
+                          images={images}
+                          onChange={handleImagesChange}
+                          onAssetsChange={handleStagedAssetsChange}
+                          onUploadingChange={setImagesUploading}
+                          entityType={transactionType === "WANTED" || isServiceRequest ? "BuyRequest" : "Listing"}
+                          required={!isRequestFlow && !isServiceFlow}
+                        />
+                      </>
                     </div>
                   </div>
                 )}
