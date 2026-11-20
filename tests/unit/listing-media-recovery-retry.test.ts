@@ -284,6 +284,14 @@ describe("canonical listing submission gates", () => {
   const listingApi = readFileSync("src/app/api/listings/route.ts", "utf8");
   const wantedApi = readFileSync("src/app/api/wanted/route.ts", "utf8");
 
+  it("flags exact serial-number matches for human review without auto-rejecting", () => {
+    expect(listingApi).toContain("tx.machinePassport.findMany({");
+    expect(listingApi).toContain('serialNumber: { equals: serialNumber, mode: "insensitive" }');
+    expect(listingApi).toContain("duplicateReviewRequired = true");
+    expect(listingApi).toContain("AUTO_DUPLICATE_REVIEW");
+    expect(listingApi).toContain("duplicateReviewRequired,");
+  });
+
   it("persists the seller-scoped idempotency receipt in the listing transaction", () => {
     expect(listingApi).toContain('createHash("sha256").update(`${user.id}:${idempotencyKey}`).digest("hex")');
     expect(listingApi).toContain("await logAuditStrict({");
