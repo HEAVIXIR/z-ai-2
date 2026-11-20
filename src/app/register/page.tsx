@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { UserPlus, Mail, ShieldCheck, ArrowLeft } from "lucide-react";
@@ -13,7 +13,7 @@ import { safeInternalRedirect } from "@/lib/auth-redirect";
    Step 3: success → redirect to login
    ============================================================ */
 
-export default function RegisterPage() {
+function RegisterContent() {
   const sp = useSearchParams();
   const returnPath = safeInternalRedirect(sp.get("redirect"), "");
   const loginHref = returnPath ? `/login?redirect=${encodeURIComponent(returnPath)}` : "/login";
@@ -328,5 +328,14 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#0b0b0b] text-white/50">در حال بارگذاری…</div>}>
+      <RegisterContent />
+    </Suspense>
   );
 }
