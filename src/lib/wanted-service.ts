@@ -222,6 +222,7 @@ export async function createWanted(params: {
   modelId?: string | null;
   serviceTypeId?: string | null;
   attributeValues?: unknown[] | null;
+  images?: Array<{ assetId: string; url: string; alt?: string | null }>;
   userId: string;
   /**
    * Optional stable delivery key. It is written to BuyRequest's owner-scoped
@@ -254,6 +255,7 @@ export async function createWanted(params: {
     modelId = null,
     serviceTypeId = null,
     attributeValues = null,
+    images = [],
     userId,
     idempotencyKey = null,
   } = params;
@@ -394,6 +396,19 @@ export async function createWanted(params: {
           intent: resolvedIntent,
           idempotencyKey: idempotencyKey ?? null,
           // ── H.3 attribute parent/child rows (nested create, same transaction) ──
+          ...(images.length
+            ? {
+                images: {
+                  create: images.map((image, index) => ({
+                    assetId: image.assetId,
+                    url: image.url,
+                    alt: image.alt ?? null,
+                    isPrimary: index === 0,
+                    sortOrder: index,
+                  })),
+                },
+              }
+            : {}),
           ...(validatedAttributes.length
             ? {
                 attributeValues: {
