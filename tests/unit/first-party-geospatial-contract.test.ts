@@ -54,10 +54,10 @@ describe("first-party geospatial contract", () => {
 
   it("protects all location mutations with the fail-closed CSRF guard", () => {
     expect(locationsRoute).toContain('import { checkCsrf } from "@/lib/csrf"');
-    expect(locationsRoute).toMatch(/export async function POST[\\s\\S]*?checkCsrf\\(req\\)/);
+    expect(locationsRoute).toMatch(/export async function POST[\s\S]*?checkCsrf\(req\)/);
     expect(locationItemRoute).toContain('import { checkCsrf } from "@/lib/csrf"');
-    expect(locationItemRoute).toMatch(/export async function PATCH[\\s\\S]*?checkCsrf\\(req\\)/);
-    expect(locationItemRoute).toMatch(/export async function DELETE[\\s\\S]*?checkCsrf\\(req\\)/);
+    expect(locationItemRoute).toMatch(/export async function PATCH[\s\S]*?checkCsrf\(req\)/);
+    expect(locationItemRoute).toMatch(/export async function DELETE[\s\S]*?checkCsrf\(req\)/);
   });
 
   it("rejects incomplete and out-of-range city coordinate pairs", () => {
