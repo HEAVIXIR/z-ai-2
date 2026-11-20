@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import { checkCsrf } from "@/lib/csrf";
+import { logAuditStrict } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -76,6 +77,7 @@ export async function POST(req: Request, { params }: Args) {
       data: {
         categoryId: category.id,
         attributeId: id,
+        active: body.active !== false,
         required: body.required === true,
         filterable: body.filterable === true,
         searchable: body.searchable === true,
@@ -84,6 +86,111 @@ export async function POST(req: Request, { params }: Args) {
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },
+      },
+    });
+
+    await logAuditStrict({
+      actorId: __auth.user.id,
+      actorType: "ADMIN",
+      action: "taxonomy.category_attribute.create",
+      entityType: "CategoryAttribute",
+      entityId: link.id,
+      after: {
+        categoryId: link.categoryId,
+        attributeId: link.attributeId,
+        active: link.active,
+        required: link.required,
+        filterable: link.filterable,
+        searchable: link.searchable,
+        sortable: link.sortable,
+        displayOrder: link.displayOrder,
+      },
+    });
+
+    return NextResponse.json({ ok: true, link });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? "Server error" },
+      { status: 500 },
+    );
+  }
+}
+
+/* ============================================================
+   PATCH /api/attributes/[id]/categories?linkId=... — ADMIN
+   Update category-scoped policy without changing stored listing values.
+   active and required are independent: inactive fields are hidden and
+   are not required, while their existing ListingAttributeValue rows remain.
+   ============================================================ */
+export async function PATCH(req: Request, { params }: Args) {
+  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  try {
+    const { id } = await params;
+    const url = new URL(req.url);
+    const linkId = (url.searchParams.get("linkId") ?? "").trim();
+    if (!linkId) {
+      return NextResponse.json({ error: "linkId is required" }, { status: 400 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const booleanFields = ["active", "required", "filterable", "searchable", "sortable"] as const;
+    const data: Record<string, boolean | number> = {};
+    for (const field of booleanFields) {
+      if (field in body) {
+        if (typeof body[field] !== "boolean") {
+          return NextResponse.json({ error: `${field} must be boolean` }, { status: 400 });
+        }
+        data[field] = body[field];
+      }
+    }
+    if ("displayOrder" in body) {
+      const displayOrder = Number(body.displayOrder);
+      if (!Number.isInteger(displayOrder) || displayOrder < 0) {
+        return NextResponse.json({ error: "displayOrder must be a non-negative integer" }, { status: 400 });
+      }
+      data.displayOrder = displayOrder;
+    }
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: "At least one policy field is required" }, { status: 400 });
+    }
+
+    const existing = await db.categoryAttribute.findFirst({
+      where: { id: linkId, attributeId: id },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Category attribute link not found" }, { status: 404 });
+    }
+
+    const link = await db.categoryAttribute.update({
+      where: { id: existing.id },
+      data,
+      include: {
+        category: { select: { id: true, name: true, slug: true } },
+      },
+    });
+
+    await logAuditStrict({
+      actorId: __auth.user.id,
+      actorType: "ADMIN",
+      action: "taxonomy.category_attribute.update",
+      entityType: "CategoryAttribute",
+      entityId: link.id,
+      before: {
+        active: existing.active,
+        required: existing.required,
+        filterable: existing.filterable,
+        searchable: existing.searchable,
+        sortable: existing.sortable,
+        displayOrder: existing.displayOrder,
+      },
+      after: {
+        active: link.active,
+        required: link.required,
+        filterable: link.filterable,
+        searchable: link.searchable,
+        sortable: link.sortable,
+        displayOrder: link.displayOrder,
       },
     });
 
