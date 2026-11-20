@@ -19,7 +19,7 @@ jobs:
   wanted-media-browser-e2e:
     if: github.ref == 'refs/heads/feat/buyrequest-media-staging-2026-11-20' && contains(github.event.head_commit.message, 'WANTED_MEDIA_BROWSER_E2E')
     environment: b2-media-isolated-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       postgres:
