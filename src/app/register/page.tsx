@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { UserPlus, Mail, ShieldCheck, ArrowLeft } from "lucide-react";
 import { safeInternalRedirect } from "@/lib/auth-redirect";
@@ -14,7 +14,6 @@ import { safeInternalRedirect } from "@/lib/auth-redirect";
    ============================================================ */
 
 export default function RegisterPage() {
-  const router = useRouter();
   const sp = useSearchParams();
   const returnPath = safeInternalRedirect(sp.get("redirect"), "");
   const loginHref = returnPath ? `/login?redirect=${encodeURIComponent(returnPath)}` : "/login";
