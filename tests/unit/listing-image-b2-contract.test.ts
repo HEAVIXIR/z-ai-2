@@ -110,6 +110,19 @@ describe("seller B2 media staging contract", () => {
     expect(retryRoute).toContain('status: result.pendingCount === 0 ? 200 : 202');
   });
 
+  it("exposes BuyRequest image previews only to request reviewers and renders owner/admin galleries", () => {
+    const mediaRoute = read("src/app/api/media/[id]/route.ts");
+    const adminApi = read("src/app/api/admin/requests/route.ts");
+    const adminPage = read("src/app/admin/requests/page.tsx");
+    const ownerPage = read("src/app/dashboard/wanted/page.tsx");
+    expect(mediaRoute).toContain('can(user.id, "request.read")');
+    expect(mediaRoute).toContain("isBuyRequestAsset && !!buyRequestOwnerId");
+    expect(adminApi).toContain("images: {");
+    expect(adminPage).toContain("r.images.map");
+    expect(ownerPage).toContain("images: {");
+    expect(ownerPage).toContain("r.images.map");
+  });
+
   it("fails closed when the one-migration Preview workflow sees later unapproved DDL", () => {
     const workflow = read(".github/workflows/app-preview-wanted-structural-migration.yml");
     expect(workflow).toContain("# Prisma migrate deploy applies EVERY pending migration in this checkout.");
