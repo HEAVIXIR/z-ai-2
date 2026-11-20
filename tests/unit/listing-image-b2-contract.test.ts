@@ -123,6 +123,14 @@ describe("seller B2 media staging contract", () => {
     expect(ownerPage).toContain("r.images.map");
   });
 
+  it("marks owner-only and admin moderation request feeds as private and non-cacheable", () => {
+    const wantedApi = read("src/app/api/wanted/route.ts");
+    const adminApi = read("src/app/api/admin/requests/route.ts");
+    const ownerFeed = wantedApi.split('// ?mine=true')[1]?.split('// Public callers')[0] ?? "";
+    expect(ownerFeed).toContain('"Cache-Control": "private, no-store"');
+    expect(adminApi).toContain('"Cache-Control": "private, no-store"');
+  });
+
   it("fails closed when the one-migration Preview workflow sees later unapproved DDL", () => {
     const workflow = read(".github/workflows/app-preview-wanted-structural-migration.yml");
     expect(workflow).toContain("# Prisma migrate deploy applies EVERY pending migration in this checkout.");
