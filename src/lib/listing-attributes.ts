@@ -247,7 +247,8 @@ export async function validateListingAttributeValues(
         if (rangeParts.length !== 2) {
           return { ok: false, error: "بازهٔ واردشده معتبر نیست؛ حداقل یا حداکثر را بررسی کنید." };
         }
-        const [minRaw, maxRaw] = rangeParts.map((part) => part.trim());
+        const minRaw = (rangeParts[0] ?? "").trim();
+        const maxRaw = (rangeParts[1] ?? "").trim();
         const min = minRaw === "" ? null : Number(minRaw);
         const max = maxRaw === "" ? null : Number(maxRaw);
         if (
