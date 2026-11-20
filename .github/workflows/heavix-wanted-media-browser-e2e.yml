@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/heavix-wanted-media-browser-e2e.yml
       - scripts/e2e/wanted-media-browser-acceptance.ts
+      - scripts/e2e/initialize-image-wasm.mjs
 
 permissions:
   contents: read
@@ -112,7 +113,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          nohup bunx next dev --webpack --hostname 127.0.0.1 --port 3000 > "$RUNNER_TEMP/heavix-next-dev.log" 2>&1 &
+          NODE_OPTIONS="--import=$GITHUB_WORKSPACE/scripts/e2e/initialize-image-wasm.mjs" nohup node ./node_modules/next/dist/bin/next dev --webpack --hostname 127.0.0.1 --port 3000 > "$RUNNER_TEMP/heavix-next-dev.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/heavix-next-dev.pid"
           ready=0
           for attempt in $(seq 1 60); do
