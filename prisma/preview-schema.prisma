@@ -389,7 +389,8 @@ model CategoryAttribute {
   category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   attributeId String
   attribute   AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
-  active      Boolean  @default(true)\n  required    Boolean  @default(false)
+  active      Boolean  @default(true)
+  required    Boolean  @default(false)
   filterable  Boolean  @default(false)
   searchable  Boolean  @default(false)
   sortable    Boolean  @default(false)
