@@ -1148,7 +1148,7 @@ export default function ListingEditForm({
                   onChange={(v) => {
                     if (v) addImageByUrl(v);
                   }}
-                  endpoint="/api/admin/upload"
+                  endpoint={isAdmin ? "/api/admin/upload" : "/api/media/staging"}
                   label=""
                   removable={false}
                   className="h-full w-full"
