@@ -76,8 +76,8 @@ describe("first-party geospatial contract", () => {
   it("collects a manual exact point separately from city selection and submits it", () => {
     expect(listingLocationPicker).toContain("نقطهٔ دقیق محل دستگاه");
     expect(listingLocationPicker).toContain("مختصات مرکز شهر");
-    expect(newListingPage).toContain("locationLatitude: location.latitude?.trim() ? Number(location.latitude) : undefined");
-    expect(newListingPage).toContain("locationLongitude: location.longitude?.trim() ? Number(location.longitude) : undefined");
+    expect(newListingPage).toContain('locationLatitude: ["SALE", "RENT", "AUCTION"].includes(transactionType) && location.latitude?.trim() ? Number(location.latitude) : undefined');
+    expect(newListingPage).toContain('locationLongitude: ["SALE", "RENT", "AUCTION"].includes(transactionType) && location.longitude?.trim() ? Number(location.longitude) : undefined');
     expect(newListingPage).toContain('showExactPoint={["SALE", "RENT", "AUCTION"].includes(transactionType)}');
     expect(newListingPage).toContain('if (!["SALE", "RENT", "AUCTION"].includes(transactionType)) return true;');
   });
