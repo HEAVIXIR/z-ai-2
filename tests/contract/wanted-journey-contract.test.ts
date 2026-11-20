@@ -45,6 +45,15 @@ describe("WANTED journey source-contract (NOT behavioral E2E)", () => {
     expect(page).toContain("body.deadline =");
   });
 
+  it("keeps BuyRequest image selection gated and retries media through the entity-specific endpoint", () => {
+    const page = read("src/app/listings/new/page.tsx");
+    expect(page).toContain("فعلاً امکان افزودن تصویر در این نوع درخواست غیرفعال است");
+    expect(page).toContain("const mediaRetryPath = isDemandSubmission");
+    expect(page).toContain("`/api/wanted/${encodeURIComponent(mediaRepairEntityId)}/media`");
+    expect(page).toContain("`/api/listings/${encodeURIComponent(mediaRepairEntityId)}/media`");
+    expect(page).toContain('const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی"');
+  });
+
   it("WANTED wizard labels exact-price input as an alternative to a budget range and blocks conflicting values", () => {
     const page = read("src/app/listings/new/page.tsx");
     expect(page).toContain("قیمت پیشنهادی دقیق (اختیاری؛ به‌جای بازه بودجه)");
