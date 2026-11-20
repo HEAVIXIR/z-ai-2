@@ -79,5 +79,29 @@ describe("seller B2 media staging contract", () => {
     expect(adapter).toContain('const EXPECTED_ENDPOINT = "https://s3.us-east-005.backblazeb2.com"');
     expect(adapter).toContain('requiredEnv("B2_APPLICATION_KEY")');
     expect(adapter).toContain("createB2MediaReadUrl");
+
+  it("persists BuyRequest image associations with matching main and Preview schemas", () => {
+    const main = read("prisma/schema.prisma");
+    const preview = read("prisma/preview-schema.prisma");
+    const migration = read("prisma/migrations/20261120150000_buy_request_images/migration.sql");
+    const service = read("src/lib/wanted-service.ts");
+    const route = read("src/app/api/wanted/route.ts");
+    for (const schema of [main, preview]) {
+      expect(schema).toContain("images          BuyRequestImage[]");
+      expect(schema).toContain("model BuyRequestImage {");
+      expect(schema).toContain("assetId      String      @unique");
+      expect(schema).toContain('onDelete: Cascade');
+    }
+    expect(migration).toContain('CREATE TABLE "BuyRequestImage"');
+    expect(migration).toContain('"BuyRequestImage_assetId_key"');
+    expect(migration).toContain('"BuyRequestImage_buyRequestId_sortOrder_key"');
+    expect(migration).toContain('REFERENCES "BuyRequest"("id")');
+    expect(service).toContain("images: {");
+    expect(service).toContain("assetId: image.assetId");
+    expect(route).toContain('asset.entityType !== "BuyRequest"');
+    expect(route).toContain("asset.uploadedBy !== userId");
+    expect(route).toContain('attachAsset(asset.assetId, "BuyRequest", created.id, userId)');
+    expect(route).toContain("mediaPendingCount: mediaPendingIds.length");
+  });
   });
 });
