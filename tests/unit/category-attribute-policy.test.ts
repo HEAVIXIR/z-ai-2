@@ -101,3 +101,32 @@ describe("category attribute runtime policy", () => {
     if (!result.ok) expect(result.error).toContain("به دسته‌بندی یا مدل");
   });
 });
+
+
+  it("accepts zero and false as completed values for required numeric and boolean fields", async () => {
+    const db = makeDb({
+      parents: { loader: null },
+      links: [
+        { categoryId: "loader", attributeId: "capacity", active: true, required: true },
+        { categoryId: "loader", attributeId: "hasCabin", active: true, required: true },
+      ],
+      attributes: [
+        { id: "capacity", name: "Capacity", labelFa: "ظرفیت", type: "INTEGER", options: [] },
+        { id: "hasCabin", name: "Cabin", labelFa: "کابین", type: "BOOLEAN", options: [] },
+      ],
+    });
+
+    const result = await validateListingAttributeValues(
+      db,
+      { categoryId: "loader" },
+      [
+        { attributeId: "capacity", numberValue: 0 },
+        { attributeId: "hasCabin", booleanValue: false },
+      ],
+      false,
+      true,
+    );
+
+    expect(result.ok).toBe(true);
+  });
+});
