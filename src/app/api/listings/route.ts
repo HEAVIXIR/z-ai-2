@@ -662,6 +662,40 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "شهر با استان انتخاب‌شده مطابقت ندارد." }, { status: 400 });
     }
 
+    // Exact equipment coordinates are independent from city centroids.
+    // Accept only a complete numeric WGS84 pair, and require a canonical city
+    // selection so the exact point remains attached to the selected hierarchy.
+    const hasLocationLatitude =
+      body.locationLatitude !== undefined &&
+      body.locationLatitude !== null &&
+      body.locationLatitude !== "";
+    const hasLocationLongitude =
+      body.locationLongitude !== undefined &&
+      body.locationLongitude !== null &&
+      body.locationLongitude !== "";
+    if (hasLocationLatitude !== hasLocationLongitude) {
+      return NextResponse.json({ error: "برای ثبت موقعیت دقیق، عرض و طول جغرافیایی باید با هم ارسال شوند." }, { status: 400 });
+    }
+    let locationLatitude: number | null = null;
+    let locationLongitude: number | null = null;
+    if (hasLocationLatitude && hasLocationLongitude) {
+      if (
+        !selectedCity ||
+        typeof body.locationLatitude !== "number" ||
+        typeof body.locationLongitude !== "number" ||
+        !Number.isFinite(body.locationLatitude) ||
+        !Number.isFinite(body.locationLongitude) ||
+        body.locationLatitude < -90 ||
+        body.locationLatitude > 90 ||
+        body.locationLongitude < -180 ||
+        body.locationLongitude > 180
+      ) {
+        return NextResponse.json({ error: "مختصات باید عدد معتبر در محدودهٔ WGS84 و همراه با انتخاب شهر باشند." }, { status: 400 });
+      }
+      locationLatitude = body.locationLatitude;
+      locationLongitude = body.locationLongitude;
+    }
+
     const resolvedCountryId = selectedProvince?.countryId ?? requestedCountryId;
     if (requestedCountryId && selectedProvince && requestedCountryId !== selectedProvince.countryId) {
       return NextResponse.json({ error: "استان با کشور انتخاب‌شده مطابقت ندارد." }, { status: 400 });
@@ -854,6 +888,10 @@ export async function POST(req: Request) {
       countryId: resolvedCountryId,
       provinceId: selectedProvince?.id ?? null,
       cityId: selectedCity?.id ?? null,
+      locationLatitude,
+      locationLongitude,
+      locationAccuracyMeters: null,
+      locationUpdatedAt: locationLatitude !== null ? new Date() : null,
       year: body.year ? parseNumber(body.year) : null,
       workingHours: body.workingHours ? parseNumber(body.workingHours) : null,
       status: "PENDING",
