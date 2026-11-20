@@ -38,6 +38,8 @@ jobs:
     env:
       NODE_ENV: development
       HEAVIX_ENV: preview
+      # Run the local E2E server with the Node.js Prisma adapter; HEAVIX_ENV still preserves Preview media policy.
+      VERCEL: "1"
       CI: "true"
       NEXT_TELEMETRY_DISABLED: "1"
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/heavix_media_browser_test?schema=public
