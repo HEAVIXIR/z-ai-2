@@ -20,7 +20,8 @@ The active main migration history currently includes ten append-only PostgreSQL 
 - `20261116130000_company_invitations/migration.sql`
 - `20261118152000_link_listing_service_rfq/migration.sql`
 - `20261119190000_first_party_geospatial_foundation/migration.sql`
-- `20261120113000_location_source_codes/migration.sql`\n- `20261120130000_category_attribute_active_policy/migration.sql`
+- `20261120113000_location_source_codes/migration.sql`
+- `20261120130000_category_attribute_active_policy/migration.sql`
 
 The active Store/Outbox migration history currently includes three append-only PostgreSQL migrations:
 
