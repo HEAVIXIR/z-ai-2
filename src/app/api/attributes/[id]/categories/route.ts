@@ -37,6 +37,9 @@ export async function POST(req: Request, { params }: Args) {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
 
+    if ("active" in body && typeof body.active !== "boolean") {
+      return NextResponse.json({ error: "active must be boolean" }, { status: 400 });
+    }
     if (!body.categoryId) {
       return NextResponse.json(
         { error: "categoryId is required" },
@@ -134,8 +137,11 @@ export async function PATCH(req: Request, { params }: Args) {
     }
 
     const body = await req.json().catch(() => ({}));
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
+    }
     const booleanFields = ["active", "required", "filterable", "searchable", "sortable"] as const;
-    const data: Record<string, boolean | number> = {};
+    const data: any = {};
     for (const field of booleanFields) {
       if (field in body) {
         if (typeof body[field] !== "boolean") {
@@ -218,7 +224,7 @@ export async function DELETE(req: Request, { params }: Args) {
     const categoryId = (url.searchParams.get("categoryId") ?? "").trim();
     const linkId = (url.searchParams.get("linkId") ?? "").trim();
 
-    let where: { attributeId: string; categoryId?: string; id?: string };
+    let where: any;
     if (categoryId) {
       where = { attributeId: id, categoryId };
     } else if (linkId) {
