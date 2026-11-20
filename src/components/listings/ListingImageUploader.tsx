@@ -27,6 +27,7 @@ type Props = {
 export default function ListingImageUploader({
   images,
   onChange,
+  onAssetsChange,
   onUploadingChange,
   required = false,
   entityType = "Listing",
