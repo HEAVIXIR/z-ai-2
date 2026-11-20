@@ -276,3 +276,23 @@ describe("listing creation wizard media recovery wiring", () => {
     expect(wizard).toContain("retryMediaAttachment");
   });
 });
+
+
+describe("listing edit media recovery wiring", () => {
+  const editRoute = readFileSync("src/app/api/listings/[id]/route.ts", "utf8");
+  const editForm = readFileSync("src/app/admin/listings/[id]/edit/ListingEditForm.tsx", "utf8");
+
+  it("preserves failed staged-image manifest rows for the canonical retry endpoint", () => {
+    expect(editRoute).toContain("let mediaPendingCount = 0");
+    expect(editRoute).toContain('mediaStatus: mediaPendingCount > 0 ? "PENDING" : "ATTACHED"');
+    expect(editRoute).toContain("mediaPendingCount += 1");
+    expect(editRoute).not.toContain('await db.listingImage.deleteMany({ where: { listingId: id, url: asset.url } })');
+  });
+
+  it("exposes seller-side retry from the shared listing editor", () => {
+    expect(editForm).toContain("retryMediaRecovery");
+    expect(editForm).toContain('`/api/listings/${encodeURIComponent(initial.id)}/media`');
+    expect(editForm).toContain("بررسی و بازیابی تصاویر");
+    expect(editForm).toContain("setMediaPendingCount");
+  });
+});
