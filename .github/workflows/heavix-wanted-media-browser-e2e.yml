@@ -88,6 +88,10 @@ jobs:
           bun-version: "1.4.4"
       - name: Install locked application dependencies and generate Prisma clients
         run: bun install --frozen-lockfile
+      - name: Parse global CSS before starting the application
+        run: |
+          set -euo pipefail
+          bun -e 'import postcss from "postcss"; import { readFileSync } from "node:fs"; postcss.parse(readFileSync("src/app/globals.css", "utf8"), { from: "src/app/globals.css" }); console.log("PASS: globals.css parses cleanly.");'
       - name: Push schema into the disposable PostgreSQL database
         run: bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
       - name: Seed isolated RBAC and deterministic buyer fixtures
