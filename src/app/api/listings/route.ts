@@ -333,6 +333,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let durableIdempotencyKey: string | null = null;
   let listingCreateActorId: string | null = null;
+  let duplicateReviewRequired = false;
   try {
     // W-03 FIX: Authenticate FIRST, before any data processing.
     const user = await getCurrentUser();
@@ -1007,6 +1008,28 @@ export async function POST(req: Request) {
         const currentActiveCount = await tx.listing.count({ where: activeListingWhere });
         if (currentActiveCount >= imagePolicy.maxListings) return null;
       }
+      // Deterministic duplicate signal: an exact machine serial match against
+      // an existing non-terminal listing is never auto-rejected or merged.
+      // It is recorded for human moderation so shared/fleet serial formats
+      // and legitimate relistings remain recoverable.
+      if (serialNumber) {
+        const serialMatches = await tx.machinePassport.findMany({
+          where: {
+            serialNumber: { equals: serialNumber, mode: "insensitive" },
+            listing: { status: { in: ["PENDING", "PUBLISHED", "ACTIVE"] } },
+          },
+          select: { listingId: true },
+          take: 5,
+        });
+        if (serialMatches.length > 0) {
+          duplicateReviewRequired = true;
+          data.adminNotes = [
+            "AUTO_DUPLICATE_REVIEW: exact machine serial match; human review required.",
+            `Candidate listing IDs: ${serialMatches.map((item: { listingId: string }) => item.listingId).join(", ")}`,
+          ].join("\\n");
+        }
+      }
+
       const created = await tx.listing.create({
         data: {
           ...data,
@@ -1177,6 +1200,7 @@ export async function POST(req: Request) {
       status: listing.status,
       mediaStatus: mediaPendingIds.length ? "PENDING" : "ATTACHED",
       mediaPendingCount: mediaPendingIds.length,
+      duplicateReviewRequired,
       auctionId: listing.auctions[0]?.id ?? null,
       rfqId: listing.rfq?.id ?? null,
     });
