@@ -191,11 +191,11 @@ async function browserFetch(
 async function loadImage(page: PageLike, mediaUrl: string): Promise<{ width: number; height: number }> {
   return page.evaluate(async (src) => {
     const image = new Image();
-    image.src = src;
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("image load timed out")), 20000);
       image.onload = () => { clearTimeout(timeout); resolve(); };
       image.onerror = () => { clearTimeout(timeout); reject(new Error("browser could not render the media URL")); };
+      image.src = src;
     });
     return { width: image.naturalWidth, height: image.naturalHeight };
   }, mediaUrl);
