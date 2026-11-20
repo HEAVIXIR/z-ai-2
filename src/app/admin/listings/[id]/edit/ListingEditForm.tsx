@@ -1280,6 +1280,19 @@ export default function ListingEditForm({
             </div>
           </section>
 
+          {/* Exact-serial duplicate review signal: show prominently to moderators. */}
+          {isAdmin && adminNotes.includes("AUTO_DUPLICATE_REVIEW") && (
+            <section role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-sm">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                <div>
+                  <h2 className="text-sm font-black">بررسی تکراری بودن آگهی ضروری است</h2>
+                  <p className="mt-1 text-xs leading-6">شماره سریال ماشین با آگهی دیگری تطبیق داشته است. پیش از تأیید یا انتشار، آگهی‌های مرتبط و یادداشت داخلی را بررسی کنید. این هشدار به‌تنهایی به معنی رد آگهی نیست.</p>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Admin notes (admin only) */}
           {isAdmin && (
             <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
