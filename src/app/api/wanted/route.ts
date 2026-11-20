@@ -33,6 +33,8 @@ import { HOMEPAGE_CACHE_TAGS } from "@/lib/homepage-cache-tags";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getAsset, attachAsset } from "@/lib/media-service";
+import { getListingImagePolicy } from "@/lib/listing-image-policy";
 import { getCurrentUserId } from "@/lib/auth";
 import { checkCsrf } from "@/lib/csrf";
 import { readBoundedJson } from "@/lib/read-bounded-json";
@@ -107,6 +109,7 @@ export async function GET(req: Request) {
           brandRef: { select: { name: true } },
           modelRef: { select: { name: true } },
           serviceTypeRef: { select: { nameFa: true } },
+          images: { orderBy: { sortOrder: "asc" }, select: { id: true, url: true, alt: true, isPrimary: true, sortOrder: true } },
         },
       });
       return NextResponse.json({
@@ -137,6 +140,7 @@ export async function GET(req: Request) {
           brandName: r.brandRef?.name ?? null,
           modelName: r.modelRef?.name ?? null,
           serviceTypeName: r.serviceTypeRef?.nameFa ?? null,
+          images: r.images,
         })),
       });
     }
@@ -268,7 +272,30 @@ export async function POST(req: Request) {
       cityId,
       countryId,
       deadline,
+      assetIds: rawAssetIds,
     } = body as Record<string, unknown>;
+
+    if (rawAssetIds !== undefined && !Array.isArray(rawAssetIds)) {
+      return NextResponse.json({ error: "assetIds باید یک آرایه باشد." }, { status: 400 });
+    }
+    const assetIds = Array.isArray(rawAssetIds) ? rawAssetIds.map((value) => String(value)) : [];
+    const imagePolicy = await getListingImagePolicy(userId);
+    if (assetIds.length > imagePolicy.maxImages) {
+      return NextResponse.json({ error: `حداکثر ${imagePolicy.maxImages} تصویر برای هر درخواست مجاز است.` }, { status: 400 });
+    }
+    if (new Set(assetIds).size !== assetIds.length) {
+      return NextResponse.json({ error: "تصویر تکراری در فهرست ارسال شده است." }, { status: 400 });
+    }
+    const stagedAssets: Array<{ assetId: string; url: string; alt: string | null }> = [];
+    for (const assetId of assetIds) {
+      const asset = await getAsset(assetId);
+      if (!asset || asset.status !== "STAGED" || asset.visibility !== "PRIVATE" ||
+          asset.entityType !== "BuyRequest" || asset.entityId !== null ||
+          asset.uploadedBy !== userId || !asset.relativePath.includes("/staging/")) {
+        return NextResponse.json({ error: "مالکیت یا وضعیت یکی از تصاویر معتبر نیست." }, { status: 400 });
+      }
+      stagedAssets.push({ assetId: asset.id, url: asset.url, alt: asset.altText });
+    }
 
     const requestedProvinceId = provinceId ? String(provinceId) : null;
     const requestedCityId = cityId ? String(cityId) : null;
@@ -536,6 +563,7 @@ export async function POST(req: Request) {
       brandId: brandId as string | null | undefined,
       modelId: modelId as string | null | undefined,
       attributeValues: attributeValues as unknown[] | null | undefined,
+      images: stagedAssets,
       intent: intentStr,
       transactionType: transactionType as string | null | undefined,
       serviceTypeId: serviceTypeId ? String(serviceTypeId) : null,
@@ -551,6 +579,21 @@ export async function POST(req: Request) {
       idempotencyKey,
     });
 
+    const mediaPendingIds: string[] = [];
+    for (const asset of stagedAssets) {
+      try {
+        const attached = await attachAsset(asset.assetId, "BuyRequest", created.id, userId);
+        if (!attached.ok) mediaPendingIds.push(asset.assetId);
+      } catch (mediaError) {
+        mediaPendingIds.push(asset.assetId);
+        console.error("[wanted] media attachment deferred for retry", {
+          assetId: asset.assetId,
+          buyRequestId: created.id,
+          error: mediaError instanceof Error ? mediaError.message : "unknown",
+        });
+      }
+    }
+
     // Invalidate the homepage "requests" cache tag so the new
     // request shows up in the ActiveRequestsSection immediately.
     try {
@@ -564,6 +607,8 @@ export async function POST(req: Request) {
       success: true,
       id: created.id,
       status: created.status,
+      mediaStatus: mediaPendingIds.length ? "PENDING" : "ATTACHED",
+      mediaPendingCount: mediaPendingIds.length,
     });
   } catch (err: any) {
     if (err instanceof WantedServiceError) {
