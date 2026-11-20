@@ -93,6 +93,7 @@ export interface CategoryLink {
   id: string;
   categoryId: string;
   category: { id: string; name: string; slug: string };
+  active: boolean;
   required: boolean;
   filterable: boolean;
   searchable: boolean;
@@ -181,6 +182,7 @@ export default function AttributesManager({
   const [linkSortable, setLinkSortable] = useState(false);
   const [linkDisplayOrder, setLinkDisplayOrder] = useState(0);
   const [linkBusy, setLinkBusy] = useState(false);
+  const [updatingLinkId, setUpdatingLinkId] = useState<string | null>(null);
 
   // Delete busy
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -415,6 +417,7 @@ export default function AttributesManager({
           category: cat
             ? { id: cat.id, name: cat.name, slug: cat.slug }
             : j.link.category,
+          active: j.link.active !== false,
           required: j.link.required,
           filterable: j.link.filterable,
           searchable: j.link.searchable,
@@ -434,6 +437,35 @@ export default function AttributesManager({
       setErr(e.message);
     } finally {
       setLinkBusy(false);
+    }
+  }
+
+  async function updateLink(
+    link: CategoryLink,
+    patch: Partial<Pick<CategoryLink, "active" | "required" | "filterable" | "searchable" | "sortable" | "displayOrder">>,
+  ) {
+    if (!editingId) return;
+    setUpdatingLinkId(link.id);
+    setErr(null);
+    try {
+      const r = await fetch(
+        `/api/attributes/${editingId}/categories?linkId=${encodeURIComponent(link.id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        },
+      );
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "خطا در به‌روزرسانی سیاست ویژگی");
+      setLinks((prev) => prev.map((item) => item.id === link.id
+        ? { ...item, active: j.link.active, required: j.link.required, filterable: j.link.filterable, searchable: j.link.searchable, sortable: j.link.sortable, displayOrder: j.link.displayOrder }
+        : item));
+      router.refresh();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setUpdatingLinkId(null);
     }
   }
 
@@ -964,6 +996,29 @@ export default function AttributesManager({
                         >
                           {l.category.slug}
                         </span>
+                        <div className="flex items-center gap-3">
+                          <label className="inline-flex items-center gap-1.5 text-[11px] text-zinc-700">
+                            <Checkbox
+                              checked={l.active}
+                              disabled={updatingLinkId === l.id}
+                              onCheckedChange={(checked) => void updateLink(l, { active: checked === true })}
+                            />
+                            فعال
+                          </label>
+                          <label className="inline-flex items-center gap-1.5 text-[11px] text-zinc-700">
+                            <Checkbox
+                              checked={l.required}
+                              disabled={!l.active || updatingLinkId === l.id}
+                              onCheckedChange={(checked) => void updateLink(l, { required: checked === true })}
+                            />
+                            الزامی
+                          </label>
+                          {!l.active && (
+                            <Badge variant="secondary" className="bg-zinc-100 text-[10px] text-zinc-600">
+                              غیرفعال
+                            </Badge>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1">
                           {l.required && (
                             <Badge className="bg-red-100 text-[10px] text-red-700 hover:bg-red-100">
