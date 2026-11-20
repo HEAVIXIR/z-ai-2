@@ -711,6 +711,7 @@ export async function getWanted(id: string): Promise<{
   brandName: string | null;
   modelName: string | null;
   serviceTypeName: string | null;
+  images: Array<{ id: string; url: string; alt: string | null; isPrimary: boolean; sortOrder: number }>;
   // H.3 typed attribute values (parent + child MULTI_SELECT options).
   attributeValues: Array<{
     id: string;
@@ -762,6 +763,7 @@ export async function getWanted(id: string): Promise<{
       brandRef: { select: { name: true } },
       modelRef: { select: { name: true } },
       serviceTypeRef: { select: { nameFa: true } },
+      images: { orderBy: { sortOrder: "asc" }, select: { id: true, url: true, alt: true, isPrimary: true, sortOrder: true } },
       // H.3 typed attribute values (parent rows + child MULTI_SELECT options).
       attributeValues: {
         select: {
@@ -824,6 +826,7 @@ export async function getWanted(id: string): Promise<{
     brandName: request.brandRef?.name ?? null,
     modelName: request.modelRef?.name ?? null,
     serviceTypeName: request.serviceTypeRef?.nameFa ?? null,
+    images: request.images,
     attributeValues: request.attributeValues.map((av) => ({
       id: av.id,
       attributeId: av.attributeId,
