@@ -152,6 +152,15 @@ export default function NewListingPage() {
     provinceId: "",
     cityId: "",
   });
+  useEffect(() => {
+    if (!["SALE", "RENT", "AUCTION"].includes(transactionType)) {
+      setLocation((current) =>
+        current.latitude || current.longitude
+          ? { ...current, latitude: "", longitude: "" }
+          : current,
+      );
+    }
+  }, [transactionType]);
   const [form, setForm] = useState({
     brandLabel: "",
     title: "",
@@ -441,6 +450,7 @@ export default function NewListingPage() {
     }
     if (step === 5) {
       if (!location.provinceId) return false;
+      if (!["SALE", "RENT", "AUCTION"].includes(transactionType)) return true;
       const hasLatitude = Boolean(location.latitude?.trim());
       const hasLongitude = Boolean(location.longitude?.trim());
       if (hasLatitude !== hasLongitude) return false;
@@ -596,8 +606,8 @@ export default function NewListingPage() {
         countryId: location.countryId || undefined,
         provinceId: location.provinceId || undefined,
         cityId: location.cityId || undefined,
-        locationLatitude: location.latitude?.trim() ? Number(location.latitude) : undefined,
-        locationLongitude: location.longitude?.trim() ? Number(location.longitude) : undefined,
+        locationLatitude: ["SALE", "RENT", "AUCTION"].includes(transactionType) && location.latitude?.trim() ? Number(location.latitude) : undefined,
+        locationLongitude: ["SALE", "RENT", "AUCTION"].includes(transactionType) && location.longitude?.trim() ? Number(location.longitude) : undefined,
         brandId: brandId || undefined,
         categoryId: categoryId || undefined,
         modelId: modelId || undefined,
@@ -1259,7 +1269,11 @@ export default function NewListingPage() {
                       subtitle="کشور، استان و شهر مرتبط با عرضه یا درخواست را انتخاب کنید (پیش‌فرض: ایران)"
                     />
                     <div className="mt-6">
-                      <LocationPicker value={location} onChange={setLocation} />
+                      <LocationPicker
+                        value={location}
+                        onChange={setLocation}
+                        showExactPoint={["SALE", "RENT", "AUCTION"].includes(transactionType)}
+                      />
                     </div>
                     <p className="mt-4 text-[11px] text-white/40">
                       موقعیت به‌عنوان بعد مستقل در تاکسونومی V1.1 ذخیره می‌شود و در فیلتر آگهی‌ها
