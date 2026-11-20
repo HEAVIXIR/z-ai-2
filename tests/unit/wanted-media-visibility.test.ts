@@ -70,7 +70,8 @@ describe("BuyRequest media public visibility gate", () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("https://b2.example/signed-image");
-    expect(response.headers.get("Cache-Control")).toBe("public, max-age=60, s-maxage=60");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(mocks.createB2MediaReadUrl).toHaveBeenCalledWith(asset.relativePath, 60);
     expect(mocks.buyRequestFindUnique).toHaveBeenCalledWith({
       where: { id: requestId },
       select: { userId: true, status: true, publishedAt: true, expiresAt: true },
