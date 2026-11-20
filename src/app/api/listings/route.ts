@@ -25,6 +25,8 @@ import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { rateLimitKey } from "@/lib/request-context";
 import { LISTING_CREATE } from "@/lib/rate-limit-presets";
 import { extractIdempotencyKey, findIdempotentResult } from "@/lib/idempotency";
+import { createHash } from "node:crypto";
+import { logAuditStrict } from "@/lib/audit";
 import { getListingImagePolicy } from "@/lib/listing-image-policy";
 
 export const runtime = "nodejs";
@@ -395,9 +397,15 @@ export async function POST(req: Request) {
     // duplicate listing (which would mint a fresh slug). The check runs
     // before field validation so a retry short-circuits fast.
     const idempotencyKey = extractIdempotencyKey(req);
-    if (idempotencyKey) {
+    // AuditLog currently has a globally unique delivery key. Namespace the
+    // caller key by authenticated owner before storing/looking it up, so
+    // identical client keys from different sellers cannot collide.
+    const durableIdempotencyKey = idempotencyKey
+      ? createHash("sha256").update(`${user.id}:${idempotencyKey}`).digest("hex")
+      : null;
+    if (durableIdempotencyKey) {
       const prior = await findIdempotentResult({
-        key: idempotencyKey,
+        key: durableIdempotencyKey,
         action: "marketplace.listing.create",
         actorId: user.id,
       });
@@ -1032,6 +1040,34 @@ export async function POST(req: Request) {
           })),
         });
       }
+
+      // The idempotency receipt is part of the SAME transaction as the
+      // Listing, images, children and typed attributes. If this insert fails
+      // (including a concurrent replay hitting the unique key), the entire
+      // listing transaction rolls back instead of leaving an un-replayable
+      // committed listing behind.
+      if (durableIdempotencyKey) {
+        await logAuditStrict({
+          actorId: user.id,
+          actorType: "USER",
+          action: "marketplace.listing.create",
+          entityType: "Listing",
+          entityId: created.id,
+          idempotencyKey: durableIdempotencyKey,
+          after: {
+            id: created.id,
+            slug: created.slug,
+            title: created.title,
+            listingType: created.listingType,
+            status: created.status,
+            categoryId: created.categoryId ?? null,
+            brandId: created.brandId ?? null,
+            modelId: created.modelId ?? null,
+            serviceTypeId: created.serviceTypeId ?? null,
+          },
+          reason: `ثبت آگهی: ${created.title}`,
+        }, tx);
+      }
       return created;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
@@ -1043,18 +1079,16 @@ export async function POST(req: Request) {
     }
     const listing = listingResult;
 
-    // H.2.4e: audit the listing create itself. Previously only the nested
-    // RFQ/Auction children were audited, so a SALE/RENT/SERVICE listing
-    // left no `marketplace.listing.create` trail. The idempotencyKey is
-    // stamped so a retried submission resolves to this row on replay.
-    try {
+    // For requests with an Idempotency-Key, the durable audit receipt was
+    // already committed atomically with the listing above. Keep legacy
+    // best-effort audit behavior only for clients that omit the header.
+    if (!durableIdempotencyKey) {
       await logAudit({
         actorId: user.id,
         actorType: "USER",
         action: "marketplace.listing.create",
         entityType: "Listing",
         entityId: listing.id,
-        idempotencyKey: idempotencyKey ?? null,
         after: {
           id: listing.id,
           slug: listing.slug,
@@ -1068,8 +1102,6 @@ export async function POST(req: Request) {
         },
         reason: `ثبت آگهی: ${listing.title}`,
       });
-    } catch (auditError) {
-      console.error("[listings] listing create audit deferred", auditError instanceof Error ? auditError.message : "unknown");
     }
 
     if (listing.rfq) {
@@ -1149,6 +1181,34 @@ export async function POST(req: Request) {
   } catch (err: any) {
     if (err?.code === "LISTING_ATTRIBUTE_POLICY_INVALID") {
       return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    if ((err?.code === "P2034" || err?.code === "P2002") && durableIdempotencyKey) {
+      // A concurrent request may win the unique receipt race. Resolve the
+      // winner rather than surfacing a generic conflict to a valid replay.
+      try {
+        const prior = await findIdempotentResult({
+          key: durableIdempotencyKey,
+          action: "marketplace.listing.create",
+          actorId: user.id,
+        });
+        if (prior) {
+          const cached = await db.listing.findUnique({
+            where: { id: prior.id },
+            select: { id: true, slug: true, status: true },
+          });
+          if (cached) {
+            return NextResponse.json({
+              ok: true,
+              id: cached.id,
+              slug: cached.slug,
+              status: cached.status,
+              idempotentReplay: true,
+            });
+          }
+        }
+      } catch {
+        // Preserve the original conflict response if replay resolution fails.
+      }
     }
     if (err?.code === "P2034") {
       return NextResponse.json(
