@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: heavix-app-preview-sequential-single-migration
@@ -141,37 +142,30 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "PASS: pinned source SHA, one pending migration, exact folder count and typed App Preview approval verified."
 
-      - name: Install age, AWS CLI, PostgreSQL client and Bun
+      - name: Install age, PostgreSQL client and Bun
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install --yes age awscli postgresql-client
+          sudo apt-get install --yes age postgresql-client
           curl -fsSL https://bun.sh/install | bash
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
-      - name: Validate App Preview backup credentials and encryption keypair
+      - name: Validate App Preview database access and age encryption keypair
         shell: bash
         env:
           APP_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
-          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
-          B2_BUCKET: ${{ secrets.B2_BUCKET }}
-          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
-          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
           AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
           AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
         run: |
           set -euo pipefail
           test -n "$APP_PREVIEW_DATABASE_URL"
-          case "$APP_PREVIEW_DATABASE_URL" in postgres://*|postgresql://*) ;; *) exit 1 ;; esac
-          test "$B2_S3_ENDPOINT" = "s3.us-east-005.backblazeb2.com"
-          test "$B2_BUCKET" = "heavix-db-backups"
-          test -n "$B2_APPLICATION_KEY_ID" && test -n "$B2_APPLICATION_KEY"
+          case "$APP_PREVIEW_DATABASE_URL" in postgres://*|postgresql://*) ;; *) echo "Invalid App Preview URL scheme."; exit 1 ;; esac
           test -n "$AGE_RECIPIENT" && test -n "$AGE_IDENTITY"
           printf '%s\n' "$AGE_IDENTITY" > "$RUNNER_TEMP/age-identity.txt"
           chmod 600 "$RUNNER_TEMP/age-identity.txt"
           test "$(age-keygen -y "$RUNNER_TEMP/age-identity.txt")" = "$AGE_RECIPIENT"
           rm -f "$RUNNER_TEMP/age-identity.txt"
-          echo "PASS: dedicated App Preview backup destination and age keypair validated; values redacted."
+          echo "PASS: App Preview database URL and age keypair validated; values redacted. B2 backup destination removed — backup now uses GitHub Actions encrypted artifacts."
 
       - name: Verify exact App Preview identity, migration history and schema preconditions
         shell: bash
@@ -236,31 +230,30 @@ jobs:
           rm -f "$WORK/app-preview.dump" "$WORK/manifest.txt" "$WORK/SHA256SUMS"
           echo "PASS: consistent App Preview dump encrypted and checksummed."
 
-      - name: Upload encrypted backup and verify B2 read-back
+      - name: Upload encrypted backup as GitHub Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-preview-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/heavix-app-preview-backup/app-preview.dump.age
+            ${{ runner.temp }}/heavix-app-preview-backup/manifest.txt.age
+            ${{ runner.temp }}/heavix-app-preview-backup/ENCRYPTED_SHA256SUMS
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Download artifact and verify read-back checksum
+        uses: actions/download-artifact@v4
+        with:
+          name: app-preview-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/heavix-app-preview-backup/readback
+
+      - name: Verify encrypted backup read-back
         shell: bash
-        env:
-          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
-          B2_BUCKET: ${{ secrets.B2_BUCKET }}
-          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
-          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
-          AWS_REGION: us-east-005
-          AWS_DEFAULT_REGION: us-east-005
-          AWS_EC2_METADATA_DISABLED: "true"
         run: |
           set -euo pipefail
-          export AWS_ACCESS_KEY_ID="$B2_APPLICATION_KEY_ID" AWS_SECRET_ACCESS_KEY="$B2_APPLICATION_KEY"
           WORK="$RUNNER_TEMP/heavix-app-preview-backup"
-          PREFIX="preview/app-only/migrations/$MIGRATION_NAME/$(date -u +%Y/%m/%d)/$GITHUB_SHA/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          ENDPOINT="https://$B2_S3_ENDPOINT"
-          for file in app-preview.dump.age manifest.txt.age ENCRYPTED_SHA256SUMS; do
-            aws --endpoint-url "$ENDPOINT" s3 cp "$WORK/$file" "s3://$B2_BUCKET/$PREFIX/$file" --only-show-errors
-          done
-          mkdir -m 700 "$WORK/readback"
-          for file in app-preview.dump.age manifest.txt.age ENCRYPTED_SHA256SUMS; do
-            aws --endpoint-url "$ENDPOINT" s3 cp "s3://$B2_BUCKET/$PREFIX/$file" "$WORK/readback/$file" --only-show-errors
-          done
           (cd "$WORK/readback" && sha256sum -c ENCRYPTED_SHA256SUMS)
-          echo "PASS: encrypted App Preview backup uploaded and read back from B2."
+          echo "PASS: encrypted App Preview backup uploaded as artifact and read-back checksums verified."
 
       - name: Restore backup into disposable PostgreSQL 17
         shell: bash
@@ -381,7 +374,7 @@ jobs:
             echo "- Integration dispatch SHA: $GITHUB_SHA"
             echo "- Pinned migration source SHA: $SOURCE_SHA"
             echo "- App Preview only: \`$MIGRATION_NAME\` applied and verified."
-            echo "- Backup: encrypted B2 read-back and disposable PostgreSQL 17 Prisma migration rehearsal passed before live apply."
+            echo "- Backup: encrypted GitHub Actions artifact read-back and disposable PostgreSQL 17 Prisma migration rehearsal passed before live apply."
             echo "- Exact pre/post migration history and target schema objects verified."
             echo "- Store: no Store database URL or credentials were provided to this job."
             echo "- Production: not accessed."
