@@ -25,6 +25,19 @@ describe("Preview taxonomy seed safety contracts", () => {
     expect(main).toContain('process.env.HEAVIX_ENV');
   });
 
+  it("supports an isolated ServiceType seed without touching Category or Location", () => {
+    const source = readSeed("seed-taxonomy-v11.ts");
+    expect(source).toContain('process.argv.includes("--service-types-only")');
+    expect(source).toContain("if (serviceTypesOnly)");
+    expect(source).toContain("SERVICE TYPES VERIFIED");
+    const serviceOnly = source.indexOf("if (serviceTypesOnly)");
+    const serviceWrite = source.indexOf("await db.serviceType.upsert", serviceOnly);
+    const categoryPreflight = source.indexOf("await preflightTaxonomyHierarchy()", serviceOnly);
+    expect(serviceOnly).toBeGreaterThan(-1);
+    expect(serviceWrite).toBeGreaterThan(serviceOnly);
+    expect(categoryPreflight).toBeGreaterThan(serviceWrite);
+  });
+
   it("does not reactivate disabled transaction, service, or industry records", () => {
     const source = readSeed("seed-taxonomy-v11.ts");
     expect(source).not.toMatch(/update:\s*\{[^}]*active:\s*true/);
