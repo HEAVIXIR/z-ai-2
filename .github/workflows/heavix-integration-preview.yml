@@ -158,8 +158,8 @@ jobs:
           node <<'NODE'
           const fs = require("node:fs");
           const health = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/heavix-preview-health.json", "utf8"));
-          const db = health.db?.status ?? "missing";
-          const storeDb = health.storeDb?.status ?? "missing";
+          const db = health.checks?.db ?? "missing";
+          const storeDb = health.checks?.storeDb ?? "missing";
           console.log(JSON.stringify({ status: health.status, db, storeDb }, null, 2));
           if (health.status !== "ok" || db !== "up" || storeDb !== "up") {
             console.error("Preview health contract failed: both App DB and Store DB must be up.");
