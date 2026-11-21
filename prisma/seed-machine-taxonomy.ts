@@ -2,8 +2,8 @@
    Root: existing category slug="machinery" (name="۰۱ ماشین‌آلات")
    Restructures the machinery tree to match the definitive reference document:
    - 16 L1 groups (level=1, parentId=machinery)
-   - ~182 L2 families (level=2)
-   - ~104 L3 variants (level=3)
+   - 168 L2 families (level=2)
+   - 88 L3 variants (level=3)
 
    CRITICAL RULES:
    - NEVER delete categories that have listings (9 categories: excavator, loader,
@@ -34,510 +34,1184 @@ type L1 = { name: string; slug: string; sortOrder: number; l2: L2[] };
 // THE DEFINITIVE TREE — 16 L1 groups
 // ────────────────────────────────────────────────────────────
 const TREE: L1[] = [
-  // ─── 01 road-construction (14 L2) ───────────────────────
+  // 01 road-construction
   {
-    name: "۰۱ ماشین‌آلات راهسازی و عمرانی",
-    slug: "road-construction",
-    sortOrder: 1,
-    l2: [
+    "name": "۰۱ ماشین‌آلات راهسازی و عمرانی",
+    "slug": "road-construction",
+    "sortOrder": 1,
+    "l2": [
       {
-        name: "بیل مکانیکی",
-        slug: "excavator",
-        l3: [
-          { name: "زنجیری", slug: "excavator-chain" },
-          { name: "چرخ لاستیکی", slug: "excavator-wheel" },
-          { name: "مینی بیل", slug: "mini-excavator" },
-          { name: "Long Reach", slug: "excavator-long-reach" },
-          { name: "Mining", slug: "excavator-mining" },
-          { name: "Demolition", slug: "excavator-demolition" },
-          { name: "Material Handling", slug: "excavator-material-handling" },
-          { name: "Spider", slug: "excavator-spider" },
-          { name: "Zero Tail Swing", slug: "excavator-zero-tail-swing" },
-          { name: "شعاع‌بلند", slug: "excavator-long-radius" },
-          { name: "تلسکوپی", slug: "excavator-telescopic" },
-          { name: "تخصصی", slug: "excavator-special" },
-        ],
+        "name": "بیل مکانیکی",
+        "slug": "excavator",
+        "l3": [
+          {
+            "name": "زنجیری",
+            "slug": "excavator-chain"
+          },
+          {
+            "name": "چرخ لاستیکی",
+            "slug": "excavator-wheel"
+          },
+          {
+            "name": "مینی بیل",
+            "slug": "mini-excavator"
+          },
+          {
+            "name": "Long Reach",
+            "slug": "excavator-long-reach"
+          },
+          {
+            "name": "Mining",
+            "slug": "excavator-mining"
+          },
+          {
+            "name": "Demolition",
+            "slug": "excavator-demolition"
+          },
+          {
+            "name": "Material Handling",
+            "slug": "excavator-material-handling"
+          },
+          {
+            "name": "Spider",
+            "slug": "excavator-spider"
+          },
+          {
+            "name": "Zero Tail Swing",
+            "slug": "excavator-zero-tail-swing"
+          },
+          {
+            "name": "شعاع‌بلند",
+            "slug": "excavator-long-radius"
+          },
+          {
+            "name": "تلسکوپی",
+            "slug": "excavator-telescopic"
+          },
+          {
+            "name": "تخصصی",
+            "slug": "excavator-special"
+          }
+        ]
       },
       {
-        name: "لودر",
-        slug: "loader",
-        l3: [
-          { name: "چرخ لاستیکی", slug: "wheel-loader" },
-          { name: "زنجیری", slug: "track-loader" },
-          { name: "کامپکت", slug: "compact-loader" },
-          { name: "Skid Steer", slug: "skid-steer-loader" },
-          { name: "Compact Track", slug: "compact-track-loader" },
-          { name: "تلسکوپی", slug: "telehandler-loader" },
-          { name: "صنعتی", slug: "industrial-loader" },
-          { name: "معدنی", slug: "mining-loader" },
-          { name: "زیرزمینی", slug: "underground-loader" },
-          { name: "چندمنظوره", slug: "multi-purpose-loader" },
-        ],
+        "name": "لودر",
+        "slug": "loader",
+        "l3": [
+          {
+            "name": "چرخ لاستیکی",
+            "slug": "wheel-loader"
+          },
+          {
+            "name": "زنجیری",
+            "slug": "track-loader"
+          },
+          {
+            "name": "کامپکت",
+            "slug": "compact-loader"
+          },
+          {
+            "name": "Skid Steer",
+            "slug": "skid-steer-loader"
+          },
+          {
+            "name": "Compact Track",
+            "slug": "compact-track-loader"
+          },
+          {
+            "name": "تلسکوپی",
+            "slug": "telehandler-loader"
+          },
+          {
+            "name": "صنعتی",
+            "slug": "industrial-loader"
+          },
+          {
+            "name": "معدنی",
+            "slug": "mining-loader"
+          },
+          {
+            "name": "زیرزمینی",
+            "slug": "underground-loader"
+          },
+          {
+            "name": "چندمنظوره",
+            "slug": "multi-purpose-loader"
+          }
+        ]
       },
       {
-        name: "بولدوزر",
-        slug: "bulldozer",
-        l3: [
-          { name: "زنجیری", slug: "dozer-track" },
-          { name: "چرخ لاستیکی", slug: "dozer-wheel" },
-          { name: "Mini", slug: "mini-dozer" },
-          { name: "Heavy", slug: "heavy-dozer" },
-          { name: "Mining", slug: "mining-dozer" },
-          { name: "Pipe", slug: "pipe-dozer" },
-          { name: "Angle", slug: "angle-dozer" },
-          { name: "Swamp", slug: "swamp-dozer" },
-        ],
+        "name": "بولدوزر",
+        "slug": "bulldozer",
+        "l3": [
+          {
+            "name": "زنجیری",
+            "slug": "dozer-track"
+          },
+          {
+            "name": "چرخ لاستیکی",
+            "slug": "dozer-wheel"
+          },
+          {
+            "name": "Mini",
+            "slug": "mini-dozer"
+          },
+          {
+            "name": "Heavy",
+            "slug": "heavy-dozer"
+          },
+          {
+            "name": "Mining",
+            "slug": "mining-dozer"
+          },
+          {
+            "name": "Pipe",
+            "slug": "pipe-dozer"
+          },
+          {
+            "name": "Angle",
+            "slug": "angle-dozer"
+          },
+          {
+            "name": "Swamp",
+            "slug": "swamp-dozer"
+          }
+        ]
       },
       {
-        name: "گریدر",
-        slug: "grader",
-        l3: [
-          { name: "موتور گریدر", slug: "motor-grader" },
-          { name: "کوچک", slug: "compact-grader" },
-          { name: "سنگین", slug: "heavy-grader" },
-          { name: "معدنی", slug: "mining-grader" },
-          { name: "مخصوص معدن", slug: "quarry-grader" },
-          { name: "GPS", slug: "gps-grader" },
-        ],
+        "name": "گریدر",
+        "slug": "grader",
+        "l3": [
+          {
+            "name": "موتور گریدر",
+            "slug": "motor-grader"
+          },
+          {
+            "name": "کوچک",
+            "slug": "compact-grader"
+          },
+          {
+            "name": "سنگین",
+            "slug": "heavy-grader"
+          },
+          {
+            "name": "معدنی",
+            "slug": "mining-grader"
+          },
+          {
+            "name": "مخصوص معدن",
+            "slug": "quarry-grader"
+          },
+          {
+            "name": "GPS",
+            "slug": "gps-grader"
+          }
+        ]
       },
       {
-        name: "بکهو لودر",
-        slug: "backhoe-loader",
-        l3: [
-          { name: "Backhoe Loader", slug: "backhoe-loader-standard" },
-          { name: "4WD", slug: "backhoe-4wd" },
-          { name: "Center Mount", slug: "backhoe-center-mount" },
-          { name: "Side Shift", slug: "backhoe-side-shift" },
-          { name: "Compact", slug: "compact-backhoe" },
-          { name: "Industrial", slug: "industrial-backhoe" },
-        ],
+        "name": "بکهو لودر",
+        "slug": "backhoe-loader",
+        "l3": [
+          {
+            "name": "Backhoe Loader",
+            "slug": "backhoe-loader-standard"
+          },
+          {
+            "name": "4WD",
+            "slug": "backhoe-4wd"
+          },
+          {
+            "name": "Center Mount",
+            "slug": "backhoe-center-mount"
+          },
+          {
+            "name": "Side Shift",
+            "slug": "backhoe-side-shift"
+          },
+          {
+            "name": "Compact",
+            "slug": "compact-backhoe"
+          },
+          {
+            "name": "Industrial",
+            "slug": "industrial-backhoe"
+          }
+        ]
       },
       {
-        name: "اسکریپر",
-        slug: "scraper",
-        l3: [
-          { name: "Motor Scraper", slug: "motor-scraper" },
-          { name: "Towed", slug: "towed-scraper" },
-          { name: "Open Bowl", slug: "open-bowl-scraper" },
-          { name: "Elevating", slug: "elevating-scraper" },
-          { name: "Twin Engine", slug: "twin-engine-scraper" },
-          { name: "Mining", slug: "mining-scraper" },
-        ],
+        "name": "اسکریپر",
+        "slug": "scraper",
+        "l3": [
+          {
+            "name": "Motor Scraper",
+            "slug": "motor-scraper"
+          },
+          {
+            "name": "Towed",
+            "slug": "towed-scraper"
+          },
+          {
+            "name": "Open Bowl",
+            "slug": "open-bowl-scraper"
+          },
+          {
+            "name": "Elevating",
+            "slug": "elevating-scraper"
+          },
+          {
+            "name": "Twin Engine",
+            "slug": "twin-engine-scraper"
+          },
+          {
+            "name": "Mining",
+            "slug": "mining-scraper"
+          }
+        ]
       },
       {
-        name: "غلتک",
-        slug: "road-roller",
-        l3: [
-          { name: "تک‌درام", slug: "single-drum-roller" },
-          { name: "دو‌درام", slug: "double-drum-roller" },
-          { name: "ویبره", slug: "vibratory-roller" },
-          { name: "پنوماتیک", slug: "pneumatic-roller" },
-          { name: "خاک", slug: "soil-roller" },
-          { name: "آسفالت", slug: "asphalt-roller" },
-          { name: "ترکیبی", slug: "combination-roller" },
-        ],
+        "name": "غلتک",
+        "slug": "road-roller",
+        "l3": [
+          {
+            "name": "تک‌درام",
+            "slug": "single-drum-roller"
+          },
+          {
+            "name": "دو‌درام",
+            "slug": "double-drum-roller"
+          },
+          {
+            "name": "ویبره",
+            "slug": "vibratory-roller"
+          },
+          {
+            "name": "پنوماتیک",
+            "slug": "pneumatic-roller"
+          },
+          {
+            "name": "خاک",
+            "slug": "soil-roller"
+          },
+          {
+            "name": "آسفالت",
+            "slug": "asphalt-roller"
+          },
+          {
+            "name": "ترکیبی",
+            "slug": "combination-roller"
+          }
+        ]
       },
-      { name: "ماشین‌آلات تسطیح و خاکبرداری", slug: "grading-earthmoving" },
-      { name: "ماشین‌آلات آسفالت", slug: "asphalt-machinery" },
-      { name: "ماشین‌آلات بتن", slug: "concrete-machinery" },
-      { name: "ماشین‌آلات شمع‌کوبی و پی‌سازی", slug: "piling-foundation" },
-      { name: "ماشین‌آلات حمل کارگاهی", slug: "site-haulage" },
-      { name: "ماشین‌آلات چندمنظوره عمرانی", slug: "multi-purpose-civil" },
-      { name: "سایر ماشین‌آلات عمرانی", slug: "other-civil" },
-    ],
-  },
-
-  // ─── 02 mining-machinery (15 L2) ────────────────────────
-  {
-    name: "۰۲ ماشین‌آلات معدنی",
-    slug: "mining-machinery",
-    sortOrder: 2,
-    l2: [
       {
-        name: "دامپتراک معدنی",
-        slug: "mining-dump-truck",
-        l3: [
-          { name: "Rigid", slug: "rigid-mining-truck" },
-          { name: "Articulated", slug: "articulated-mining-truck" },
-          { name: "Underground", slug: "underground-dump-truck" },
-          { name: "Electric", slug: "electric-mining-truck" },
-          { name: "Diesel", slug: "diesel-mining-truck" },
-          { name: "Hybrid", slug: "hybrid-mining-truck" },
-          { name: "Ultra-Class", slug: "ultra-class-mining-truck" },
-        ],
+        "name": "ماشین‌آلات تسطیح و خاکبرداری",
+        "slug": "grading-earthmoving"
       },
-      { name: "بیل معدنی", slug: "mining-excavator-machine" },
       {
-        name: "شاول",
-        slug: "shovel",
-        l3: [
-          { name: "Hydraulic", slug: "hydraulic-shovel" },
-          { name: "Electric Rope", slug: "electric-rope-shovel" },
-          { name: "Mining", slug: "mining-shovel" },
-          { name: "Front", slug: "front-shovel" },
-          { name: "Backhoe", slug: "backhoe-shovel" },
-        ],
+        "name": "ماشین‌آلات آسفالت",
+        "slug": "asphalt-machinery"
       },
-      { name: "لودر معدنی", slug: "mining-loader-machine" },
-      { name: "ماشین‌آلات بارگیری", slug: "loading-machinery" },
-      { name: "ماشین‌آلات استخراج", slug: "extraction-machinery" },
-      { name: "ماشین‌آلات حمل معدنی", slug: "mining-transport" },
-      { name: "ماشین‌آلات زیرزمینی", slug: "underground-machinery" },
       {
-        name: "LHD",
-        slug: "lhd",
-        l3: [
-          { name: "Diesel", slug: "diesel-lhd" },
-          { name: "Electric", slug: "electric-lhd" },
-          { name: "Battery", slug: "battery-lhd" },
-          { name: "Low Profile", slug: "low-profile-lhd" },
-        ],
+        "name": "ماشین‌آلات بتن",
+        "slug": "concrete-machinery"
       },
-      { name: "ماشین‌آلات حفاری معدنی", slug: "mining-drilling" },
-      { name: "ماشین‌آلات انفجار و خرج‌گذاری", slug: "blasting-machinery" },
-      { name: "ماشین‌آلات نگهداری معدن", slug: "mine-maintenance" },
-      { name: "ماشین‌آلات فرآوری سیار", slug: "mobile-processing" },
-      { name: "ماشین‌آلات خدمات معدن", slug: "mine-services" },
-      { name: "سایر ماشین‌آلات معدنی", slug: "other-mining" },
-    ],
-  },
-
-  // ─── 03 drilling (13 L2) ────────────────────────────────
-  {
-    name: "۰۳ ماشین‌آلات حفاری",
-    slug: "drilling",
-    sortOrder: 3,
-    l2: [
-      { name: "Drill Rig", slug: "drill-rig" },
-      { name: "Rotary Drill", slug: "rotary-drill" },
-      { name: "DTH Drill", slug: "dth-drill" },
-      { name: "Top Hammer Drill", slug: "top-hammer-drill" },
-      { name: "Core Drill", slug: "core-drill" },
-      { name: "RC Drill", slug: "rc-drill" },
-      { name: "Water Well Drill", slug: "water-well-drill" },
-      { name: "Oil & Gas Drilling", slug: "oil-gas-drilling" },
-      { name: "Geotechnical Drill", slug: "geotechnical-drill" },
-      { name: "Blast Hole Drill", slug: "blast-hole-drill" },
-      { name: "دریل واگن", slug: "wagon-drill" },
-      { name: "Underground Drill", slug: "underground-drill" },
-      { name: "Jumbo Drill", slug: "jumbo-drill" },
-      { name: "Drilling Accessories", slug: "drilling-accessories" },
-    ],
-  },
-
-  // ─── 04 crushing-processing (18 L2) ─────────────────────
-  {
-    name: "۰۴ خردایش، دانه‌بندی و فرآوری",
-    slug: "crushing-processing",
-    sortOrder: 4,
-    l2: [
-      { name: "سنگ‌شکن فکی", slug: "jaw-crusher" },
-      { name: "سنگ‌شکن مخروطی", slug: "cone-crusher" },
-      { name: "سنگ‌شکن ضربه‌ای", slug: "impact-crusher" },
-      { name: "کوبیت", slug: "cubiti-crusher" },
-      { name: "سنگ‌شکن چکشی", slug: "hammer-crusher" },
-      { name: "سنگ‌شکن ژیراتوری", slug: "gyratory-crusher" },
-      { name: "سنگ‌شکن غلتکی", slug: "roll-crusher" },
-      { name: "سرند", slug: "screen" },
-      { name: "فیدر", slug: "feeder" },
-      { name: "نوار نقاله", slug: "conveyor" },
-      { name: "اسکالپر", slug: "scalper" },
-      { name: "دستگاه شست‌وشو", slug: "washing-plant" },
-      { name: "ماسه‌شور", slug: "sand-washer" },
-      { name: "هیدروسیکلون", slug: "hydrocyclone" },
-      { name: "تجهیزات مغناطیسی", slug: "magnetic-equipment" },
-      { name: "خطوط خردایش", slug: "crushing-line" },
-      { name: "خطوط دانه‌بندی", slug: "screening-line" },
-      { name: "خطوط فرآوری سیار", slug: "mobile-processing-line" },
-    ],
-  },
-
-  // ─── 05 concrete-asphalt (12 L2) ────────────────────────
-  {
-    name: "۰۵ ماشین‌آلات بتن و آسفالت",
-    slug: "concrete-asphalt",
-    sortOrder: 5,
-    l2: [
-      { name: "بچینگ پلانت", slug: "batching-plant" },
-      { name: "تراک میکسر", slug: "transit-mixer" },
       {
-        name: "پمپ بتن",
-        slug: "concrete-pump",
-        l3: [
-          { name: "Truck Mounted", slug: "truck-mounted-pump" },
-          { name: "Trailer", slug: "trailer-pump" },
-          { name: "Line", slug: "line-pump" },
-          { name: "Boom", slug: "boom-pump" },
-          { name: "Stationary", slug: "stationary-pump" },
-        ],
+        "name": "ماشین‌آلات شمع‌کوبی و پی‌سازی",
+        "slug": "piling-foundation"
       },
-      { name: "میکسر بتن", slug: "concrete-mixer" },
-      { name: "شاتکریت", slug: "shotcrete" },
-      { name: "ماشین‌آلات تولید بتن", slug: "concrete-production" },
-      { name: "تجهیزات بتن‌ریزی", slug: "concrete-placing" },
       {
-        name: "آسفالت فینیشر",
-        slug: "asphalt-finisher",
-        l3: [
-          { name: "چرخ زنجیری", slug: "track-paver" },
-          { name: "چرخ لاستیکی", slug: "wheel-paver" },
-          { name: "Mini", slug: "mini-paver" },
-          { name: "Highway", slug: "highway-paver" },
-        ],
+        "name": "ماشین‌آلات حمل کارگاهی",
+        "slug": "site-haulage"
       },
-      { name: "کارخانه آسفالت", slug: "asphalt-plant" },
-      { name: "ماشین‌آلات پخش آسفالت", slug: "asphalt-distributor" },
-      { name: "ماشین‌آلات بازیافت آسفالت", slug: "asphalt-recycling" },
-      { name: "تجهیزات قیر", slug: "bitumen-equipment" },
-    ],
-  },
-
-  // ─── 06 cranes-lifting (15 L2) ──────────────────────────
-  {
-    name: "۰۶ جرثقیل، بالابر و لیفتینگ",
-    slug: "cranes-lifting",
-    sortOrder: 6,
-    l2: [
-      { name: "جرثقیل موبایل", slug: "mobile-crane" },
-      { name: "جرثقیل زنجیری", slug: "crawler-crane" },
-      { name: "جرثقیل کامیونی", slug: "truck-crane" },
-      { name: "جرثقیل تلسکوپی", slug: "telescopic-crane" },
-      { name: "جرثقیل Rough Terrain", slug: "rough-terrain-crane" },
-      { name: "جرثقیل All Terrain", slug: "all-terrain-crane" },
-      { name: "جرثقیل Tower", slug: "tower-crane" },
-      { name: "جرثقیل دریایی", slug: "marine-crane" },
-      { name: "جرثقیل صنعتی", slug: "industrial-crane" },
-      { name: "جرثقیل سقفی", slug: "overhead-crane" },
-      { name: "جرثقیل دروازه‌ای", slug: "gantry-crane" },
-      { name: "وینچ", slug: "winch" },
-      { name: "بالابر", slug: "hoist" },
-      { name: "تجهیزات لیفتینگ", slug: "lifting-equipment" },
-      { name: "سکوی کار در ارتفاع", slug: "aerial-platform" },
-    ],
-  },
-
-  // ─── 07 forklift-material (9 L2) ────────────────────────
-  {
-    name: "۰۷ لیفتراک و جابه‌جایی مواد",
-    slug: "forklift-material",
-    sortOrder: 7,
-    l2: [
       {
-        name: "لیفتراک",
-        slug: "forklift",
-        l3: [
-          { name: "Diesel", slug: "diesel-forklift" },
-          { name: "LPG", slug: "lpg-forklift" },
-          { name: "Gasoline", slug: "gasoline-forklift" },
-          { name: "Electric", slug: "electric-forklift" },
-          { name: "Heavy Duty", slug: "heavy-duty-forklift" },
-          { name: "Rough Terrain", slug: "rough-terrain-forklift" },
-          { name: "Side Loader", slug: "side-loader-forklift" },
-          { name: "Container", slug: "container-forklift" },
-        ],
+        "name": "ماشین‌آلات چندمنظوره عمرانی",
+        "slug": "multi-purpose-civil"
       },
-      { name: "Reach Truck", slug: "reach-truck" },
-      { name: "Pallet Truck", slug: "pallet-truck" },
-      { name: "Stackers", slug: "stackers" },
-      { name: "Telehandler", slug: "telehandler" },
-      { name: "Material Handler", slug: "material-handler" },
-      { name: "Container Handler", slug: "container-handler" },
-      { name: "Reach Stacker", slug: "reach-stacker" },
-      { name: "تجهیزات انبار", slug: "warehouse-equipment" },
-    ],
-  },
-
-  // ─── 08 industrial-haulage (8 L2) ───────────────────────
-  {
-    name: "۰۸ ماشین‌آلات حمل و باربری صنعتی",
-    slug: "industrial-haulage",
-    sortOrder: 8,
-    l2: [
-      { name: "دامپتراک کارگاهی", slug: "site-dump-truck" },
-      { name: "ماشین حمل کارگاهی", slug: "site-transport" },
-      { name: "Haul Truck", slug: "haul-truck" },
-      { name: "Off-Highway Truck", slug: "off-highway-truck" },
-      { name: "کامیون معدنی", slug: "mining-truck" },
-      { name: "کشنده صنعتی", slug: "industrial-tractor" },
-      { name: "ماشین حمل فوق‌سنگین", slug: "heavy-haulage" },
-      { name: "ماشین حمل پروژه", slug: "project-transport" },
-    ],
-  },
-
-  // ─── 09 port-marine (9 L2) ──────────────────────────────
-  {
-    name: "۰۹ ماشین‌آلات بندری و دریایی",
-    slug: "port-marine",
-    sortOrder: 9,
-    l2: [
-      { name: "Reach Stacker", slug: "port-reach-stacker" },
-      { name: "Empty Container Handler", slug: "empty-container-handler" },
-      { name: "Straddle Carrier", slug: "straddle-carrier" },
-      { name: "Port Crane", slug: "port-crane" },
-      { name: "Ship Loader", slug: "ship-loader" },
-      { name: "Ship Unloader", slug: "ship-unloader" },
-      { name: "Mobile Harbor Crane", slug: "mobile-harbor-crane" },
-      { name: "تجهیزات بارگیری بندری", slug: "port-loading-equipment" },
-      { name: "تجهیزات خدمات دریایی", slug: "marine-service-equipment" },
-    ],
-  },
-
-  // ─── 10 recycling-waste (11 L2) ─────────────────────────
-  {
-    name: "۱۰ ماشین‌آلات بازیافت و پسماند",
-    slug: "recycling-waste",
-    sortOrder: 10,
-    l2: [
-      { name: "دستگاه خردکن", slug: "shredder-machine" },
-      { name: "Shredder", slug: "industrial-shredder" },
-      { name: "Baler", slug: "baler" },
-      { name: "Sorting Machine", slug: "sorting-machine" },
-      { name: "Recycling Plant", slug: "recycling-plant" },
-      { name: "Waste Compactor", slug: "waste-compactor" },
-      { name: "Glass Recycling", slug: "glass-recycling" },
-      { name: "Plastic Recycling", slug: "plastic-recycling" },
-      { name: "Metal Recycling", slug: "metal-recycling" },
-      { name: "Construction Waste Recycling", slug: "construction-waste-recycling" },
-      { name: "Asphalt Recycling", slug: "asphalt-recycling-machine" },
-    ],
-  },
-
-  // ─── 11 tunnel-underground (10 L2) ──────────────────────
-  {
-    name: "۱۱ ماشین‌آلات تونل و زیرزمینی",
-    slug: "tunnel-underground",
-    sortOrder: 11,
-    l2: [
-      { name: "Tunnel Boring Machine", slug: "tbm" },
-      { name: "Roadheader", slug: "roadheader" },
-      { name: "Jumbo Drill", slug: "tunnel-jumbo" },
-      { name: "Underground LHD", slug: "underground-lhd" },
-      { name: "Underground Truck", slug: "underground-truck-machine" },
-      { name: "Bolter", slug: "bolter" },
-      { name: "Shotcrete Machine", slug: "shotcrete-machine" },
-      { name: "Scaling Machine", slug: "scaling-machine" },
-      { name: "Underground Utility Vehicle", slug: "underground-utility-vehicle" },
-      { name: "Tunnel Equipment", slug: "tunnel-equipment" },
-    ],
-  },
-
-  // ─── 12 industrial-heavy (10 L2) ────────────────────────
-  {
-    name: "۱۲ ماشین‌آلات صنعتی و تولیدی سنگین",
-    slug: "industrial-heavy",
-    sortOrder: 12,
-    l2: [
-      { name: "ماشین‌آلات فولاد", slug: "steel-machinery" },
-      { name: "ماشین‌آلات سیمان", slug: "cement-machinery" },
-      { name: "ماشین‌آلات معدن و فرآوری", slug: "mineral-processing-machinery" },
-      { name: "ماشین‌آلات سنگ‌بری", slug: "stone-cutting-machinery" },
-      { name: "ماشین‌آلات شیشه", slug: "glass-machinery" },
-      { name: "ماشین‌آلات سرامیک", slug: "ceramic-machinery" },
-      { name: "ماشین‌آلات تولید صنعتی", slug: "industrial-production" },
-      { name: "ماشین‌آلات بسته‌بندی صنعتی", slug: "industrial-packaging" },
-      { name: "ماشین‌آلات خطوط تولید", slug: "production-line" },
-      { name: "تجهیزات کارخانه‌ای سنگین", slug: "heavy-factory-equipment" },
-    ],
-  },
-
-  // ─── 13 power-energy (16 L2) ─────────────────────────────
-  {
-    name: "۱۳ نیرو، انرژی و تأسیسات سیار",
-    slug: "power-energy",
-    sortOrder: 13,
-    l2: [
       {
-        name: "ژنراتور",
-        slug: "generator",
-        l3: [
-          { name: "Diesel", slug: "diesel-generator" },
-          { name: "Gas", slug: "gas-generator" },
-          { name: "Natural Gas", slug: "natural-gas-generator" },
-          { name: "Bi-Fuel", slug: "bi-fuel-generator" },
-          { name: "Hybrid", slug: "hybrid-generator" },
-          { name: "Mobile", slug: "mobile-generator" },
-          { name: "Silent", slug: "silent-generator" },
-          { name: "Containerized", slug: "containerized-generator" },
-          { name: "Trailer", slug: "trailer-generator" },
-        ],
-      },
-      { name: "کمپرسور", slug: "compressor" },
-      { name: "پمپ", slug: "pump" },
-      { name: "Power Pack", slug: "power-pack" },
-      { name: "تجهیزات برق سیار", slug: "portable-power" },
-      { name: "تجهیزات جوشکاری صنعتی", slug: "industrial-welding" },
-      { name: "تجهیزات روشنایی پروژه", slug: "project-lighting" },
-      { name: "تجهیزات سرمایش و گرمایش صنعتی", slug: "industrial-hvac" },
-      { name: "پمپ‌های صنعتی", slug: "industrial-pumps" },
-      { name: "فن‌های صنعتی", slug: "industrial-fans" },
-      { name: "دیگ‌های بخار", slug: "boilers" },
-      { name: "تجهیزات تهویه مطبوع", slug: "hvac-equipment" },
-      { name: "تجهیزات برش صنعتی", slug: "cutting-equipment" },
-      { name: "ترانسفورماتورها", slug: "transformers" },
-      { name: "تابلوهای برق و سوئیچگیر", slug: "switchgears" },
+        "name": "سایر ماشین‌آلات عمرانی",
+        "slug": "other-civil"
+      }
+    ]
+  },
+  // 02 mining-machinery
+  {
+    "name": "۰۲ ماشین‌آلات معدنی",
+    "slug": "mining-machinery",
+    "sortOrder": 2,
+    "l2": [
       {
-        name: "تجهیزات جایگاه سوخت",
-        slug: "fuel-station-equipment",
-        l3: [
-          { name: "دیسپنسر سوخت", slug: "fuel-dispenser" },
-          { name: "مخزن ذخیره سوخت", slug: "fuel-storage-tank" },
-          { name: "پمپ مستغرق سوخت", slug: "submersible-fuel-pump" },
-          { name: "پایش مخزن و تشخیص نشتی", slug: "tank-monitoring-system" },
-          { name: "فیلتراسیون سوخت", slug: "fuel-filtration" },
-          { name: "شلنگ و نازل سوخت", slug: "fuel-hose-nozzle" },
-          { name: "بازیابی بخارات سوخت", slug: "vapour-recovery-equipment" },
-        ],
+        "name": "دامپتراک",
+        "slug": "dump-truck",
+        "l3": [
+          {
+            "name": "Rigid",
+            "slug": "rigid-mining-truck"
+          },
+          {
+            "name": "Articulated",
+            "slug": "articulated-mining-truck"
+          },
+          {
+            "name": "Underground",
+            "slug": "underground-dump-truck"
+          },
+          {
+            "name": "Electric",
+            "slug": "electric-mining-truck"
+          },
+          {
+            "name": "Diesel",
+            "slug": "diesel-mining-truck"
+          },
+          {
+            "name": "Hybrid",
+            "slug": "hybrid-mining-truck"
+          },
+          {
+            "name": "Ultra-Class",
+            "slug": "ultra-class-mining-truck"
+          }
+        ]
       },
-    ],
+      {
+        "name": "شاول",
+        "slug": "shovel",
+        "l3": [
+          {
+            "name": "Hydraulic",
+            "slug": "hydraulic-shovel"
+          },
+          {
+            "name": "Electric Rope",
+            "slug": "electric-rope-shovel"
+          },
+          {
+            "name": "Mining",
+            "slug": "mining-shovel"
+          },
+          {
+            "name": "Front",
+            "slug": "front-shovel"
+          },
+          {
+            "name": "Backhoe",
+            "slug": "backhoe-shovel"
+          }
+        ]
+      },
+      {
+        "name": "ماشین‌آلات بارگیری",
+        "slug": "loading-machinery"
+      },
+      {
+        "name": "ماشین‌آلات استخراج",
+        "slug": "extraction-machinery"
+      },
+      {
+        "name": "ماشین‌آلات حمل معدنی",
+        "slug": "mining-transport"
+      },
+      {
+        "name": "ماشین‌آلات زیرزمینی",
+        "slug": "underground-machinery"
+      },
+      {
+        "name": "LHD",
+        "slug": "lhd",
+        "l3": [
+          {
+            "name": "Diesel",
+            "slug": "diesel-lhd"
+          },
+          {
+            "name": "Electric",
+            "slug": "electric-lhd"
+          },
+          {
+            "name": "Battery",
+            "slug": "battery-lhd"
+          },
+          {
+            "name": "Low Profile",
+            "slug": "low-profile-lhd"
+          }
+        ]
+      },
+      {
+        "name": "ماشین‌آلات حفاری معدنی",
+        "slug": "mining-drilling"
+      },
+      {
+        "name": "ماشین‌آلات انفجار و خرج‌گذاری",
+        "slug": "blasting-machinery"
+      },
+      {
+        "name": "ماشین‌آلات نگهداری معدن",
+        "slug": "mine-maintenance"
+      },
+      {
+        "name": "ماشین‌آلات فرآوری سیار",
+        "slug": "mobile-processing"
+      },
+      {
+        "name": "ماشین‌آلات خدمات معدن",
+        "slug": "mine-services"
+      },
+      {
+        "name": "سایر ماشین‌آلات معدنی",
+        "slug": "other-mining"
+      }
+    ]
   },
-
-  // ─── 14 municipal-environment (9 L2) ────────────────────
+  // 03 drilling
   {
-    name: "۱۴ ماشین‌آلات خدمات شهری و محیط‌زیست",
-    slug: "municipal-environment",
-    sortOrder: 14,
-    l2: [
-      { name: "ماشین حمل زباله", slug: "garbage-truck" },
-      { name: "جاروب شهری", slug: "street-sweeper" },
-      { name: "ماشین شست‌وشوی خیابان", slug: "street-washer" },
-      { name: "ماشین مکنده", slug: "vacuum-truck" },
-      { name: "ماشین برف‌روب", slug: "snow-plow" },
-      { name: "ماشین نمک‌پاش", slug: "salt-spreader" },
-      { name: "ماشین خدمات شهری", slug: "municipal-service-truck" },
-      { name: "تجهیزات فضای سبز سنگین", slug: "heavy-green-space" },
-      { name: "ماشین‌آلات محیط‌زیست", slug: "environmental-machinery" },
-    ],
+    "name": "۰۳ ماشین‌آلات حفاری",
+    "slug": "drilling",
+    "sortOrder": 3,
+    "l2": [
+      {
+        "name": "Drill Rig",
+        "slug": "drill-rig"
+      },
+      {
+        "name": "Rotary Drill",
+        "slug": "rotary-drill"
+      },
+      {
+        "name": "DTH Drill",
+        "slug": "dth-drill"
+      },
+      {
+        "name": "Top Hammer Drill",
+        "slug": "top-hammer-drill"
+      },
+      {
+        "name": "Core Drill",
+        "slug": "core-drill"
+      },
+      {
+        "name": "RC Drill",
+        "slug": "rc-drill"
+      },
+      {
+        "name": "Water Well Drill",
+        "slug": "water-well-drill"
+      },
+      {
+        "name": "Oil & Gas Drilling",
+        "slug": "oil-gas-drilling"
+      },
+      {
+        "name": "Geotechnical Drill",
+        "slug": "geotechnical-drill"
+      },
+      {
+        "name": "Blast Hole Drill",
+        "slug": "blast-hole-drill"
+      },
+      {
+        "name": "دریل واگن",
+        "slug": "wagon-drill"
+      },
+      {
+        "name": "Underground Drill",
+        "slug": "underground-drill"
+      },
+      {
+        "name": "Jumbo Drill",
+        "slug": "jumbo-drill"
+      },
+      {
+        "name": "Drilling Accessories",
+        "slug": "drilling-accessories"
+      }
+    ]
   },
-
-  // ─── 15 special-project (7 L2) ──────────────────────────
+  // 04 crushing-processing
   {
-    name: "۱۵ ماشین‌آلات ویژه پروژه",
-    slug: "special-project",
-    sortOrder: 15,
-    l2: [
-      { name: "ماشین‌آلات امدادی صنعتی", slug: "industrial-rescue" },
-      { name: "ماشین‌آلات مهندسی نظامی غیرنظامی", slug: "military-engineering" },
-      { name: "ماشین‌آلات آتش‌نشانی صنعتی", slug: "industrial-fire-truck" },
-      { name: "ماشین‌آلات فرودگاهی", slug: "airport-machinery" },
-      { name: "ماشین‌آلات پروژه‌های خاص", slug: "special-project-machinery" },
-      { name: "ماشین‌آلات سفارشی", slug: "custom-machinery" },
-      { name: "Prototype/Special Purpose", slug: "prototype-machinery" },
-    ],
+    "name": "۰۴ خردایش، دانه‌بندی و فرآوری",
+    "slug": "crushing-processing",
+    "sortOrder": 4,
+    "l2": [
+      {
+        "name": "سنگ‌شکن فکی",
+        "slug": "jaw-crusher"
+      },
+      {
+        "name": "سنگ‌شکن مخروطی",
+        "slug": "cone-crusher"
+      },
+      {
+        "name": "سنگ‌شکن ضربه‌ای",
+        "slug": "impact-crusher"
+      },
+      {
+        "name": "کوبیت",
+        "slug": "cubiti-crusher"
+      },
+      {
+        "name": "سنگ‌شکن چکشی",
+        "slug": "hammer-crusher"
+      },
+      {
+        "name": "سنگ‌شکن ژیراتوری",
+        "slug": "gyratory-crusher"
+      },
+      {
+        "name": "سنگ‌شکن غلتکی",
+        "slug": "roll-crusher"
+      },
+      {
+        "name": "سرند",
+        "slug": "screen"
+      },
+      {
+        "name": "فیدر",
+        "slug": "feeder"
+      },
+      {
+        "name": "نوار نقاله",
+        "slug": "conveyor"
+      },
+      {
+        "name": "اسکالپر",
+        "slug": "scalper"
+      },
+      {
+        "name": "دستگاه شست‌وشو",
+        "slug": "washing-plant"
+      },
+      {
+        "name": "ماسه‌شور",
+        "slug": "sand-washer"
+      },
+      {
+        "name": "هیدروسیکلون",
+        "slug": "hydrocyclone"
+      },
+      {
+        "name": "تجهیزات مغناطیسی",
+        "slug": "magnetic-equipment"
+      },
+      {
+        "name": "خطوط خردایش",
+        "slug": "crushing-line"
+      },
+      {
+        "name": "خطوط دانه‌بندی",
+        "slug": "screening-line"
+      },
+      {
+        "name": "خطوط فرآوری سیار",
+        "slug": "mobile-processing-line"
+      }
+    ]
   },
-
-  // ─── 16 other-special-machines (5 L2) ───────────────────
+  // 05 concrete-asphalt
   {
-    name: "۱۶ سایر ماشین‌آلات تخصصی",
-    slug: "other-special-machines",
-    sortOrder: 16,
-    l2: [
-      { name: "ماشین تخصصی جدید", slug: "new-special" },
-      { name: "ماشین ناشناخته", slug: "unknown-machine" },
-      { name: "ماشین ترکیبی", slug: "combination-machine" },
-      { name: "ماشین سفارشی", slug: "custom-machine" },
-      { name: "نیازمند بررسی", slug: "needs-review" },
-    ],
+    "name": "۰۵ ماشین‌آلات بتن و آسفالت",
+    "slug": "concrete-asphalt",
+    "sortOrder": 5,
+    "l2": [
+      {
+        "name": "بچینگ پلانت",
+        "slug": "batching-plant"
+      },
+      {
+        "name": "تراک میکسر",
+        "slug": "transit-mixer"
+      },
+      {
+        "name": "پمپ بتن",
+        "slug": "concrete-pump",
+        "l3": [
+          {
+            "name": "Truck Mounted",
+            "slug": "truck-mounted-pump"
+          },
+          {
+            "name": "Trailer",
+            "slug": "trailer-pump"
+          },
+          {
+            "name": "Line",
+            "slug": "line-pump"
+          },
+          {
+            "name": "Boom",
+            "slug": "boom-pump"
+          },
+          {
+            "name": "Stationary",
+            "slug": "stationary-pump"
+          }
+        ]
+      },
+      {
+        "name": "میکسر بتن",
+        "slug": "concrete-mixer"
+      },
+      {
+        "name": "شاتکریت",
+        "slug": "shotcrete"
+      },
+      {
+        "name": "ماشین‌آلات تولید بتن",
+        "slug": "concrete-production"
+      },
+      {
+        "name": "تجهیزات بتن‌ریزی",
+        "slug": "concrete-placing"
+      },
+      {
+        "name": "آسفالت فینیشر",
+        "slug": "asphalt-finisher",
+        "l3": [
+          {
+            "name": "چرخ زنجیری",
+            "slug": "track-paver"
+          },
+          {
+            "name": "چرخ لاستیکی",
+            "slug": "wheel-paver"
+          },
+          {
+            "name": "Mini",
+            "slug": "mini-paver"
+          },
+          {
+            "name": "Highway",
+            "slug": "highway-paver"
+          }
+        ]
+      },
+      {
+        "name": "کارخانه آسفالت",
+        "slug": "asphalt-plant"
+      },
+      {
+        "name": "ماشین‌آلات پخش آسفالت",
+        "slug": "asphalt-distributor"
+      },
+      {
+        "name": "ماشین‌آلات بازیافت آسفالت",
+        "slug": "asphalt-recycling"
+      },
+      {
+        "name": "تجهیزات قیر",
+        "slug": "bitumen-equipment"
+      }
+    ]
   },
+  // 06 cranes-lifting
+  {
+    "name": "۰۶ جرثقیل، بالابر و لیفتینگ",
+    "slug": "cranes-lifting",
+    "sortOrder": 6,
+    "l2": [
+      {
+        "name": "جرثقیل موبایل",
+        "slug": "mobile-crane"
+      },
+      {
+        "name": "جرثقیل زنجیری",
+        "slug": "crawler-crane"
+      },
+      {
+        "name": "جرثقیل کامیونی",
+        "slug": "truck-crane"
+      },
+      {
+        "name": "جرثقیل تلسکوپی",
+        "slug": "telescopic-crane"
+      },
+      {
+        "name": "جرثقیل Rough Terrain",
+        "slug": "rough-terrain-crane"
+      },
+      {
+        "name": "جرثقیل All Terrain",
+        "slug": "all-terrain-crane"
+      },
+      {
+        "name": "جرثقیل Tower",
+        "slug": "tower-crane"
+      },
+      {
+        "name": "جرثقیل دریایی",
+        "slug": "marine-crane"
+      },
+      {
+        "name": "جرثقیل صنعتی",
+        "slug": "industrial-crane"
+      },
+      {
+        "name": "جرثقیل سقفی",
+        "slug": "overhead-crane"
+      },
+      {
+        "name": "جرثقیل دروازه‌ای",
+        "slug": "gantry-crane"
+      },
+      {
+        "name": "وینچ",
+        "slug": "winch"
+      },
+      {
+        "name": "بالابر",
+        "slug": "hoist"
+      },
+      {
+        "name": "تجهیزات لیفتینگ",
+        "slug": "lifting-equipment"
+      }
+    ]
+  },
+  // 07 forklift-material
+  {
+    "name": "۰۷ لیفتراک و جابه‌جایی مواد",
+    "slug": "forklift-material",
+    "sortOrder": 7,
+    "l2": [
+      {
+        "name": "لیفتراک",
+        "slug": "forklift",
+        "l3": [
+          {
+            "name": "Diesel",
+            "slug": "diesel-forklift"
+          },
+          {
+            "name": "LPG",
+            "slug": "lpg-forklift"
+          },
+          {
+            "name": "Gasoline",
+            "slug": "gasoline-forklift"
+          },
+          {
+            "name": "Electric",
+            "slug": "electric-forklift"
+          },
+          {
+            "name": "Heavy Duty",
+            "slug": "heavy-duty-forklift"
+          },
+          {
+            "name": "Rough Terrain",
+            "slug": "rough-terrain-forklift"
+          },
+          {
+            "name": "Side Loader",
+            "slug": "side-loader-forklift"
+          },
+          {
+            "name": "Container",
+            "slug": "container-forklift"
+          }
+        ]
+      },
+      {
+        "name": "Reach Truck",
+        "slug": "reach-truck"
+      },
+      {
+        "name": "Pallet Truck",
+        "slug": "pallet-truck"
+      },
+      {
+        "name": "Stackers",
+        "slug": "stackers"
+      },
+      {
+        "name": "Telehandler",
+        "slug": "telehandler"
+      },
+      {
+        "name": "Material Handler",
+        "slug": "material-handler"
+      },
+      {
+        "name": "Container Handler",
+        "slug": "container-handler"
+      },
+      {
+        "name": "Reach Stacker",
+        "slug": "reach-stacker"
+      },
+      {
+        "name": "تجهیزات انبار",
+        "slug": "warehouse-equipment"
+      }
+    ]
+  },
+  // 08 industrial-haulage
+  {
+    "name": "۰۸ ماشین‌آلات حمل و باربری صنعتی",
+    "slug": "industrial-haulage",
+    "sortOrder": 8,
+    "l2": [
+      {
+        "name": "دامپتراک کارگاهی",
+        "slug": "site-dump-truck"
+      },
+      {
+        "name": "ماشین حمل کارگاهی",
+        "slug": "site-transport"
+      },
+      {
+        "name": "Haul Truck",
+        "slug": "haul-truck"
+      },
+      {
+        "name": "Off-Highway Truck",
+        "slug": "off-highway-truck"
+      },
+      {
+        "name": "کامیون معدنی",
+        "slug": "mining-truck"
+      },
+      {
+        "name": "کشنده صنعتی",
+        "slug": "industrial-tractor"
+      },
+      {
+        "name": "ماشین حمل پروژه",
+        "slug": "project-transport"
+      }
+    ]
+  },
+  // 09 port-marine
+  {
+    "name": "۰۹ ماشین‌آلات بندری و دریایی",
+    "slug": "port-marine",
+    "sortOrder": 9,
+    "l2": [
+      {
+        "name": "Reach Stacker",
+        "slug": "port-reach-stacker"
+      },
+      {
+        "name": "Empty Container Handler",
+        "slug": "empty-container-handler"
+      },
+      {
+        "name": "Straddle Carrier",
+        "slug": "straddle-carrier"
+      },
+      {
+        "name": "Port Crane",
+        "slug": "port-crane"
+      },
+      {
+        "name": "Ship Loader",
+        "slug": "ship-loader"
+      },
+      {
+        "name": "Ship Unloader",
+        "slug": "ship-unloader"
+      },
+      {
+        "name": "Mobile Harbor Crane",
+        "slug": "mobile-harbor-crane"
+      },
+      {
+        "name": "تجهیزات بارگیری بندری",
+        "slug": "port-loading-equipment"
+      },
+      {
+        "name": "تجهیزات خدمات دریایی",
+        "slug": "marine-service-equipment"
+      }
+    ]
+  },
+  // 10 recycling-waste
+  {
+    "name": "۱۰ ماشین‌آلات بازیافت و پسماند",
+    "slug": "recycling-waste",
+    "sortOrder": 10,
+    "l2": [
+      {
+        "name": "دستگاه خردکن",
+        "slug": "shredder-machine"
+      },
+      {
+        "name": "Shredder",
+        "slug": "industrial-shredder"
+      },
+      {
+        "name": "Baler",
+        "slug": "baler"
+      },
+      {
+        "name": "Sorting Machine",
+        "slug": "sorting-machine"
+      },
+      {
+        "name": "Recycling Plant",
+        "slug": "recycling-plant"
+      },
+      {
+        "name": "Waste Compactor",
+        "slug": "waste-compactor"
+      },
+      {
+        "name": "Glass Recycling",
+        "slug": "glass-recycling"
+      },
+      {
+        "name": "Plastic Recycling",
+        "slug": "plastic-recycling"
+      },
+      {
+        "name": "Metal Recycling",
+        "slug": "metal-recycling"
+      },
+      {
+        "name": "Construction Waste Recycling",
+        "slug": "construction-waste-recycling"
+      },
+      {
+        "name": "Asphalt Recycling",
+        "slug": "asphalt-recycling-machine"
+      }
+    ]
+  },
+  // 11 tunnel-underground
+  {
+    "name": "۱۱ ماشین‌آلات تونل و زیرزمینی",
+    "slug": "tunnel-underground",
+    "sortOrder": 11,
+    "l2": [
+      {
+        "name": "Tunnel Boring Machine",
+        "slug": "tbm"
+      },
+      {
+        "name": "Roadheader",
+        "slug": "roadheader"
+      },
+      {
+        "name": "Jumbo Drill",
+        "slug": "tunnel-jumbo"
+      },
+      {
+        "name": "Underground LHD",
+        "slug": "underground-lhd"
+      },
+      {
+        "name": "Underground Truck",
+        "slug": "underground-truck-machine"
+      },
+      {
+        "name": "Bolter",
+        "slug": "bolter"
+      },
+      {
+        "name": "Shotcrete Machine",
+        "slug": "shotcrete-machine"
+      },
+      {
+        "name": "Scaling Machine",
+        "slug": "scaling-machine"
+      },
+      {
+        "name": "Underground Utility Vehicle",
+        "slug": "underground-utility-vehicle"
+      },
+      {
+        "name": "Tunnel Equipment",
+        "slug": "tunnel-equipment"
+      }
+    ]
+  },
+  // 12 industrial-heavy
+  {
+    "name": "۱۲ ماشین‌آلات صنعتی و تولیدی سنگین",
+    "slug": "industrial-heavy",
+    "sortOrder": 12,
+    "l2": [
+      {
+        "name": "ماشین‌آلات فولاد",
+        "slug": "steel-machinery"
+      },
+      {
+        "name": "ماشین‌آلات سیمان",
+        "slug": "cement-machinery"
+      },
+      {
+        "name": "ماشین‌آلات معدن و فرآوری",
+        "slug": "mineral-processing-machinery"
+      },
+      {
+        "name": "ماشین‌آلات سنگ‌بری",
+        "slug": "stone-cutting-machinery"
+      },
+      {
+        "name": "ماشین‌آلات شیشه",
+        "slug": "glass-machinery"
+      },
+      {
+        "name": "ماشین‌آلات سرامیک",
+        "slug": "ceramic-machinery"
+      },
+      {
+        "name": "ماشین‌آلات تولید صنعتی",
+        "slug": "industrial-production"
+      },
+      {
+        "name": "ماشین‌آلات بسته‌بندی صنعتی",
+        "slug": "industrial-packaging"
+      },
+      {
+        "name": "ماشین‌آلات خطوط تولید",
+        "slug": "production-line"
+      },
+      {
+        "name": "تجهیزات کارخانه‌ای سنگین",
+        "slug": "heavy-factory-equipment"
+      }
+    ]
+  },
+  // 13 power-energy
+  {
+    "name": "۱۳ نیرو، انرژی و تأسیسات سیار",
+    "slug": "power-energy",
+    "sortOrder": 13,
+    "l2": [
+      {
+        "name": "پمپ",
+        "slug": "pump"
+      },
+      {
+        "name": "Power Pack",
+        "slug": "power-pack"
+      },
+      {
+        "name": "تجهیزات برق سیار",
+        "slug": "portable-power"
+      },
+      {
+        "name": "تجهیزات جوشکاری صنعتی",
+        "slug": "industrial-welding"
+      },
+      {
+        "name": "تجهیزات روشنایی پروژه",
+        "slug": "project-lighting"
+      },
+      {
+        "name": "تجهیزات سرمایش و گرمایش صنعتی",
+        "slug": "industrial-hvac"
+      }
+    ]
+  },
+  // 14 municipal-environment
+  {
+    "name": "۱۴ ماشین‌آلات خدمات شهری و محیط‌زیست",
+    "slug": "municipal-environment",
+    "sortOrder": 14,
+    "l2": [
+      {
+        "name": "ماشین حمل زباله",
+        "slug": "garbage-truck"
+      },
+      {
+        "name": "جاروب شهری",
+        "slug": "street-sweeper"
+      },
+      {
+        "name": "ماشین شست‌وشوی خیابان",
+        "slug": "street-washer"
+      },
+      {
+        "name": "ماشین مکنده",
+        "slug": "vacuum-truck"
+      },
+      {
+        "name": "ماشین برف‌روب",
+        "slug": "snow-plow"
+      },
+      {
+        "name": "ماشین نمک‌پاش",
+        "slug": "salt-spreader"
+      },
+      {
+        "name": "ماشین خدمات شهری",
+        "slug": "municipal-service-truck"
+      },
+      {
+        "name": "تجهیزات فضای سبز سنگین",
+        "slug": "heavy-green-space"
+      },
+      {
+        "name": "ماشین‌آلات محیط‌زیست",
+        "slug": "environmental-machinery"
+      }
+    ]
+  },
+  // 15 special-project
+  {
+    "name": "۱۵ ماشین‌آلات ویژه پروژه",
+    "slug": "special-project",
+    "sortOrder": 15,
+    "l2": [
+      {
+        "name": "ماشین‌آلات امدادی صنعتی",
+        "slug": "industrial-rescue"
+      },
+      {
+        "name": "ماشین‌آلات مهندسی نظامی غیرنظامی",
+        "slug": "military-engineering"
+      },
+      {
+        "name": "ماشین‌آلات آتش‌نشانی صنعتی",
+        "slug": "industrial-fire-truck"
+      },
+      {
+        "name": "ماشین‌آلات فرودگاهی",
+        "slug": "airport-machinery"
+      },
+      {
+        "name": "ماشین‌آلات پروژه‌های خاص",
+        "slug": "special-project-machinery"
+      },
+      {
+        "name": "ماشین‌آلات سفارشی",
+        "slug": "custom-machinery"
+      },
+      {
+        "name": "Prototype/Special Purpose",
+        "slug": "prototype-machinery"
+      }
+    ]
+  },
+  // 16 other-special-machines
+  {
+    "name": "۱۶ سایر ماشین‌آلات تخصصی",
+    "slug": "other-special-machines",
+    "sortOrder": 16,
+    "l2": [
+      {
+        "name": "ماشین تخصصی جدید",
+        "slug": "new-special"
+      },
+      {
+        "name": "ماشین ناشناخته",
+        "slug": "unknown-machine"
+      },
+      {
+        "name": "ماشین ترکیبی",
+        "slug": "combination-machine"
+      },
+      {
+        "name": "ماشین سفارشی",
+        "slug": "custom-machine"
+      },
+      {
+        "name": "نیازمند بررسی",
+        "slug": "needs-review"
+      }
+    ]
+  }
 ];
 
 // ────────────────────────────────────────────────────────────
