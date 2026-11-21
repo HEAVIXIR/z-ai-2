@@ -269,15 +269,15 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
           status: probeResponse.status,
           marketplaceRootsCount: 0,
           serviceRootsCount: 0,
-          marketplaceRootNames: [] as string[],
-          serviceRootNames: [] as string[],
+          marketplaceRootNames: [],
+          serviceRootNames: [],
         };
         if (probeResponse.ok) {
           const probePayload = await probeResponse.json();
           taxonomyProbe.marketplaceRootsCount = (probePayload.marketplaceRoots || []).length;
           taxonomyProbe.serviceRootsCount = (probePayload.serviceRoots || []).length;
-          taxonomyProbe.marketplaceRootNames = (probePayload.marketplaceRoots || []).map(r => r.name);
-          taxonomyProbe.serviceRootNames = (probePayload.serviceRoots || []).map(r => r.name);
+          taxonomyProbe.marketplaceRootNames = (probePayload.marketplaceRoots || []).map(function (r) { return r.name; });
+          taxonomyProbe.serviceRootNames = (probePayload.serviceRoots || []).map(function (r) { return r.name; });
         }
       } catch (probeError) {
         taxonomyProbe = { error: probeError instanceof Error ? probeError.message : String(probeError) };
