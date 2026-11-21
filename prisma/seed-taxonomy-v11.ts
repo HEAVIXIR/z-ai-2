@@ -769,11 +769,10 @@ async function main() {
   if (process.env.HEAVIX_ENV !== "preview") {
     throw new Error("Refusing to seed: HEAVIX_ENV must be preview. No writes performed.");
   }
-  // Category-only mode does not read or seed the Iran location dataset.
-  // Keep the location-rights gate strict for the full seed, but do not let
-  // an unrelated location licensing review block the isolated taxonomy reset.
+  // Isolated modes avoid touching unrelated taxonomy dimensions or locations.
   const categoriesOnly = process.argv.includes("--categories-only");
-  if (!categoriesOnly && (
+  const serviceTypesOnly = process.argv.includes("--service-types-only");
+  if (!categoriesOnly && !serviceTypesOnly && (
     IRAN_LOCATION_MANIFEST.rightsReviewStatus !== "APPROVED" ||
     IRAN_LOCATION_MANIFEST.commercialUseAllowed !== true
   )) {
@@ -783,6 +782,31 @@ async function main() {
     );
   }
   console.log("🌱 HEAVIX Taxonomy Seed V1.1 starting...\n");
+
+  // Isolated ServiceType seed for the listing wizard. This mode deliberately
+  // does not preflight or mutate Category, TransactionType, ApplicationIndustry,
+  // Country, Province, or City rows.
+  if (serviceTypesOnly) {
+    console.log(`Applying canonical HEAVIX ServiceTypes (${SERVICES.length})...`);
+    for (const service of SERVICES) {
+      await db.serviceType.upsert({
+        where: { key: service.key },
+        create: service,
+        update: {},
+      });
+    }
+    const seeded = await db.serviceType.findMany({
+      where: { key: { in: SERVICES.map((service) => service.key) }, active: true },
+      select: { key: true },
+    });
+    const missing = SERVICES.map((service) => service.key).filter(
+      (key) => !seeded.some((row) => row.key === key),
+    );
+    if (missing.length) throw new Error(`ServiceType verification failed: ${missing.join(", ")}`);
+    console.log("SERVICE TYPES VERIFIED");
+    console.log(JSON.stringify({ activeServiceTypes: seeded.length, keys: seeded.map((row) => row.key).sort() }, null, 2));
+    return;
+  }
 
   console.log("Preflighting existing category hierarchy (read-only)...");
   await preflightTaxonomyHierarchy();
