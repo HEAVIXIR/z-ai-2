@@ -1,0 +1,71 @@
+name: HEAVIX isolated B2 media proof
+
+on:
+  push:
+    branches:
+      - feat/buyrequest-media-staging-2026-11-20
+    paths:
+      - .github/workflows/heavix-b2-isolated-media-proof.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-b2-isolated-media-proof
+  cancel-in-progress: false
+
+jobs:
+  b2-media-proof:
+    if: github.ref == 'refs/heads/feat/buyrequest-media-staging-2026-11-20' && contains(github.event.head_commit.message, 'B2_MEDIA_ISOLATED_TEST')
+    environment: b2-media-isolated-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Enforce exact PR branch and explicit owner-authorized trigger
+        shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/feat/buyrequest-media-staging-2026-11-20"
+          [[ "$COMMIT_MESSAGE" == *"B2_MEDIA_ISOLATED_TEST"* ]]
+          echo "PASS: exact PR #359 branch and explicit isolated B2 trigger."
+
+      - name: Verify dedicated media credentials are present without exposing values
+        shell: bash
+        env:
+          B2_MEDIA_TEST_KEY_ID: ${{ secrets.B2_MEDIA_TEST_KEY_ID }}
+          B2_MEDIA_TEST_APPLICATION_KEY: ${{ secrets.B2_MEDIA_TEST_APPLICATION_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$B2_MEDIA_TEST_KEY_ID"
+          test -n "$B2_MEDIA_TEST_APPLICATION_KEY"
+          test "${#B2_MEDIA_TEST_KEY_ID}" -ge 20
+          test "${#B2_MEDIA_TEST_APPLICATION_KEY}" -ge 20
+          echo "PASS: dedicated test credential values are present; values remain redacted."
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Exercise the exact HEAVIX B2 adapter against one run-scoped proof object
+        shell: bash
+        env:
+          B2_KEY_ID: ${{ secrets.B2_MEDIA_TEST_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_MEDIA_TEST_APPLICATION_KEY }}
+          B2_BUCKET_NAME: heavix-dev-assets
+          B2_MEDIA_PREFIX: heavix-media/
+          B2_REGION: us-east-005
+          B2_S3_ENDPOINT: https://s3.us-east-005.backblazeb2.com
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: bun scripts/prove-b2-media-adapter.ts
+
+# Explicit owner-authorized isolated B2 proof trigger; no production resources are used.

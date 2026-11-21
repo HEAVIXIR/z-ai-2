@@ -71,7 +71,7 @@ describe("admin backup runtime wiring", () => {
     const script = read("scripts/backup.sh");
 
     expect(script).toContain('echo "Backup complete: $BACKUP_DIR"');
-    expect(route).toContain(/Backup complete:\\s+\\.\/backups\//.source);
+    expect(route).toContain(String.raw`/Backup complete:\s+\.\/backups\/(\d{8}_\d{6})/`);
     expect(route).toContain("Backup failed; no successful paired backup was confirmed.");
     expect(route).not.toContain("stdout,");
     expect(route).not.toContain("stderr,");

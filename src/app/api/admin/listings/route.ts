@@ -4,6 +4,7 @@ import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 import { isAdmin } from "@/lib/authorization";
@@ -151,6 +152,10 @@ export async function POST(req: Request) {
       { error: "Forbidden: missing permission 'listing.publish'" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const body = await req.json().catch(() => ({}));

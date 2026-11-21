@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
@@ -17,6 +18,10 @@ import { ReactQueryProvider } from "@/components/admin/react-query-provider";
 
 export const dynamic = "force-dynamic";
 
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
+
 export default async function AdminLayout({
   children,
 }: {
@@ -31,28 +36,26 @@ export default async function AdminLayout({
   }
 
   return (
-    <div
-      dir="rtl"
-      className="min-h-screen bg-zinc-100 text-zinc-900"
-      style={{ "--admin-sidebar-width": "18rem" } as React.CSSProperties}
-    >
+    <ReactQueryProvider>
+      <div
+        dir="rtl"
+        className="min-h-screen bg-zinc-100 text-zinc-900"
+      >
       {/* Sidebar */}
       <aside
+        data-admin-sidebar
         className="fixed inset-y-0 right-0 z-[100] flex flex-col bg-zinc-950 text-white shadow-2xl"
-        style={{ width: "var(--admin-sidebar-width)" }}
+        style={{ width: "var(--admin-sidebar-width, 18rem)" }}
       >
         {/* Logo */}
         <div className="shrink-0 border-b border-zinc-800 px-5 py-5">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center gap-3">
             { }
             <img
               src="/logos/heavix-logo.svg"
               alt="HEAVIX"
-              className="h-9 w-auto"
+              className="h-9 w-auto max-w-full object-contain"
             />
-            <div className="mr-auto">
-              <p className="text-[10px] text-zinc-500">پنل مدیریت</p>
-            </div>
           </div>
         </div>
 
@@ -70,7 +73,7 @@ export default async function AdminLayout({
       {/* Main area */}
       <div
         className="flex min-h-screen min-w-0 flex-col"
-        style={{ marginRight: "var(--admin-sidebar-width)" }}
+        style={{ marginRight: "var(--admin-sidebar-width, 18rem)" }}
       >
         {/* Top bar */}
         <header className="sticky top-0 z-40 flex min-h-20 shrink-0 items-center justify-between border-b border-zinc-200 bg-white/95 px-6 shadow-sm backdrop-blur lg:px-8">
@@ -83,6 +86,7 @@ export default async function AdminLayout({
             </p>
           </div>
           <div className="mr-4 flex shrink-0 items-center gap-3">
+            <Link href="/account/security" className="inline-flex items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-[#F58220] hover:text-[#F58220]">پروفایل و امنیت</Link>
             <Link
               href="/"
               target="_blank"
@@ -96,9 +100,10 @@ export default async function AdminLayout({
 
         {/* Page content */}
         <main className="min-w-0 flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
-          <ReactQueryProvider>{children}</ReactQueryProvider>
+          {children}
         </main>
       </div>
     </div>
+    </ReactQueryProvider>
   );
 }

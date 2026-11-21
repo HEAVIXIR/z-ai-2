@@ -3,13 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, Loader2 } from "lucide-react";
 
-/* ============================================================
-   TransactionTypePicker — selectable cards for the 6 HBR V1.1
-   TransactionTypes (SALE / RENT / WANTED / QUOTE / AUCTION /
-   SERVICE_REQUEST). Fetches from /api/transaction-types.
-
-   Used in the listing wizard (step 1) and as a quick filter.
-   ============================================================ */
+/* Transaction type cards for the listing wizard and quick filters. */
 
 export type TransactionTypeOption = {
   id: string;
@@ -28,6 +22,7 @@ const ICON_FALLBACK: Record<string, string> = {
   QUOTE: "💬",
   AUCTION: "🔨",
   SERVICE_REQUEST: "🤝",
+  SERVICE_OFFER: "🧰",
 };
 
 export default function TransactionTypePicker({
@@ -35,30 +30,27 @@ export default function TransactionTypePicker({
   onChange,
   compact = false,
 }: {
-  value: string; // TransactionType.key
+  value: string;
   onChange: (key: string) => void;
   compact?: boolean;
 }) {
   const [types, setTypes] = useState<TransactionTypeOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     (async () => {
       try {
         const res = await fetch("/api/transaction-types", { cache: "no-store" });
-        if (!res.ok) throw new Error("fetch failed");
+        if (!res.ok) throw new Error("transaction types unavailable");
         const data = (await res.json()) as { types: TransactionTypeOption[] };
         if (!alive) return;
         setTypes(data.types ?? []);
-        // Default to SALE if nothing selected yet
-        if (!value && (data.types ?? []).length > 0) {
-          const sale = data.types.find((t) => t.key === "SALE");
-          if (sale) onChange(sale.key);
-        }
-      } catch (err: any) {
-        if (alive) setError(err?.message ?? "خطا در بارگذاری انواع معامله");
+      } catch {
+        if (alive) setError(true);
       } finally {
         if (alive) setLoading(false);
       }
@@ -66,7 +58,7 @@ export default function TransactionTypePicker({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [retryKey]);
 
   if (loading) {
     return (
@@ -79,8 +71,19 @@ export default function TransactionTypePicker({
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-xs font-bold text-red-400">
-        ⚠ {error}
+      <div
+        role="alert"
+        className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-xs leading-6 text-amber-200"
+      >
+        دریافت فهرست نوع معامله در حال حاضر ممکن نیست. این یک خطای اتصال سرویس است؛
+        لطفاً دوباره تلاش کنید. عبارت فنی خطا برای کاربر نمایش داده نمی‌شود.
+        <button
+          type="button"
+          onClick={() => setRetryKey((current) => current + 1)}
+          className="mr-2 rounded-lg border border-amber-300/30 px-3 py-1 font-bold text-amber-100 hover:bg-amber-300/10"
+        >
+          تلاش مجدد
+        </button>
       </div>
     );
   }
@@ -88,7 +91,14 @@ export default function TransactionTypePicker({
   if (types.length === 0) {
     return (
       <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-6 text-center text-xs text-white/45">
-        نوع معامله‌ای تعریف نشده است. می‌توانید پیش‌فرض «فروش» را ادامه دهید.
+        هنوز نوع معامله‌ای برای انتخاب تعریف نشده است.
+        <button
+          type="button"
+          onClick={() => setRetryKey((current) => current + 1)}
+          className="mt-3 rounded-lg border border-white/15 px-3 py-1.5 font-bold text-white/70 hover:text-white"
+        >
+          بارگذاری مجدد
+        </button>
       </div>
     );
   }

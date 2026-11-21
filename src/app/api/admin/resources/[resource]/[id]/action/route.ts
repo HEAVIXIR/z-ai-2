@@ -16,6 +16,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import '@/lib/admin/resource-index';
 import { executeAction } from '@/lib/admin/action-engine';
 import { requireAdmin } from '@/lib/admin-guard';
+import { checkCsrf } from "@/lib/csrf";
 import { can, isAdmin } from '@/lib/authorization';
 import { registry } from '@/lib/admin/resource-registry';
 import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
@@ -23,6 +24,13 @@ import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ resource: string; id: string }> };
+
+// P0 audit: resources that mutate only through dedicated transactional
+// APIs and MUST NOT be action-mutated via the Universal Resource action
+// endpoint (which bypasses domain state machines, CAS, and audit trails).
+// Mirrors the [id] + bulk routes. buy-requests actions go through the
+// canonical wanted-service state machine via /api/admin/requests/*.
+const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers', 'payments', 'buy-requests']);
 
 // PR-SC-00: resolve server-side tenant access context.
 async function resolveTenantCtx(
@@ -39,6 +47,26 @@ async function resolveTenantCtx(
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { resource: resourceKey, id } = await params;
+  // P0 audit: dedicated-mutation resources (incl. buy-requests) are
+  // 409-blocked from the universal action endpoint — actions must go
+  // through the canonical service APIs (e.g. /api/admin/requests/[id]
+  // PATCH action=approve/close/fulfill → publishWanted/closeWantedByAdmin/
+  // fulfillWanted).
+  if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
+    const perm = resourceKey === 'procurement' ? 'procurement.manage'
+      : resourceKey === 'payments' ? 'payment.manage'
+      : resourceKey === 'buy-requests' ? 'request.manage'
+      : 'store.manage';
+    const [, authError] = await requireAdmin(perm);
+    if (authError) return authError;
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
+    return NextResponse.json(
+      { error: 'این منبع فقط از طریق API اختصاصی قابل تغییر است؛ Universal Action غیرفعال است.', code: 'DEDICATED_RESOURCE_ACTION_DISABLED' },
+      { status: 409 },
+    );
+  }
   const config = registry.get(resourceKey);
   if (!config) return NextResponse.json({ error: 'Unknown resource' }, { status: 404 });
 
@@ -50,6 +78,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const [user, authError] = await requireAdmin(actionDef.permission);
   if (authError) return authError;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
 
   const hasPerm = await can(user?.id ?? null, actionDef.permission);
   if (!hasPerm) {

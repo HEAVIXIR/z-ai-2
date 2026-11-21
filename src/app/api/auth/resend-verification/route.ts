@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { randomInt } from "node:crypto";
 import { db } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
+import { hashPassword } from "@/lib/password";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { RESEND } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
 
     // Throttle: most recent EMAIL code must be at least 60s old.
     const latest = await db.verificationCode.findFirst({
-      where: { userId: user.id, type: "EMAIL" },
+      where: { userId: user.id, type: "EMAIL", used: false, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: "desc" },
     });
     if (latest && Date.now() - latest.createdAt.getTime() < 60 * 1000) {
@@ -76,29 +78,46 @@ export async function POST(req: Request) {
       );
     }
 
-    const devEmailCode = String(Math.floor(100000 + Math.random() * 900000));
+    const emailCode = String(randomInt(100000, 1000000));
+    const codeHash = await hashPassword(emailCode);
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    await db.verificationCode.create({
-      data: {
-        userId: user.id,
-        code: devEmailCode,
-        type: "EMAIL",
-        expiresAt,
-        used: false,
-      },
+
+    // Replace all prior active challenges atomically so only the newest
+    // emailed code can activate the account.
+    const newChallenge = await db.$transaction(async (tx) => {
+      await tx.verificationCode.updateMany({
+        where: { userId: user.id, type: "EMAIL", used: false },
+        data: { used: true },
+      });
+      return tx.verificationCode.create({
+        data: {
+          userId: user.id,
+          code: codeHash,
+          type: "EMAIL",
+          expiresAt,
+          used: false,
+        },
+      });
     });
 
     try {
-      await sendVerificationEmail(user.email, devEmailCode);
-    } catch (e) {
-      console.error("[resend-verification] sendVerificationEmail failed:", e);
+      await sendVerificationEmail(user.email, emailCode);
+    } catch {
+      // Do not leave an undelivered code usable.
+      await db.verificationCode.updateMany({
+        where: { id: newChallenge.id, used: false },
+        data: { used: true },
+      });
+      console.error("[resend-verification] email delivery failed");
+      return NextResponse.json(
+        { error: "ارسال ایمیل انجام نشد. تنظیمات سرویس ایمیل باید تکمیل شود." },
+        { status: 503 },
+      );
     }
 
-    const showDevCode = process.env.DEV_AUTH_CODES === "true";
     return NextResponse.json({
       ok: true,
       message: "کد جدید به ایمیل شما ارسال شد.",
-      ...(showDevCode ? { devEmailCode } : {}),
     });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });

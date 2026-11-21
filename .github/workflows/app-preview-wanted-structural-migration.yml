@@ -1,0 +1,367 @@
+name: HEAVIX App Preview WANTED structural migration
+
+# H.3: SEPARATE guarded workflow for the WANTED structured-storage migration
+# (20261119160000_wanted_structural_storage). This is INDEPENDENT of PR #347's
+# workflow (which applies 20261118152000_link_listing_service_rfq). The two
+# migrations have separate gates: #347 expects 6 pre / 7 post; this workflow
+# expects 7 pre / 8 post (i.e. #347's migration has already run).
+#
+# Migration execution is NOT authorized by merely merging this file. The
+# workflow runs only on manual dispatch, on the Integration branch, with the
+# typed confirmation string, after the App Preview DB identity is verified
+# live, an encrypted backup is taken + read-back + disposable-restore-verified,
+# and the migration history is exactly 7. No Store/Production access.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: App Preview only; Store and Production are excluded
+        required: true
+        type: choice
+        options: [APP_PREVIEW_ONLY]
+      confirm:
+        description: Type APPLY_APP_PREVIEW_20261119160000
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-app-preview-wanted-structural-migration
+  cancel-in-progress: false
+
+jobs:
+  backup-restore-and-migrate:
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    environment: preview-backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      restore-db:
+        image: postgres:17
+        env:
+          POSTGRES_USER: restore
+          POSTGRES_PASSWORD: local-restore-only
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U restore -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    steps:
+      - name: Checkout exact Integration commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Enforce exact branch, commit and App Preview-only approval
+        shell: bash
+        env:
+          DISPATCH_TARGET: ${{ inputs.target }}
+          DISPATCH_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$DISPATCH_TARGET" = "APP_PREVIEW_ONLY"
+          test "$DISPATCH_CONFIRM" = "APPLY_APP_PREVIEW_20261119160000"
+          echo "PASS: exact Integration commit and explicit WANTED structural migration approval."
+
+      - name: Install age, AWS CLI, PostgreSQL client and Bun
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes age awscli postgresql-client
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Validate App Preview backup credentials and encryption keypair
+        shell: bash
+        env:
+          APP_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+          AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
+        run: |
+          set -euo pipefail
+          test -n "$APP_PREVIEW_DATABASE_URL"
+          case "$APP_PREVIEW_DATABASE_URL" in postgres://*|postgresql://*) ;; *) echo "Invalid App Preview URL scheme."; exit 1 ;; esac
+          test "$B2_S3_ENDPOINT" = "s3.us-east-005.backblazeb2.com"
+          test "$B2_BUCKET" = "heavix-db-backups"
+          test -n "$B2_APPLICATION_KEY_ID"
+          test -n "$B2_APPLICATION_KEY"
+          test -n "$AGE_RECIPIENT"
+          test -n "$AGE_IDENTITY"
+          printf '%s\n' "$AGE_IDENTITY" > "$RUNNER_TEMP/age-identity.txt"
+          chmod 600 "$RUNNER_TEMP/age-identity.txt"
+          derived="$(age-keygen -y "$RUNNER_TEMP/age-identity.txt")"
+          test "$derived" = "$AGE_RECIPIENT"
+          rm -f "$RUNNER_TEMP/age-identity.txt"
+          echo "PASS: App Preview backup destination and encryption keypair validated; values redacted."
+
+      - name: Verify exact App Preview identity and WANTED migration preconditions
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+        run: |
+          set -euo pipefail
+          export PGSSLMODE=verify-full
+          [[ "$EXPECTED_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
+          (( EXPECTED_DATABASE_OID <= 4294967295 ))
+          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+          expected="postgres|$EXPECTED_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
+          test "$identity" = "$expected"
+          read_only="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_setting('transaction_read_only') = 'off'")"
+          test "$read_only" = "t"
+          # H.3: expect EXACTLY 7 applied migrations (the 6 baseline + #347's
+          # 20261118152000_link_listing_service_rfq must have run already).
+          history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          expected_history="7|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes,20261116120000_industrial_marketplace_identity_core,20261116130000_company_invitations,20261118152000_link_listing_service_rfq"
+          test "$history" = "$expected_history"
+          unfinished="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")"
+          test "$unfinished" = "0"
+          rolled_back="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE rolled_back_at IS NOT NULL")"
+          test "$rolled_back" = "0"
+          # H.3: schema preconditions — the WANTED structured columns + attribute
+          # tables must NOT yet exist (they're added by this migration).
+          schema_preconditions="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='quantity'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='categoryId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='brandId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='modelId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='serviceTypeId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='intent'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='idempotencyKey'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeValue'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeOption'))::text")"
+          test "$schema_preconditions" = "true|true|true|true|true|true|true|true|true"
+          # H.3: the migration folder must exist in the repo (checked out at this SHA).
+          test -f prisma/migrations/20261119160000_wanted_structural_storage/migration.sql
+          echo "PASS: App Preview exact identity; exactly seven reviewed migrations; WANTED structural preconditions hold."
+
+      - name: Create encrypted App Preview-only backup
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          umask 077
+          WORK="$RUNNER_TEMP/heavix-app-preview-backup"
+          mkdir -m 700 -p "$WORK"
+          pg_dump --serializable-deferrable --format=custom --no-owner --no-acl --dbname="$DATABASE_URL" > "$WORK/app-preview.dump"
+          test -s "$WORK/app-preview.dump"
+          pg_restore --list "$WORK/app-preview.dump" > "$WORK/restore.list"
+          test -s "$WORK/restore.list"
+          (cd "$WORK" && sha256sum app-preview.dump > SHA256SUMS)
+          {
+            echo "format=heavix-app-preview-backup-v1"
+            echo "created_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "backup_sha=$GITHUB_SHA"
+            echo "app_system_identifier=7701427422680793119"
+            echo "app_database_oid=${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}"
+            cat "$WORK/SHA256SUMS"
+          } > "$WORK/manifest.txt"
+          # Snapshot selected critical table counts into the encrypted manifest.
+          # Any concurrent Preview write between pg_dump and this count check
+          # causes the restore gate to fail closed rather than accepting drift.
+          for table in User Listing BuyRequest RFQ Category Brand _prisma_migrations; do
+            count="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"$table\"")"
+            [[ "$count" =~ ^[0-9]+$ ]]
+            printf 'rowcount_%s=%s\n' "$table" "$count" >> "$WORK/manifest.txt"
+          done
+          age -r "$AGE_RECIPIENT" -o "$WORK/app-preview.dump.age" "$WORK/app-preview.dump"
+          age -r "$AGE_RECIPIENT" -o "$WORK/manifest.txt.age" "$WORK/manifest.txt"
+          (cd "$WORK" && sha256sum app-preview.dump.age manifest.txt.age > ENCRYPTED_SHA256SUMS)
+          rm -f "$WORK/app-preview.dump" "$WORK/manifest.txt" "$WORK/SHA256SUMS"
+          echo "PASS: App Preview dump created, listed, checksummed and encrypted."
+
+      - name: Upload encrypted backup and verify object read-back
+        shell: bash
+        env:
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AWS_REGION: us-east-005
+          AWS_DEFAULT_REGION: us-east-005
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: |
+          set -euo pipefail
+          export AWS_ACCESS_KEY_ID="$B2_APPLICATION_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$B2_APPLICATION_KEY"
+          WORK="$RUNNER_TEMP/heavix-app-preview-backup"
+          PREFIX="preview/app-only/$(date -u +%Y/%m/%d)/$GITHUB_SHA/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          ENDPOINT="https://$B2_S3_ENDPOINT"
+          for file in app-preview.dump.age manifest.txt.age ENCRYPTED_SHA256SUMS; do
+            aws --endpoint-url "$ENDPOINT" s3 cp "$WORK/$file" "s3://$B2_BUCKET/$PREFIX/$file" --only-show-errors
+          done
+          mkdir -m 700 "$WORK/readback"
+          for file in app-preview.dump.age manifest.txt.age ENCRYPTED_SHA256SUMS; do
+            aws --endpoint-url "$ENDPOINT" s3 cp "s3://$B2_BUCKET/$PREFIX/$file" "$WORK/readback/$file" --only-show-errors
+          done
+          (cd "$WORK/readback" && sha256sum -c ENCRYPTED_SHA256SUMS)
+          echo "HEAVIX_BACKUP_PREFIX=$PREFIX" >> "$GITHUB_ENV"
+          echo "PASS: encrypted App Preview backup read-back checksums verified."
+
+      - name: Decrypt and restore backup into disposable PostgreSQL 17
+        shell: bash
+        env:
+          AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
+          RESTORE_PASSWORD: local-restore-only
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/heavix-app-preview-backup"
+          printf '%s\n' "$AGE_IDENTITY" > "$WORK/age-identity.txt"
+          chmod 600 "$WORK/age-identity.txt"
+          age -d -i "$WORK/age-identity.txt" -o "$WORK/app-preview.dump" "$WORK/readback/app-preview.dump.age"
+          age -d -i "$WORK/age-identity.txt" -o "$WORK/manifest.txt" "$WORK/readback/manifest.txt.age"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$WORK/manifest.txt"
+          (cd "$WORK" && sha256sum -c <(grep 'app-preview.dump$' manifest.txt))
+          export PGPASSWORD="$RESTORE_PASSWORD"
+          createdb -h 127.0.0.1 -U restore app_preview_restore
+          pg_restore --list "$WORK/app-preview.dump" > "$WORK/restore.list"
+          if grep -Eq ' EXTENSION - prisma_postgres' "$WORK/restore.list"; then
+            awk 'index($0, " EXTENSION - prisma_postgres") || index($0, " COMMENT - EXTENSION prisma_postgres") {next} {sub(/\r$/, ""); print}' "$WORK/restore.list" > "$WORK/restore.filtered.list"
+            pg_restore --exit-on-error --no-owner --no-acl --use-list="$WORK/restore.filtered.list" -h 127.0.0.1 -U restore -d app_preview_restore "$WORK/app-preview.dump"
+          else
+            pg_restore --exit-on-error --no-owner --no-acl -h 127.0.0.1 -U restore -d app_preview_restore "$WORK/app-preview.dump"
+          fi
+          table_count="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
+          test "$table_count" -gt 0
+
+          # Compare the complete public-table inventory in the archive with
+          # the restored database. A successful pg_restore plus one table is
+          # not sufficient evidence that the backup is complete.
+          awk '$4 == "TABLE" && $5 == "public" { print $6 }' "$WORK/restore.list" | sort -u > "$WORK/expected-public-tables.txt"
+          psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename" > "$WORK/restored-public-tables.txt"
+          test -s "$WORK/expected-public-tables.txt"
+          diff -u "$WORK/expected-public-tables.txt" "$WORK/restored-public-tables.txt"
+
+          # Compare row counts for critical business and migration tables
+          # against the encrypted backup manifest, not merely table presence.
+          for table in User Listing BuyRequest RFQ Category Brand _prisma_migrations; do
+            expected_count="$(sed -n "s/^rowcount_${table}=//p" "$WORK/manifest.txt")"
+            test -n "$expected_count"
+            actual_count="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"$table\"")"
+            test "$actual_count" = "$expected_count"
+          done
+
+          # Prove the restored backup is at the exact seven-migration
+          # pre-state, then exercise the actual H.3 DDL against the disposable
+          # PostgreSQL 17 restore before touching the live Preview database.
+          restore_history="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          expected_restore_history="7|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes,20261116120000_industrial_marketplace_identity_core,20261116130000_company_invitations,20261118152000_link_listing_service_rfq"
+          test "$restore_history" = "$expected_restore_history"
+          psql -h 127.0.0.1 -U restore -d app_preview_restore -X -v ON_ERROR_STOP=1 -f prisma/migrations/20261119160000_wanted_structural_storage/migration.sql
+
+          restored_schema="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name IN ('quantity','categoryId','brandId','modelId','serviceTypeId','intent','idempotencyKey'))::text || '|' || (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeValue')::text || '|' || (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeOption')::text")"
+          test "$restored_schema" = "7|1|1"
+          restored_fks="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_constraint WHERE conname IN ('BuyRequest_categoryId_fkey','BuyRequest_brandId_fkey','BuyRequest_modelId_fkey','BuyRequest_serviceTypeId_fkey','BuyRequestAttributeValue_attributeId_fkey','BuyRequestAttributeValue_optionId_fkey','BuyRequestAttributeValue_buyRequestId_fkey','BuyRequestAttributeOption_attributeValueId_fkey','BuyRequestAttributeOption_optionId_fkey')")"
+          test "$restored_fks" = "9"
+          restored_indexes="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('BuyRequest_userId_idempotencyKey_key','BuyRequestAttributeValue_buyRequestId_attributeId_key','BuyRequestAttributeOption_attributeValueId_optionId_key')")"
+          test "$restored_indexes" = "3"
+
+          # Recovery rehearsal: restore the same pre-migration backup a second
+          # time into a fresh disposable DB. This is the documented recovery
+          # path if the live Preview migration ever needs to be rolled back.
+          createdb -h 127.0.0.1 -U restore app_preview_recovery
+          if grep -Eq ' EXTENSION - prisma_postgres' "$WORK/restore.list"; then
+            pg_restore --exit-on-error --no-owner --no-acl --use-list="$WORK/restore.filtered.list" -h 127.0.0.1 -U restore -d app_preview_recovery "$WORK/app-preview.dump"
+          else
+            pg_restore --exit-on-error --no-owner --no-acl -h 127.0.0.1 -U restore -d app_preview_recovery "$WORK/app-preview.dump"
+          fi
+          recovery_tables="$(psql -h 127.0.0.1 -U restore -d app_preview_recovery -XAtq -v ON_ERROR_STOP=1 -c "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")"
+          diff -u "$WORK/expected-public-tables.txt" <(printf '%s\n' "$recovery_tables")
+          for table in User Listing BuyRequest RFQ Category Brand _prisma_migrations; do
+            expected_count="$(sed -n "s/^rowcount_${table}=//p" "$WORK/manifest.txt")"
+            actual_count="$(psql -h 127.0.0.1 -U restore -d app_preview_recovery -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"$table\"")"
+            test "$actual_count" = "$expected_count"
+          done
+          echo "PASS: encrypted backup decrypted; full table inventory and critical row counts matched; H.3 DDL passed on a disposable restore; second clean restore rehearsed recovery on PostgreSQL 17."
+          rm -rf "$WORK"
+
+      - name: Recheck App Preview identity and exact migration gate immediately before apply
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+          test "$identity" = "postgres|$EXPECTED_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
+          history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$history" = "7|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes,20261116120000_industrial_marketplace_identity_core,20261116130000_company_invitations,20261118152000_link_listing_service_rfq"
+          test "$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")" = "0"
+          echo "PASS: exact App Preview identity and migration state revalidated immediately before apply."
+
+      - name: Install dependencies and generate App Prisma client
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+
+      - name: Apply the single reviewed WANTED structural migration
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          # Prisma migrate deploy applies EVERY pending migration in this checkout.
+          # This workflow is approved only for 20261119160000_wanted_structural_storage.
+          # Any later migration must be applied through its own reviewed/approved gate;
+          # otherwise this command would silently batch unrelated DDL into App Preview.
+          later_migrations=(
+            "20261119190000_first_party_geospatial_foundation"
+            "20261120113000_location_source_codes"
+            "20261120130000_category_attribute_active_policy"
+            "20261120150000_buy_request_images"
+          )
+          for migration in "${later_migrations[@]}"; do
+            if [[ -f "prisma/migrations/$migration/migration.sql" ]]; then
+              echo "::error::Later migration $migration is present. This one-migration workflow is blocked; use a separately reviewed and explicitly approved migration gate."
+              exit 1
+            fi
+          done
+          # The preflight proves seven exact successful migrations. Store schema/URL are never supplied.
+          bunx prisma migrate deploy --schema=prisma/schema.prisma
+
+      - name: Verify only the requested WANTED structural migration and schema objects
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+          test "$identity" = "postgres|$EXPECTED_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
+          # H.3: post-apply expects EXACTLY 8 migrations (7 prior + WANTED structural).
+          history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          expected="8|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes,20261116120000_industrial_marketplace_identity_core,20261116130000_company_invitations,20261118152000_link_listing_service_rfq,20261119160000_wanted_structural_storage"
+          test "$history" = "$expected"
+          test "$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")" = "0"
+          # H.3: verify the WANTED structured columns + idempotencyKey + attribute tables exist.
+          schema="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='quantity')::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='categoryId')::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='idempotencyKey')::text || '|' || (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeValue')::text || '|' || (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeOption')::text")"
+          test "$schema" = "1|1|1|1|1"
+          # H.3: verify the FK constraints + unique indexes landed.
+          fks="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_constraint WHERE conname IN ('BuyRequest_categoryId_fkey','BuyRequest_brandId_fkey','BuyRequest_modelId_fkey','BuyRequest_serviceTypeId_fkey','BuyRequestAttributeValue_attributeId_fkey','BuyRequestAttributeValue_optionId_fkey','BuyRequestAttributeValue_buyRequestId_fkey','BuyRequestAttributeOption_attributeValueId_fkey','BuyRequestAttributeOption_optionId_fkey')")"
+          test "$fks" = "9"
+          uniq="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('BuyRequest_userId_idempotencyKey_key','BuyRequestAttributeValue_buyRequestId_attributeId_key','BuyRequestAttributeOption_attributeValueId_optionId_key')")"
+          test "$uniq" = "3"
+          {
+            echo "## App Preview WANTED structural migration result"
+            echo
+            echo "- Exact Integration SHA: $GITHUB_SHA"
+            echo "- App Preview only: \`20261119160000_wanted_structural_storage\` applied and verified."
+            echo "- Backup: encrypted B2 read-back and disposable PostgreSQL 17 restore passed before apply."
+            echo "- Schema: BuyRequest structured columns (quantity/categoryId/brandId/modelId/serviceTypeId/intent/idempotencyKey) + BuyRequestAttributeValue (parent) + BuyRequestAttributeOption (child) verified."
+            echo "- Foreign keys: 9 FKs verified (4 BuyRequest taxonomy + 3 BuyRequestAttributeValue + 2 BuyRequestAttributeOption)."
+            echo "- Unique indexes: 3 verified (idempotencyKey, parent attribute uniqueness, child option uniqueness)."
+            echo "- Store: no Store database URL or credentials were provided to this job."
+            echo "- Production: not accessed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS: only the requested WANTED structural migration is recorded and its schema objects are present."

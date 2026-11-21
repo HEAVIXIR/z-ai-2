@@ -46,14 +46,33 @@ vi.mock("@/lib/db", () => ({
     },
     verificationCode: {
       findFirst: vi.fn(async (args: any) => {
-        // Return the mock code record ONLY if the queried code matches the stored code
-        const queriedCode = args?.where?.code;
-        if (queriedCode === mockCodeRecord.code) return mockCodeRecord;
-        return null;
+        if (args?.where?.userId !== mockUserRecord.id || args?.where?.type !== "EMAIL") return null;
+        if (mockCodeRecord.used || mockCodeRecord.expiresAt <= new Date()) return null;
+        return mockCodeRecord;
       }),
       update: vi.fn(async () => ({})),
     },
-    $transaction: vi.fn(async (ops: any[]) => Promise.all(ops.map((op) => op))),
+    $transaction: vi.fn(async (work: any) => {
+      if (typeof work !== "function") return Promise.all(work);
+      const tx = {
+        verificationCode: {
+          updateMany: vi.fn(async ({ where }: any) => {
+            if (mockCodeRecord.used || mockCodeRecord.id !== where.id || mockCodeRecord.expiresAt <= new Date()) {
+              return { count: 0 };
+            }
+            mockCodeRecord.used = true;
+            return { count: 1 };
+          }),
+        },
+        user: {
+          update: vi.fn(async ({ data }: any) => {
+            mockUserRecord = { ...mockUserRecord, ...data };
+            return mockUserRecord;
+          }),
+        },
+      };
+      return work(tx);
+    }),
   },
 }));
 vi.mock("@/lib/rate-limit", () => ({
@@ -68,6 +87,10 @@ vi.mock("@/lib/request-context", () => ({
   rateLimitKey: (a: string, b: string) => `${a}:${b}`,
 }));
 
+vi.mock("@/lib/password", () => ({
+  verifyPassword: vi.fn(async (plain: string, hash: string) => plain === "123456" && hash === "$2fake"),
+}));
+
 // Import AFTER mocks
 const verifyRoute = await import("@/app/api/auth/verify-email/route");
 
@@ -77,19 +100,17 @@ beforeEach(() => {
   mockCodeRecord = { ...mockCode, used: false, expiresAt: new Date(Date.now() + 10 * 60 * 1000) };
 });
 
-// F-006 fix: verify-email route now enforces fail-closed CSRF.
-// We send a Bearer token so the request is classified as a
-// non-browser API client and exempted from CSRF (see src/lib/csrf.ts).
-// This test exercises the verification logic, not the CSRF layer.
-const CSRF_BYPASS_HEADERS = {
+// The route enforces fail-closed CSRF. These behavioral tests exercise
+// verification semantics with the explicit trusted local test origin.
+const CSRF_TEST_HEADERS = {
   "Content-Type": "application/json",
-  "Authorization": "Bearer test-csrf-exempt",
+  "Origin": "http://localhost:3000",
 } as const;
 
 function makeReq(body: any): Request {
   return new Request("http://localhost/api/auth/verify-email", {
     method: "POST",
-    headers: CSRF_BYPASS_HEADERS,
+    headers: CSRF_TEST_HEADERS,
     body: JSON.stringify(body),
   });
 }
@@ -105,6 +126,13 @@ describe("W-02: POST /api/auth/verify-email — behavioral route test", () => {
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.activated).toBe(true); // mobileVerified=true → activated
+  });
+
+  it("POSITIVE: bcrypt-hashed EMAIL code → 200", async () => {
+    mockCodeRecord.code = "$2fake";
+    const res = await verifyRoute.POST(makeReq({ userId: "user-1", code: "123456" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).activated).toBe(true);
   });
 
   it("NEGATIVE: wrong code → 400", async () => {
@@ -158,11 +186,13 @@ describe("W-02: POST /api/auth/verify-email — behavioral route test", () => {
     expect(body.alreadyVerified).toBe(true);
   });
 
-  it("POSITIVE: mobileVerified=false → 200 but not activated (PENDING)", async () => {
+  it("POSITIVE: email verification activates the account while mobile remains unverified", async () => {
     mockUserRecord = { ...mockUser, emailVerified: false, mobileVerified: false };
     const res = await verifyRoute.POST(makeReq({ userId: "user-1", code: "123456" }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.activated).toBe(false);
+    expect(body.activated).toBe(true);
+    expect(mockUserRecord.status).toBe("ACTIVE");
+    expect(mockUserRecord.mobileVerified).toBe(false);
   });
 });

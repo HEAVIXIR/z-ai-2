@@ -32,7 +32,7 @@ echo "── STEP 15.90: Provisioning TLS-enabled PostgreSQL 17 ──"
 if ! command -v /usr/lib/postgresql/$PG_VERSION/bin/postgres &>/dev/null; then
   echo "Installing PostgreSQL $PG_VERSION..."
   sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+  curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
   sudo apt-get update -qq
   sudo apt-get install -y -qq postgresql-$PG_VERSION postgresql-client-$PG_VERSION
 fi

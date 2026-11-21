@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
+import ListingImageUploader from "@/components/listings/ListingImageUploader";
+import CascadingCategoryPicker, { type CategoryPathItem } from "@/components/listings/CascadingCategoryPicker";
 import TransactionTypePicker from "@/components/listings/TransactionTypePicker";
 import LocationPicker, { type LocationValue } from "@/components/listings/LocationPicker";
 import AttributeFields, {
@@ -14,12 +16,12 @@ import AttributeFields, {
   getCachedAttributes,
 } from "@/components/listings/AttributeFields";
 import { toFa } from "@/lib/format";
+import { isMarketplaceTransactionType, isRequestTransactionType } from "@/lib/transaction-type-routing";
 import {
   ArrowRight,
   ArrowLeft,
   Check,
   CheckCircle2,
-  ImagePlus,
   Key,
   Layers3,
   Loader2,
@@ -40,20 +42,20 @@ import {
    /listings/new — HBR Taxonomy V1.1 listing wizard.
 
    Steps:
-   1. نوع معامله (TransactionType)  — SALE/RENT/WANTED/QUOTE/AUCTION/SERVICE_REQUEST
+   1. نوع معامله (TransactionType)  — SALE/RENT/WANTED/QUOTE/AUCTION/SERVICE_REQUEST/SERVICE_OFFER
    2. دسته‌بندی (Category)          — CATALOG only, cascading root → child → grandchild
-   2.5. ویژگی‌ها (Attributes)        — dynamic from /api/categories/[id]/attributes
-   3. برند و مدل                     — brand typeahead + model select (filtered by brand)
-   4. موقعیت (Location)              — country/province/city cascading
-   5. جزئیات                          — title, description, price/rental period, images, contact
-   6. بازبینی و تأیید                — review + POST /api/listings
+   3. اطلاعات پایه                  — title/description; optional brand/model when relevant
+   4. مشخصات تخصصی                  — dynamic inherited attributes for selected subject/category
+   5. موقعیت (Location)              — country/province/city cascading
+   6. جزئیات                          — title, description, price/rental period, images, contact
+   7. بازبینی و تأیید                — review + POST /api/listings
    ============================================================ */
 
 const STEP_LABELS = [
   "نوع معامله",
   "دسته‌بندی",
-  "ویژگی‌ها",
-  "برند و مدل",
+  "اطلاعات پایه",
+  "مشخصات تخصصی",
   "موقعیت",
   "جزئیات",
   "تکمیل",
@@ -89,20 +91,71 @@ type TaxRoot = {
 };
 
 type ModelOption = { id: string; name: string; nameEn: string | null };
+type ServiceTypeOption = { id: string; key: string; nameFa: string; nameEn: string | null };
 
 export default function NewListingPage() {
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
+  // P0-B: capture the created listing/request id + slug so the success
+  // screen can link to it (previously discarded when mediaStatus !== PENDING).
+  const [createdId, setCreatedId] = useState<string | null>(null);
+  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attributeWarning, setAttributeWarning] = useState<string | null>(null);
+  const [mediaRepairEntityId, setMediaRepairEntityId] = useState<string | null>(null);
+  const [mediaWarning, setMediaWarning] = useState<string | null>(null);
+  const [mediaRepairing, setMediaRepairing] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [stagedMediaAssets, setStagedMediaAssets] = useState<Array<{ assetId: string; url: string }>>([]);
+  const [imagesUploading, setImagesUploading] = useState(false);
+  const handleImagesChange = (nextImages: string[]) => {
+    setImages(nextImages);
+    setStagedMediaAssets((current) => current.filter((asset) => nextImages.includes(asset.url)));
+  };
+  const handleStagedAssetsChange = (assets: Array<{ assetId: string; url: string }>) => {
+    setStagedMediaAssets((current) => {
+      const merged = new Map(current.map((asset) => [asset.assetId, asset]));
+      for (const asset of assets) merged.set(asset.assetId, asset);
+      return Array.from(merged.values());
+    });
+  };
 
   // Form state — V1.1
-  const [transactionType, setTransactionType] = useState<string>("SALE");
+  // The first step is valid only after an active transaction type is loaded and selected.
+  const [transactionType, setTransactionType] = useState<string>("");
+  const [serviceTypes, setServiceTypes] = useState<ServiceTypeOption[]>([]);
+  const [serviceTypeId, setServiceTypeId] = useState("");
+  const [auction, setAuction] = useState({
+    reservePrice: "",
+    minIncrement: "",
+    startDate: "",
+    endDate: "",
+  });
+  const [rfq, setRfq] = useState({
+    quantity: "1",
+    budgetMin: "",
+    budgetMax: "",
+    deadline: "",
+    terms: "",
+  });
+  const [wanted, setWanted] = useState({
+    // Demand intent: what the buyer wants to do. SALE = buy (خرید),
+    // RENT = rent (اجاره), SALE_AND_RENT = flexible (خرید/اجاره),
+    // SERVICE_REQUEST = service demand (خدمات). Stored in
+    // BuyRequest.transaction and read by the matching engine to narrow
+    // supply candidates to compatible types. Default buy intent matches
+    // the historical WANTED behavior.
+    intent: "SALE" as "SALE" | "RENT" | "SALE_AND_RENT" | "SERVICE_REQUEST",
+    quantity: "1",
+    budgetMin: "",
+    budgetMax: "",
+    deadline: "",
+  });
   const [categoryId, setCategoryId] = useState<string>("");
   const [attributes, setAttributes] = useState<AttributeValue>({});
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
+  const [attributesLoaded, setAttributesLoaded] = useState(false);
   const [attrErrors, setAttrErrors] = useState<Record<string, string>>({});
   const [brandId, setBrandId] = useState<string>("");
   const [modelId, setModelId] = useState<string>("");
@@ -111,6 +164,15 @@ export default function NewListingPage() {
     provinceId: "",
     cityId: "",
   });
+  useEffect(() => {
+    if (!["SALE", "RENT", "AUCTION"].includes(transactionType)) {
+      setLocation((current) =>
+        current.latitude || current.longitude
+          ? { ...current, latitude: "", longitude: "" }
+          : current,
+      );
+    }
+  }, [transactionType]);
   const [form, setForm] = useState({
     brandLabel: "",
     title: "",
@@ -142,18 +204,21 @@ export default function NewListingPage() {
 
   // Catalog root/child/grandchild state
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
+  const [marketplaceRoots, setMarketplaceRoots] = useState<TaxRoot[]>([]);
+  const [serviceRoots, setServiceRoots] = useState<TaxRoot[]>([]);
+  const [taxonomyLoading, setTaxonomyLoading] = useState(true);
+  const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
+  const [taxonomyRetryKey, setTaxonomyRetryKey] = useState(0);
   const [childCats, setChildCats] = useState<TaxChild[]>([]);
   const [grandchildCats, setGrandchildCats] = useState<TaxChild[]>([]);
-  const [selectedRootId, setSelectedRootId] = useState<string>("");
-  const [selectedChildId, setSelectedChildId] = useState<string>("");
-  // TaxPath-based grandchild lookup: childId -> children
-  // We don't have grandchildren in the V1.1 taxonomy endpoint (only level 0+1),
-  // so we lazily fetch a category's children from the public category API.
+  const [categoryPath, setCategoryPath] = useState<CategoryPathItem[]>([]);
 
   // Brand typeahead state (alias-aware, hits /api/brands/search).
   const [brandQuery, setBrandQuery] = useState("");
   const [brandResults, setBrandResults] = useState<BrandSuggestion[]>([]);
   const [brandLoading, setBrandLoading] = useState(false);
+  const [brandError, setBrandError] = useState<string | null>(null);
+  const [brandRetryKey, setBrandRetryKey] = useState(0);
   const [brandOpen, setBrandOpen] = useState(false);
   const brandAbort = useRef<AbortController | null>(null);
   const brandWrapRef = useRef<HTMLDivElement>(null);
@@ -161,56 +226,83 @@ export default function NewListingPage() {
   // Models of selected brand
   const [models, setModels] = useState<ModelOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelsRetryKey, setModelsRetryKey] = useState(0);
 
   // ── Fetch V1.1 catalog roots ──
   useEffect(() => {
     let alive = true;
+    setTaxonomyLoading(true);
+    setTaxonomyError(null);
     (async () => {
       try {
         const res = await fetch("/api/taxonomy", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { catalogRoots?: TaxRoot[] };
-        if (alive && data.catalogRoots) setCatalogRoots(data.catalogRoots);
+        if (!res.ok) throw new Error("taxonomy unavailable");
+        const data = (await res.json()) as {
+          catalogRoots?: TaxRoot[];
+          marketplaceRoots?: TaxRoot[];
+          serviceRoots?: TaxRoot[];
+          serviceTypes?: ServiceTypeOption[];
+        };
+        if (alive) {
+          setCatalogRoots(data.catalogRoots ?? []);
+          setMarketplaceRoots(data.marketplaceRoots ?? []);
+          setServiceRoots(data.serviceRoots ?? []);
+          setServiceTypes(data.serviceTypes ?? []);
+        }
       } catch {
-        /* swallow */
+        if (alive) setTaxonomyError("دریافت دسته‌بندی‌ها ناموفق بود. اتصال را بررسی کنید و دوباره تلاش کنید.");
+      } finally {
+        if (alive) setTaxonomyLoading(false);
       }
     })();
     return () => {
       alive = false;
     };
-  }, []);
+  }, [taxonomyRetryKey]);
 
-  // ── Debounced alias-aware brand search ──
+  // ── Debounced alias-aware brand search with visible retry state ──
   useEffect(() => {
     const q = brandQuery.trim();
     if (!q) {
       setBrandResults([]);
       setBrandLoading(false);
+      setBrandError(null);
       setBrandOpen(false);
       brandAbort.current?.abort();
       return;
     }
     setBrandLoading(true);
+    setBrandError(null);
     const t = setTimeout(async () => {
       brandAbort.current?.abort();
       const ctrl = new AbortController();
       brandAbort.current = ctrl;
       try {
-        const res = await fetch(`/api/brands/search?q=${encodeURIComponent(q)}`, {
+        const categoryParam = categoryId ? `&categoryId=${encodeURIComponent(categoryId)}` : "";
+        const res = await fetch(`/api/brands/search?q=${encodeURIComponent(q)}${categoryParam}`, {
           signal: ctrl.signal,
         });
         if (!res.ok) throw new Error("brand search failed");
         const data = (await res.json()) as { brands: BrandSuggestion[] };
+        if (ctrl.signal.aborted) return;
         setBrandResults(data.brands ?? []);
         setBrandOpen(true);
       } catch {
-        /* swallow abort + transient errors */
+        if (!ctrl.signal.aborted) {
+          setBrandResults([]);
+          setBrandOpen(false);
+          setBrandError("جستجوی برند انجام نشد. اتصال را بررسی کنید و دوباره تلاش کنید.");
+        }
       } finally {
-        setBrandLoading(false);
+        if (!ctrl.signal.aborted) setBrandLoading(false);
       }
     }, 250);
-    return () => clearTimeout(t);
-  }, [brandQuery]);
+    return () => {
+      clearTimeout(t);
+      brandAbort.current?.abort();
+    };
+  }, [brandQuery, categoryId, brandRetryKey]);
 
   // ── Close brand dropdown on outside click ──
   useEffect(() => {
@@ -230,94 +322,254 @@ export default function NewListingPage() {
     setBrandOpen(false);
     setModelId("");
     setModels([]);
+    setAttributes({});
+    setAttributeDefs([]);
+    setAttributesLoaded(false);
+    setAttrErrors({});
   };
 
-  // ── Fetch models when brand changes ──
+  // ── Fetch models when brand changes; failures stay visible and retryable ──
   useEffect(() => {
     if (!brandId) {
       setModels([]);
+      setModelsLoading(false);
+      setModelsError(null);
       return;
     }
-    let alive = true;
+    const controller = new AbortController();
     setModelsLoading(true);
+    setModelsError(null);
     (async () => {
       try {
         const res = await fetch(
-          `/api/taxonomy/brands/${brandId}/models${categoryId ? `?categoryId=${categoryId}` : ""}`,
-          { cache: "no-store" },
+          `/api/taxonomy/brands/${encodeURIComponent(brandId)}/models${categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : ""}`,
+          { cache: "no-store", signal: controller.signal },
         );
         if (!res.ok) throw new Error("models fetch failed");
         const data = (await res.json()) as {
           data: Array<{ id: string; name: string; nameEn: string | null }>;
         };
-        if (!alive) return;
+        if (controller.signal.aborted) return;
         setModels(
           (data.data ?? []).map((m) => ({ id: m.id, name: m.name, nameEn: m.nameEn })),
         );
       } catch {
-        if (alive) setModels([]);
+        if (!controller.signal.aborted) {
+          setModels([]);
+          setModelsError("دریافت مدل‌های این برند ناموفق بود. دوباره تلاش کنید.");
+        }
       } finally {
-        if (alive) setModelsLoading(false);
+        if (!controller.signal.aborted) setModelsLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
-  }, [brandId, categoryId]);
+    return () => controller.abort();
+  }, [brandId, categoryId, modelsRetryKey]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
-  // ── Cascade: when a root is selected, populate its children ──
-  const onPickRoot = (root: TaxRoot) => {
-    setSelectedRootId(root.id);
-    setCategoryId(root.id);
-    setChildCats(root.children ?? []);
-    setSelectedChildId("");
-    setGrandchildCats([]);
-  };
-
-  const onPickChild = (child: TaxChild) => {
-    setSelectedChildId(child.id);
-    setCategoryId(child.id);
-    setGrandchildCats([]);
-    // Try to fetch grandchildren via the public category endpoint.
-    // The endpoint may not return children, so we silently no-op on failure.
-    (async () => {
-      try {
-        const res = await fetch(`/api/taxonomy/categories/${child.id}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { category?: { children?: TaxChild[] } };
-        if (data.category?.children && data.category.children.length > 0) {
-          setGrandchildCats(data.category.children);
-        }
-      } catch {
-        /* no-op */
-      }
-    })();
-  };
-
-  const onPickGrandchild = (gc: TaxChild) => {
-    setCategoryId(gc.id);
-  };
-
   const isRent = transactionType === "RENT";
   const isAuction = transactionType === "AUCTION";
+  const isServiceRequest = transactionType === "SERVICE_REQUEST";
+  const isServiceOffer = transactionType === "SERVICE_OFFER";
+  // When the wizard's WANTED flow picks intent=SERVICE_REQUEST, the demand
+  // is a service demand and must use the SERVICE taxonomy (serviceRoots),
+  // service-type fields, and service-step labels — NOT the marketplace
+  // roots that the WANTED listing-type label would otherwise select.
+  const isWantedServiceRequest = transactionType === "WANTED" && wanted.intent === "SERVICE_REQUEST";
+  const isServiceFlow = isServiceRequest || isServiceOffer || isWantedServiceRequest;
+  const isMarketplaceFlow = isMarketplaceTransactionType(transactionType);
+  const isRequestFlow = isRequestTransactionType(transactionType);
+  const categoryRoots = isServiceFlow ? serviceRoots : isMarketplaceFlow ? marketplaceRoots : catalogRoots;
+
+  // P0 #1: when the WANTED intent changes, the category taxonomy may
+  // change (e.g. intent=SERVICE_REQUEST → serviceRoots vs marketplaceRoots).
+  // If the user already picked a category at Step 2 with a different
+  // intent, the category is now mismatched. Clear categoryId + related
+  // state so the user re-selects with the correct taxonomy roots.
+  const handleWantedIntentChange = (nextIntent: "SALE" | "RENT" | "SALE_AND_RENT" | "SERVICE_REQUEST") => {
+    if (wanted.intent === nextIntent) return;
+    setWanted((v) => ({ ...v, intent: nextIntent }));
+    // Only clear if a category was already chosen (avoid spurious clears
+    // when the user is just toggling before selecting a category).
+    if (categoryId || categoryPath.length > 0) {
+      setCategoryId("");
+      setCategoryPath([]);
+      setBrandId("");
+      setBrandQuery("");
+      setBrandResults([]);
+      setBrandOpen(false);
+      setModelId("");
+      setModels([]);
+      setAttributes({});
+      setAttributeDefs([]);
+      setAttributesLoaded(false);
+      setAttrErrors({});
+    }
+  };
+
+  const handleTransactionTypeChange = (nextType: string) => {
+    if (nextType === transactionType) return;
+    setTransactionType(nextType);
+    setServiceTypeId("");
+    setAuction({ reservePrice: "", minIncrement: "", startDate: "", endDate: "" });
+    setRfq({ quantity: "1", budgetMin: "", budgetMax: "", deadline: "", terms: "" });
+    setWanted({ intent: "SALE", quantity: "1", budgetMin: "", budgetMax: "", deadline: "" });
+    setCategoryId("");
+    setCategoryPath([]);
+    setBrandId("");
+    setBrandQuery("");
+    setBrandResults([]);
+    setBrandOpen(false);
+    setModelId("");
+    setModels([]);
+    setAttributes({});
+    setAttributeDefs([]);
+    setAttributesLoaded(false);
+    setAttrErrors({});
+    // P1 #4-#7: clear transaction-type-specific state that leaked across
+    // switches. Images, rental fields, form fields, and transient UI flags
+    // must not persist when the user picks a different transaction type.
+    setImages([]);
+    setStagedMediaAssets([]);
+    setImagesUploading(false);
+    setRental({ deposit: "", minimumRentalPeriod: "", operatorIncluded: false, fuelIncluded: false, transportIncluded: false, availabilityStart: "", availabilityEnd: "" });
+    setForm({ brandLabel: "", title: "", shortDesc: "", description: "", condition: "USED", year: "", hours: "", price: "", priceType: "NEGOTIABLE", rentalPeriod: "", serialNumber: "", sellerName: "", sellerPhone: "" });
+    setSubmitError(null);
+    setAttributeWarning(null);
+    setMediaWarning(null);
+    setMediaRepairEntityId(null);
+    setSubmitting(false);
+    setCreatedId(null);
+    setCreatedSlug(null);
+  };
 
   const canProceed = () => {
-    if (step === 1) return Boolean(transactionType);
+    if (step === 1) {
+      // P0-A: for WANTED, the intent MUST be selected at Step 1 before the
+      // user can proceed to Step 2 (category). The intent determines which
+      // taxonomy roots are shown (serviceRoots vs marketplaceRoots).
+      if (transactionType === "WANTED" && !wanted.intent) return false;
+      return Boolean(transactionType);
+    }
     if (step === 2) return Boolean(categoryId);
-    if (step === 3) {
-      // Required attributes must be filled before proceeding.
+    if (step === 3) return form.title.trim().length >= 5 && form.shortDesc.trim();
+    if (step === 4) {
+      // Category-specific attributes are loaded before the user can continue; brand/model are optional.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
       const errs = validateAttributeFields(attributeDefs, attributes);
-      return Object.keys(errs).length === 0;
+      // Fail closed: a selected category without a resolved technical form
+      // must never pass review as if its specifications were complete.
+      return attributesLoaded && Object.keys(errs).length === 0;
     }
-    if (step === 4) return Boolean(brandId) && form.title.trim().length >= 5 && form.shortDesc.trim();
-    if (step === 5) return Boolean(location.provinceId);
+    if (step === 5) {
+      if (!location.provinceId) return false;
+      if (!["SALE", "RENT", "AUCTION"].includes(transactionType)) return true;
+      const hasLatitude = Boolean(location.latitude?.trim());
+      const hasLongitude = Boolean(location.longitude?.trim());
+      if (hasLatitude !== hasLongitude) return false;
+      if (!hasLatitude) return true;
+      const latitude = Number(location.latitude);
+      const longitude = Number(location.longitude);
+      return Boolean(
+        location.cityId &&
+        Number.isFinite(latitude) &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        Number.isFinite(longitude) &&
+        longitude >= -180 &&
+        longitude <= 180
+      );
+    }
     if (step === 6) {
-      if (isRent) return form.price && form.rentalPeriod && images.length >= 1;
-      if (isAuction) return images.length >= 1; // auction price optional at submission
-      return form.price && images.length >= 1;
+      if (imagesUploading) return false;
+      if (isServiceFlow) {
+        // H.2.3 (P1 fix): WANTED + intent=SERVICE_REQUEST is a service-flow
+        // demand, but it MUST still satisfy the WANTED quantity / budget /
+        // deadline checks. Previously the `isServiceFlow` branch short-
+        // circuited to `Boolean(serviceTypeId)` and never reached the
+        // WANTED-specific block below, so a buyer could advance to the
+        // review step with an inverted/negative budget or an expired
+        // deadline. The server is the safety net, but the wizard must fail
+        // closed at the step that collects those fields.
+        if (!serviceTypeId) return false;
+        if (isWantedServiceRequest || isServiceRequest) {
+          const wq = Number(wanted.quantity);
+          const wmin = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\d]/g, "")) : null;
+          const wmax = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\d]/g, "")) : null;
+          const exactPrice = form.price.trim();
+          const hasExactPrice = exactPrice.length > 0;
+          const exactPriceValid = !hasExactPrice || /^\d+$/.test(exactPrice);
+          const exactPriceConflictsWithRange = hasExactPrice && (wmin !== null || wmax !== null);
+          const wdeadline = wanted.deadline ? new Date(`${wanted.deadline}T23:59:00`) : null;
+          return Number.isInteger(wq) && wq >= 1 && wq <= 10000 &&
+            (wmin === null || wmin >= 0n) &&
+            (wmax === null || wmax >= 0n) &&
+            (wmin === null || wmax === null || wmin <= wmax) &&
+            exactPriceValid &&
+            !exactPriceConflictsWithRange &&
+            (!wdeadline || (!Number.isNaN(wdeadline.getTime()) && wdeadline.getTime() > Date.now()));
+        }
+        return true;
+      }
+      if (transactionType === "QUOTE") {
+        const quantity = Number(rfq.quantity);
+        const min = rfq.budgetMin ? BigInt(rfq.budgetMin.replace(/[^\d]/g, "")) : null;
+        const max = rfq.budgetMax ? BigInt(rfq.budgetMax.replace(/[^\d]/g, "")) : null;
+        return Number.isInteger(quantity) && quantity >= 1 && quantity <= 10000 &&
+          (min === null || min >= 0n) &&
+          (max === null || max >= 0n) &&
+          (min === null || max === null || min <= max);
+      }
+      if (transactionType === "WANTED") {
+        const quantity = Number(wanted.quantity);
+        const min = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\d]/g, "")) : null;
+        const max = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\d]/g, "")) : null;
+        const exactPrice = form.price.trim();
+        const hasExactPrice = exactPrice.length > 0;
+        const exactPriceValid = !hasExactPrice || /^\d+$/.test(exactPrice);
+        const exactPriceConflictsWithRange = hasExactPrice && (min !== null || max !== null);
+        const deadline = wanted.deadline ? new Date(`${wanted.deadline}T23:59:00`) : null;
+        return Number.isInteger(quantity) && quantity >= 1 && quantity <= 10000 &&
+          (min === null || min >= 0n) &&
+          (max === null || max >= 0n) &&
+          (min === null || max === null || min <= max) &&
+          exactPriceValid &&
+          !exactPriceConflictsWithRange &&
+          (!deadline || (!Number.isNaN(deadline.getTime()) && deadline.getTime() > Date.now()));
+      }
+      if (isRequestFlow) return true;
+      if (isRent) {
+        // P1 fix (H.2.4d): treat price "0" / non-digit as invalid client-side
+        // (previously the string "0" was truthy and passed gating, only to be
+        // rejected by the server at submit time).
+        const rentPriceOk = Boolean(form.price) && /^\d+$/.test(String(form.price).replace(/[^\d]/g, "")) && BigInt(String(form.price).replace(/[^\d]/g, "") || "0") > 0n;
+        return Boolean(rentPriceOk && form.rentalPeriod && images.length >= 1);
+      }
+      if (isAuction) {
+        // H.2.4d (P1 fix): mirror the server-side auction sanity checks
+        // client-side (startPrice>0, minIncrement>0, reservePrice>=startPrice,
+        // endDate>startDate, startDate not far in the past) so the user gets
+        // inline feedback instead of a submit-time 400.
+        if (!(form.price && auction.minIncrement && auction.startDate && auction.endDate && images.length >= 1)) return false;
+        const startPrice = BigInt(String(form.price).replace(/[^\d]/g, "") || "0");
+        const minInc = BigInt(String(auction.minIncrement).replace(/[^\d]/g, "") || "0");
+        if (startPrice <= 0n || minInc <= 0n) return false;
+        if (auction.reservePrice) {
+          const reserve = BigInt(String(auction.reservePrice).replace(/[^\d]/g, "") || "0");
+          if (reserve < startPrice) return false;
+        }
+        const s = new Date(auction.startDate);
+        const e = new Date(auction.endDate);
+        if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return false;
+        if (e.getTime() <= s.getTime()) return false;
+        // Allow up to 5 min clock skew (server allows 60s; be lenient here).
+        if (s.getTime() < Date.now() - 5 * 60 * 1000) return false;
+        return true;
+      }
+      // SALE (default): price must be a positive integer string ("0" is not
+      // a valid price). See H.2.4d for the rationale.
+      const salePriceOk = Boolean(form.price) && /^\d+$/.test(String(form.price).replace(/[^\d]/g, "")) && BigInt(String(form.price).replace(/[^\d]/g, "") || "0") > 0n;
+      return Boolean(salePriceOk && images.length >= 1);
     }
     return true;
   };
@@ -325,15 +577,29 @@ export default function NewListingPage() {
   const next = () => canProceed() && setStep((s) => Math.min(7, s + 1));
   const back = () => setStep((s) => Math.max(1, s - 1));
 
+  // H.2.4e: stable idempotency key for the current submission attempt.
+  // Generated lazily on first submit and reused on retry so the server
+  // resolves a network-blip resubmission to the prior result instead of
+  // creating a duplicate. Cleared on definitive success so the next
+  // (separate) submission gets a fresh key. A 400/validation failure does
+  // NOT clear the key — but no audit row was written, so the next attempt
+  // is still a fresh create (findIdempotentResult returns null).
+  const idempotencyKeyRef = useRef<string | null>(null);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
     setAttributeWarning(null);
     setSubmitting(true);
     try {
-      // Look up province/city names for storage (Listing.province/city are String?).
-      // We can't easily resolve names from the client without another fetch, so
-      // we pass province/city IDs and let the server fall back if needed.
+      // Build the typed attribute payload before creating the listing. The
+      // server validates and persists it in the same transaction as the listing.
+      const defs = attributeDefs.length > 0
+        ? attributeDefs
+        : (categoryId ? getCachedAttributes(categoryId, modelId) ?? [] : []);
+      const attributePayload = buildAttributePayload(defs, attributes);
+
+      // Location IDs are resolved and validated server-side.
       const body: Record<string, unknown> = {
         title: form.title.trim(),
         description: form.description.trim() || undefined,
@@ -350,17 +616,59 @@ export default function NewListingPage() {
         rentalPeriod: isRent ? form.rentalPeriod : undefined,
         province: location.provinceId || undefined,
         city: location.cityId || undefined,
+        countryId: location.countryId || undefined,
         provinceId: location.provinceId || undefined,
         cityId: location.cityId || undefined,
+        locationLatitude: ["SALE", "RENT", "AUCTION"].includes(transactionType) && location.latitude?.trim() ? Number(location.latitude) : undefined,
+        locationLongitude: ["SALE", "RENT", "AUCTION"].includes(transactionType) && location.longitude?.trim() ? Number(location.longitude) : undefined,
         brandId: brandId || undefined,
         categoryId: categoryId || undefined,
         modelId: modelId || undefined,
         serialNumber: form.serialNumber || undefined,
         sellerName: form.sellerName || undefined,
         sellerPhone: form.sellerPhone || undefined,
-        attributes,
-        images: images.map((url) => ({ url })),
+        serviceTypeId: isServiceFlow ? serviceTypeId : undefined,
+        attributeValues: attributePayload,
+        // Demand media is canonicalized by staged asset IDs, not client-provided URLs; isolated acceptance runs are commit-marker gated.
+        images: transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? undefined : images.map((url) => ({ url })),
       };
+
+
+      const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST";
+      if (isDemandSubmission) {
+        // Demand media is persisted from the server-owned staging manifest;
+        // never send client URLs as the canonical BuyRequest image record.
+        body.assetIds = stagedMediaAssets.map((asset) => asset.assetId);
+        // BuyRequest has one canonical description field; preserve the wizard summary too.
+        body.description = [form.shortDesc.trim(), form.description.trim()].filter(Boolean).join("\n\n") || undefined;
+        body.listingType = "WANTED";
+        body.transactionType = "WANTED";
+        body.intent = transactionType === "SERVICE_REQUEST" ? "SERVICE_REQUEST" : wanted.intent;
+        body.quantity = Number(wanted.quantity);
+        body.budgetMin = wanted.budgetMin || undefined;
+        body.budgetMax = wanted.budgetMax || undefined;
+        body.deadline = wanted.deadline
+          ? new Date(`${wanted.deadline}T23:59:00`).toISOString()
+          : undefined;
+      }
+      if (transactionType === "QUOTE") {
+        body.rfq = {
+          quantity: Number(rfq.quantity),
+          budgetMin: rfq.budgetMin || undefined,
+          budgetMax: rfq.budgetMax || undefined,
+          deadline: rfq.deadline ? new Date(`${rfq.deadline}T23:59:00`).toISOString() : undefined,
+          terms: rfq.terms.trim() || undefined,
+        };
+      }
+      if (isAuction) {
+        body.auction = {
+          startPrice: form.price.replace(/[^\d]/g, ""),
+          reservePrice: auction.reservePrice || undefined,
+          minIncrement: auction.minIncrement,
+          startDate: new Date(auction.startDate).toISOString(),
+          endDate: new Date(auction.endDate).toISOString(),
+        };
+      }
 
       // P2-5b — Rental fields (sent only when transactionType=RENT).
       if (isRent) {
@@ -373,57 +681,80 @@ export default function NewListingPage() {
         body.availabilityEnd = rental.availabilityEnd || undefined;
       }
 
-      const res = await fetch("/api/listings", {
+      const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings";
+      // Generate (or reuse) the idempotency key for this submission.
+      if (!idempotencyKeyRef.current) {
+        idempotencyKeyRef.current =
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `k${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+      }
+      const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKeyRef.current,
+        },
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
+      if (!res.ok || !(data.ok || data.success)) {
         setSubmitError(data.error ?? "ثبت آگهی ناموفق بود. لطفاً دوباره تلاش کنید.");
         return;
       }
 
-      // ── Attribute save — fire after the listing row exists. ──
-      // We always have the listing id (from the POST response). Use the
-      // cached attribute definitions (the AttributeFields component populates
-      // the cache on mount) or fall back to the defs captured via the
-      // onAttributesLoaded callback.
-      const defs = attributeDefs.length > 0
-        ? attributeDefs
-        : (categoryId ? getCachedAttributes(categoryId) ?? [] : []);
-      const payload = buildAttributePayload(defs, attributes);
-      if (payload.length > 0 && data.id) {
-        try {
-          const attrRes = await fetch(
-            `/api/listings/${encodeURIComponent(data.id)}/attributes`,
-            {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ values: payload }),
-            },
-          );
-          if (!attrRes.ok) {
-            const attrData = await attrRes.json().catch(() => ({}));
-            setAttributeWarning(
-              attrData?.error
-                ? `ذخیرهٔ ویژگی‌ها ناموفق بود: ${attrData.error} — آگهی ثبت شد ولی ویژگی‌ها ذخیره نشدند.`
-                : "ذخیرهٔ ویژگی‌ها ناموفق بود — آگهی ثبت شد ولی ویژگی‌ها ذخیره نشدند. می‌توانید بعداً ویرایش کنید.",
-            );
-          }
-        } catch (attrErr: any) {
-          setAttributeWarning(
-            `آگهی ثبت شد ولی ذخیرهٔ ویژگی‌ها با خطا مواجه شد: ${attrErr?.message ?? "خطای شبکه"}. بعداً از پنل کاربری ویرایش کنید.`,
-          );
-        }
+      if (data.mediaStatus === "PENDING" && data.id) {
+        setMediaRepairEntityId(String(data.id));
+        const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی";
+        setMediaWarning(
+          `${Number(data.mediaPendingCount) || 0} تصویر ثبت شده اما انتقال نهایی آن‌ها کامل نشده است. ${mediaEntityLabel} ذخیره شده است؛ می‌توانید بازیابی تصاویر را دوباره امتحان کنید.`,
+        );
       }
-
+      // P0-B: always capture the created id + slug for the success-screen link.
+      if (data.id) setCreatedId(String(data.id));
+      if (data.slug) setCreatedSlug(String(data.slug));
+      // Success is definitive — clear the idempotency key so a future,
+      // separate submission cannot accidentally replay this one.
+      idempotencyKeyRef.current = null;
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err: any) {
       setSubmitError(err?.message ?? "خطای شبکه — اتصال اینترنت را بررسی کنید.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const retryMediaAttachment = async () => {
+    if (!mediaRepairEntityId || mediaRepairing) return;
+    setMediaRepairing(true);
+    setMediaWarning(null);
+    try {
+      const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST";
+      const mediaRetryPath = isDemandSubmission
+        ? `/api/wanted/${encodeURIComponent(mediaRepairEntityId)}/media`
+        : `/api/listings/${encodeURIComponent(mediaRepairEntityId)}/media`;
+      const response = await fetch(mediaRetryPath, { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok && response.status !== 202) {
+        throw new Error(result.error ?? "بازیابی تصاویر ناموفق بود.");
+      }
+      if (Number(result.pendingCount) > 0) {
+        const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی";
+        setMediaWarning(
+          `${result.pendingCount} تصویر هنوز منتقل نشده است. بعداً دوباره تلاش کنید؛ ${mediaEntityLabel} شما ذخیره شده است.`,
+        );
+      } else {
+        const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی";
+        setMediaWarning(`همه تصاویر با موفقیت به ${mediaEntityLabel} متصل شدند.`);
+        setMediaRepairEntityId(null);
+      }
+    } catch (error) {
+      setMediaWarning(
+        error instanceof Error ? error.message : "بازیابی تصاویر با خطا مواجه شد.",
+      );
+    } finally {
+      setMediaRepairing(false);
     }
   };
 
@@ -449,11 +780,38 @@ export default function NewListingPage() {
           {submitted ? (
             <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/[0.06] p-10 text-center">
               <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-emerald-400" />
-              <h1 className="text-2xl font-black text-white">آگهی شما ثبت شد!</h1>
+              <h1 className="text-2xl font-black text-white">
+                {transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? "درخواست شما ثبت شد!" : "آگهی شما ثبت شد!"}
+              </h1>
+              {/* H.1: show the created id + status so the user can verify */}
+              {createdId && (
+                <p className="mt-2 text-xs text-white/40">
+                  شناسه: <span className="font-mono text-white/60">{createdId}</span>
+                  {" · "}
+                  وضعیت: <span className="font-bold text-amber-300">در انتظار بررسی</span>
+                </p>
+              )}
               <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-white/55">
-                آگهی شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. در صورت تأیید، در صفحهٔ
-                آگهی‌ها نمایش داده می‌شود و وارد کمپین «فروش در ۷ روز» می‌گردد.
+                {transactionType === "WANTED" || transactionType === "SERVICE_REQUEST"
+                  ? "درخواست شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. پس از تأیید، در فهرست درخواست‌های شما نمایش داده می‌شود و برای تطبیق با عرضه‌های مرتبط در دسترس قرار می‌گیرد."
+                  : "آگهی شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. در صورت تأیید، در صفحهٔ آگهی‌ها نمایش داده می‌شود و وارد کمپین «فروش در ۷ روز» می‌گردد."}
               </p>
+              {mediaWarning && (
+                <div className="mx-auto mt-5 max-w-md rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-right text-xs leading-6 text-amber-200">
+                  <div>{mediaWarning}</div>
+                  {mediaRepairEntityId && (
+                    <button
+                      type="button"
+                      onClick={retryMediaAttachment}
+                      disabled={mediaRepairing}
+                      className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#F58220] px-4 py-2 font-bold text-white disabled:opacity-60"
+                    >
+                      {mediaRepairing && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {mediaRepairing ? "در حال بازیابی..." : "تلاش مجدد برای اتصال تصاویر"}
+                    </button>
+                  )}
+                </div>
+              )}
               {attributeWarning && (
                 <div className="mx-auto mt-5 flex max-w-md items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-right">
                   <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
@@ -463,9 +821,27 @@ export default function NewListingPage() {
                 </div>
               )}
               <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                {/* P0-B: link to the created listing/request so the user can
+                    verify it was saved (not just a generic /listings link). */}
+                {createdSlug && transactionType !== "WANTED" && (
+                  <Link
+                    href={`/listings/${createdSlug}`}
+                    className="rounded-xl bg-[#F58220] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
+                  >
+                    مشاهده آگهی ثبت‌شده
+                  </Link>
+                )}
+                {createdId && (transactionType === "WANTED" || transactionType === "SERVICE_REQUEST") && (
+                  <Link
+                    href="/dashboard/wanted"
+                    className="rounded-xl bg-[#F58220] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
+                  >
+                    مشاهده درخواست در داشبورد
+                  </Link>
+                )}
                 <Link
                   href="/listings"
-                  className="rounded-xl bg-[#F58220] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
+                  className="rounded-xl border border-white/15 px-6 py-3 text-sm font-bold text-white/80 transition hover:text-white"
                 >
                   مشاهده آگهی‌ها
                 </Link>
@@ -486,10 +862,10 @@ export default function NewListingPage() {
                     <Sparkles className="h-3.5 w-3.5" />
                     HEAVIX LISTING · TAXONOMY V1.1
                   </span>
-                  <h1 className="text-3xl font-black text-white lg:text-4xl">ثبت آگهی ماشین‌آلات</h1>
+                  <h1 className="text-3xl font-black text-white lg:text-4xl">ثبت آگهی در بازار صنعتی HEAVIX</h1>
                   <p className="mt-2 max-w-xl text-sm leading-7 text-white/45">
-                    در ۷ مرحله ساده، دستگاه خود را در بزرگ‌ترین بازار ماشین‌آلات سنگین ایران ثبت کنید.
-                    نوع معامله، دسته‌بندی، ویژگی‌ها و موقعیت را تعیین کنید.
+                    در ۷ مرحله، کالا، مواد معدنی، خدمات یا فرصت صنعتی خود را معرفی کنید.
+                    نوع فعالیت، موضوع، مشخصات و موقعیت را متناسب با نیازتان ثبت کنید.
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -554,12 +930,44 @@ export default function NewListingPage() {
                       subtitle="نوع معامله‌ای که می‌خواهید ثبت کنید را انتخاب کنید"
                     />
                     <div className="mt-6">
-                      <TransactionTypePicker value={transactionType} onChange={setTransactionType} />
+                      <TransactionTypePicker value={transactionType} onChange={handleTransactionTypeChange} />
                     </div>
+
+                    {/* P0-A: WANTED intent selector MOVED to Step 1 — BEFORE category selection.
+                        The intent (buy/rent/service) determines which taxonomy roots are shown
+                        at Step 2 (serviceRoots for SERVICE_REQUEST, marketplaceRoots otherwise).
+                        Moving it here ensures the category is always chosen with the correct
+                        taxonomy, eliminating the mismatch where a MARKETPLACE category was
+                        paired with a SERVICE_REQUEST intent. The user MUST pick an intent
+                        before proceeding (canProceed enforces it). */}
+                    {transactionType === "WANTED" && (
+                      <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
+                        <label className={labelCls}>نوع تقاضا *</label>
+                        <div className="flex flex-wrap gap-2">
+                          {([
+                            { v: "SALE", l: "خرید" },
+                            { v: "RENT", l: "اجاره" },
+                            { v: "SALE_AND_RENT", l: "خرید/اجاره" },
+                            { v: "SERVICE_REQUEST", l: "خدمات" },
+                          ] as const).map((t) => (
+                            <button
+                              key={t.v}
+                              type="button"
+                              onClick={() => handleWantedIntentChange(t.v)}
+                              className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${wanted.intent === t.v ? "border-amber-400 bg-amber-400/15 text-amber-200" : "border-white/10 bg-white/[0.03] text-white/60 hover:border-white/20"}`}
+                            >
+                              {t.l}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-xs text-white/45">نوع تقاضا تعیین می‌کند این درخواست با کدام آگهی‌های عرضه تطبیق داده شود (خرید ← فروش/مزایده، اجاره ← اجاره، خدمات ← ارائه خدمت). این انتخاب باید پیش از انتخاب دسته‌بندی انجام شود.</p>
+                      </div>
+                    )}
+
                     <p className="mt-4 rounded-xl border border-white/10 bg-black/30 p-3 text-[11px] leading-5 text-white/50">
-                      نوع معامله فیلد جریان را تعیین می‌کند: «فروش» و «اجاره» برای کاتالوگ ماشین‌آلات،
-                      «درخواست» برای درخواست خرید، «پیشنهاد قیمت» برای RFQ، «مزایده» برای حراج،
-                      و «درخواست خدمت» برای خدمات فنی.
+                      نوع فعالیت، مسیر ثبت را تعیین می‌کند: عرضه یا درخواست کالا و تجهیزات، اجاره دارایی،
+                      استعلام قیمت و مزایده به‌عنوان روش معامله، یا معرفی خدمت و ثبت درخواست خدمت.
+                      دسته‌بندی و مشخصات بعدی بر اساس موضوع انتخاب‌شده تنظیم می‌شوند.
                     </p>
                   </div>
                 )}
@@ -569,113 +977,61 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<Layers3 className="h-5 w-5" />}
-                      title="دسته‌بندی کاتالوگ"
-                      subtitle="دسته، زیردسته و زیر-زیردسته دستگاه را انتخاب کنید (فقط لایه CATALOG)"
+                      title={isServiceFlow ? "دسته‌بندی خدمات" : "دسته‌بندی موضوع آگهی"}
+                      subtitle={isServiceFlow
+                        ? "حوزه خدمت، زیرحوزه و خدمت تخصصی موردنظر را انتخاب کنید"
+                        : "موضوع، گروه و زیرگروه مرتبط با کالا، ماده معدنی یا فعالیت صنعتی را انتخاب کنید"}
                     />
 
-                    {catalogRoots.length === 0 ? (
+                    {taxonomyLoading ? (
                       <div className="mt-6 rounded-xl border border-white/10 bg-black/30 p-6 text-center text-sm text-white/50">
-                        در حال بارگذاری دسته‌بندی‌ها… اگر ظاهر نشد، ابتدا دسته‌های کاتالوگ را در پنل مدیریت اضافه کنید.
+                        <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-[#F58220]" />
+                        در حال بارگذاری دسته‌بندی‌ها…
+                      </div>
+                    ) : taxonomyError ? (
+                      <div role="alert" className="mt-6 rounded-xl border border-red-500/30 bg-red-500/[0.06] p-5 text-center text-sm text-red-200">
+                        <p>{taxonomyError}</p>
+                        <button type="button" onClick={() => setTaxonomyRetryKey((current) => current + 1)} className="mt-3 rounded-lg border border-red-300/30 px-4 py-2 font-bold hover:bg-red-300/10">
+                          تلاش مجدد
+                        </button>
+                      </div>
+                    ) : categoryRoots.length === 0 ? (
+                      <div className="mt-6 rounded-xl border border-white/10 bg-black/30 p-6 text-center text-sm text-white/50">
+                        هنوز دسته‌بندی فعالی برای این نوع معامله تعریف نشده است.
                       </div>
                     ) : (
-                      <div className="mt-6 space-y-6">
-                        {/* Level 0 — roots */}
-                        <div>
-                          <label className={labelCls}>دسته اصلی</label>
-                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                            {catalogRoots.map((c) => (
-                              <button
-                                key={c.id}
-                                type="button"
-                                onClick={() => onPickRoot(c)}
-                                className={`flex flex-col items-center gap-2 rounded-2xl border p-4 transition ${
-                                  selectedRootId === c.id
-                                    ? "border-[#F58220] bg-[#F58220]/10"
-                                    : "border-white/10 bg-black/30 hover:border-white/25"
-                                }`}
-                              >
-                                <span className="text-2xl">{c.icon ?? "🚜"}</span>
-                                <span className="text-xs font-bold text-white">{c.name}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Level 1 — children */}
-                        {childCats.length > 0 && (
-                          <div className="border-t border-white/10 pt-5">
-                            <label className={labelCls}>زیردسته</label>
-                            <div className="flex flex-wrap gap-2">
-                              {childCats.map((sub) => (
-                                <button
-                                  key={sub.id}
-                                  type="button"
-                                  onClick={() => onPickChild(sub)}
-                                  className={`rounded-full border px-4 py-2 text-xs font-bold transition ${
-                                    selectedChildId === sub.id
-                                      ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
-                                      : "border-white/10 text-white/60 hover:text-white"
-                                  }`}
-                                >
-                                  {sub.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Level 2 — grandchildren (if any) */}
-                        {grandchildCats.length > 0 && (
-                          <div className="border-t border-white/10 pt-5">
-                            <label className={labelCls}>زیر-زیردسته</label>
-                            <div className="flex flex-wrap gap-2">
-                              {grandchildCats.map((gc) => (
-                                <button
-                                  key={gc.id}
-                                  type="button"
-                                  onClick={() => onPickGrandchild(gc)}
-                                  className={`rounded-full border px-4 py-2 text-xs font-bold transition ${
-                                    categoryId === gc.id
-                                      ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
-                                      : "border-white/10 text-white/60 hover:text-white"
-                                  }`}
-                                >
-                                  {gc.name}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {categoryId && (
-                          <div className="rounded-xl border border-[#F58220]/20 bg-[#F58220]/[0.04] p-3 text-[11px] text-white/60">
-                            دستهٔ انتخاب‌شده:{" "}
-                            <span className="font-bold text-[#F58220]">
-                              {catalogRoots.find((r) => r.id === selectedRootId)?.name ?? ""}
-                              {selectedChildId ? " / " : ""}
-                              {childCats.find((c) => c.id === selectedChildId)?.name ?? ""}
-                              {grandchildCats.find((gc) => gc.id === categoryId)?.name
-                                ? " / " + grandchildCats.find((gc) => gc.id === categoryId)?.name
-                                : ""}
-                            </span>
-                          </div>
-                        )}
+                      <div className="mt-6">
+                        <CascadingCategoryPicker
+                          roots={categoryRoots}
+                          value={categoryId}
+                          selectedPath={categoryPath}
+                          onChange={(id, selectedPath) => {
+                            setCategoryId(id);
+                            setCategoryPath(selectedPath);
+                            setAttributes({});
+                            setAttributeDefs([]);
+                            setAttributesLoaded(false);
+                            setAttrErrors({});
+                            setModelId("");
+                          }}
+                        />
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* ───── STEP 3: ATTRIBUTES (dynamic) ───── */}
-                {step === 3 && (
+                {/* ───── STEP 4: TECHNICAL ATTRIBUTES (after brand/model) ───── */}
+                {step === 4 && (
                   <div>
                     <SectionTitle
                       icon={<Sliders className="h-5 w-5" />}
-                      title="ویژگی‌های دستگاه"
-                      subtitle="ویژگی‌های اختصاصی دستهٔ انتخاب‌شده را پر کنید"
+                      title={isServiceFlow ? (isServiceOffer ? "مشخصات خدمت قابل ارائه" : "مشخصات درخواست خدمت") : "مشخصات تخصصی موضوع آگهی"}
+                      subtitle={`مشخصات متناسب با ${categoryPath.map((item) => item.name).join(" / ") || "موضوع انتخاب‌شده"}${form.brandLabel ? ` — ${form.brandLabel}` : ""}${models.find((m) => m.id === modelId)?.name ? ` ${models.find((m) => m.id === modelId)?.name}` : ""}`}
                     />
                     <div className="mt-6">
                       <AttributeFields
                         categoryId={categoryId || null}
+                        modelId={modelId || null}
                         values={attributes}
                         onChange={(next) => {
                           setAttributes(next);
@@ -683,9 +1039,14 @@ export default function NewListingPage() {
                           setAttrErrors(validateAttributeFields(attributeDefs, next));
                         }}
                         errors={attrErrors}
-                        onAttributesLoaded={(defs) => setAttributeDefs(defs)}
+                        onAttributesLoaded={(defs) => { setAttributeDefs(defs); setAttributesLoaded(true); }}
                       />
                     </div>
+                    {attributesLoaded && attributeDefs.length === 0 && (
+                      <div role="status" className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-white/55">
+                        برای این دسته‌بندی ویژگی فنی فعالی تعریف نشده است؛ می‌توانید بدون مشخصات فنی ادامه دهید. در صورت نیاز، مدیر سامانه می‌تواند بعداً ویژگی‌های این دسته‌بندی را تنظیم کند.
+                      </div>
+                    )}
                     <p className="mt-4 text-[11px] text-white/40">
                       ویژگی‌های دارای علامت * الزامی هستند. ویژگی‌های «فیلترپذیر» در صفحهٔ آگهی‌ها قابل
                       فیلتر کردن خواهند بود.
@@ -693,17 +1054,19 @@ export default function NewListingPage() {
                   </div>
                 )}
 
-                {/* ───── STEP 4: BRAND + MODEL + BASIC INFO ───── */}
-                {step === 4 && (
+                {/* ───── STEP 3: BRAND + MODEL + BASIC INFO ───── */}
+                {step === 3 && (
                   <div>
                     <SectionTitle
                       icon={<Truck className="h-5 w-5" />}
-                      title="برند، مدل و اطلاعات پایه"
-                      subtitle="برند، مدل، عنوان و توضیحات آگهی"
+                      title={isServiceFlow ? (isServiceOffer ? "معرفی خدمت و ارائه‌دهنده" : "اطلاعات درخواست خدمت") : "اطلاعات پایه و برند/مدل اختیاری"}
+                      subtitle={isServiceFlow
+                        ? (isServiceOffer ? "خدمت قابل ارائه، تخصص، دامنه کار و اطلاعات ارائه‌دهنده را ثبت کنید" : "عنوان و شرح نیاز خود را ثبت کنید؛ برند در صورت ارتباط اختیاری است")
+                         : "عنوان و شرح را تکمیل کنید؛ انتخاب برند و مدل فقط در صورت ارتباط با موضوع آگهی لازم است"}
                     />
                     <div className="mt-6 space-y-5">
                       <div ref={brandWrapRef} className="relative">
-                        <label className={labelCls}>برند *</label>
+                        <label className={labelCls}>برند مرتبط (اختیاری)</label>
                         <div className="relative">
                           <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
                           <input
@@ -711,6 +1074,12 @@ export default function NewListingPage() {
                             onChange={(e) => {
                               setBrandQuery(e.target.value);
                               setBrandId("");
+                              setModelId("");
+                              setModels([]);
+                              setAttributes({});
+                              setAttributeDefs([]);
+                              setAttributesLoaded(false);
+                              setAttrErrors({});
                               setForm((f) => ({ ...f, brandLabel: e.target.value }));
                             }}
                             onFocus={() => brandResults.length > 0 && setBrandOpen(true)}
@@ -744,6 +1113,14 @@ export default function NewListingPage() {
                           <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[#F58220]/30 bg-[#F58220]/10 px-3 py-1 text-xs font-bold text-[#F58220]">
                             <Check className="h-3 w-3" />
                             {form.brandLabel}
+                          </div>
+                        )}
+                        {brandError && (
+                          <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-300">
+                            <span>{brandError}</span>
+                            <button type="button" onClick={() => setBrandRetryKey((key) => key + 1)} className="font-bold text-[#F58220] underline">
+                              تلاش مجدد
+                            </button>
                           </div>
                         )}
 
@@ -803,7 +1180,13 @@ export default function NewListingPage() {
                         <div className="relative">
                           <select
                             value={modelId}
-                            onChange={(e) => setModelId(e.target.value)}
+                            onChange={(e) => {
+                              setModelId(e.target.value);
+                              setAttributes({});
+                              setAttributeDefs([]);
+                              setAttributesLoaded(false);
+                              setAttrErrors({});
+                            }}
                             disabled={!brandId || modelsLoading}
                             className={inputCls}
                           >
@@ -825,6 +1208,14 @@ export default function NewListingPage() {
                             <Loader2 className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-[#F58220]" />
                           )}
                         </div>
+                        {modelsError && (
+                          <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-300">
+                            <span>{modelsError}</span>
+                            <button type="button" onClick={() => setModelsRetryKey((key) => key + 1)} className="font-bold text-[#F58220] underline">
+                              تلاش مجدد
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -861,30 +1252,32 @@ export default function NewListingPage() {
                         />
                       </div>
 
-                      <div>
-                        <label className={labelCls}>وضعیت دستگاه</label>
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { v: "NEW", l: "نو" },
-                            { v: "USED", l: "کارکرده" },
-                            { v: "REFURBISHED", l: "بازسازی‌شده" },
-                            { v: "FOR_PARTS", l: "قطعات" },
-                          ].map((o) => (
-                            <button
-                              key={o.v}
-                              type="button"
-                              onClick={() => set("condition", o.v)}
-                              className={`rounded-xl border px-4 py-2 text-xs font-bold transition ${
-                                form.condition === o.v
-                                  ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
-                                  : "border-white/10 text-white/60 hover:text-white"
-                              }`}
-                            >
-                              {o.l}
-                            </button>
-                          ))}
+                      {!isServiceFlow && (
+                        <div>
+                          <label className={labelCls}>وضعیت دستگاه</label>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { v: "NEW", l: "نو" },
+                              { v: "USED", l: "کارکرده" },
+                              { v: "REFURBISHED", l: "بازسازی‌شده" },
+                              { v: "FOR_PARTS", l: "قطعات" },
+                            ].map((o) => (
+                              <button
+                                key={o.v}
+                                type="button"
+                                onClick={() => set("condition", o.v)}
+                                className={`rounded-xl border px-4 py-2 text-xs font-bold transition ${
+                                  form.condition === o.v
+                                    ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"
+                                    : "border-white/10 text-white/60 hover:text-white"
+                                }`}
+                              >
+                                {o.l}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -894,11 +1287,15 @@ export default function NewListingPage() {
                   <div>
                     <SectionTitle
                       icon={<MapPin className="h-5 w-5" />}
-                      title="موقعیت دستگاه"
-                      subtitle="کشور، استان و شهر دستگاه را انتخاب کنید (پیش‌فرض: ایران)"
+                      title="موقعیت کالا، خدمت یا پروژه"
+                      subtitle="کشور، استان و شهر مرتبط با عرضه یا درخواست را انتخاب کنید (پیش‌فرض: ایران)"
                     />
                     <div className="mt-6">
-                      <LocationPicker value={location} onChange={setLocation} />
+                      <LocationPicker
+                        value={location}
+                        onChange={setLocation}
+                        showExactPoint={["SALE", "RENT", "AUCTION"].includes(transactionType)}
+                      />
                     </div>
                     <p className="mt-4 text-[11px] text-white/40">
                       موقعیت به‌عنوان بعد مستقل در تاکسونومی V1.1 ذخیره می‌شود و در فیلتر آگهی‌ها
@@ -914,63 +1311,188 @@ export default function NewListingPage() {
                       icon={<PackageCheck className="h-5 w-5" />}
                       title="جزئیات آگهی"
                       subtitle={
-                        isRent
-                          ? "دوره اجاره، قیمت اجاره و تصاویر"
-                          : isAuction
-                            ? "قیمت پایه مزایده و تصاویر"
-                            : "قیمت، تصاویر و اطلاعات تماس"
+                        isServiceFlow
+                          ? (isServiceOffer ? "شرح خدمت قابل ارائه، اطلاعات تماس و نمونه‌کارهای اختیاری" : "شرح درخواست، اطلاعات تماس و مستندات اختیاری")
+                          : isRequestFlow
+                            ? "شرح درخواست خرید یا استعلام قیمت؛ بودجه و تصاویر اختیاری هستند"
+                          : isRent
+                            ? "دوره اجاره، قیمت اجاره و تصاویر"
+                            : isAuction
+                              ? "قیمت پایه مزایده و تصاویر"
+                              : "قیمت، تصاویر و اطلاعات تماس"
                       }
                     />
                     <div className="mt-6 space-y-5">
-                      <div className="grid gap-5 sm:grid-cols-2">
-                        <div>
-                          <label className={labelCls}>سال ساخت</label>
-                          <input
-                            value={form.year}
-                            onChange={(e) => set("year", e.target.value)}
-                            placeholder="مثلاً: 2019"
-                            dir="ltr"
-                            className={inputCls}
-                          />
-                        </div>
-                        <div>
-                          <label className={labelCls}>ساعت کارکرد</label>
-                          <input
-                            value={form.hours}
-                            onChange={(e) => set("hours", e.target.value)}
-                            placeholder="مثلاً: 4200"
-                            dir="ltr"
-                            className={inputCls}
-                          />
-                        </div>
-                        <div>
-                          <label className={labelCls}>
-                            {isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
-                            {!isAuction && "*"}
-                          </label>
-                          <input
-                            value={form.price}
-                            onChange={(e) => set("price", e.target.value)}
-                            placeholder="مثلاً: 8500000000"
-                            dir="ltr"
-                            className={inputCls}
-                          />
-                        </div>
-                        <div>
-                          <label className={labelCls}>نوع قیمت</label>
+                      {isServiceFlow && (
+                        <div className="rounded-2xl border border-[#F58220]/20 bg-[#F58220]/[0.04] p-5">
+                          <label className={labelCls}>نوع خدمت تخصصی *</label>
                           <select
-                            value={isAuction ? "AUCTION" : form.priceType}
-                            onChange={(e) => set("priceType", e.target.value)}
-                            disabled={isAuction}
+                            value={serviceTypeId}
+                            onChange={(e) => setServiceTypeId(e.target.value)}
                             className={inputCls}
+                            disabled={taxonomyLoading}
                           >
-                            <option value="NEGOTIABLE">توافقی</option>
-                            <option value="FIXED">مقطوع</option>
-                            <option value="CALL_FOR_PRICE">تماس بگیرید</option>
-                            <option value="AUCTION">مزایده</option>
+                            <option value="">انتخاب نوع خدمت</option>
+                            {serviceTypes.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.nameFa}{item.nameEn ? ` — ${item.nameEn}` : ""}
+                              </option>
+                            ))}
                           </select>
+                          {serviceTypes.length === 0 && !taxonomyLoading && (
+                            <p role="alert" className="mt-2 text-xs text-amber-300">
+                              نوع خدمت فعالی ثبت نشده است. ابتدا فهرست را دوباره دریافت کنید.
+                              <button type="button" onClick={() => setTaxonomyRetryKey((key) => key + 1)} className="mr-2 font-bold text-[#F58220] underline">تلاش مجدد</button>
+                            </p>
+                          )}
                         </div>
-                      </div>
+                      )}
+
+                      {(transactionType === "WANTED" || isServiceRequest) && (
+                        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
+                          <p className="mb-3 text-sm font-black text-amber-300">{isServiceRequest ? "جزئیات درخواست خدمات" : "جزئیات درخواست خرید"}</p>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            {/* P0-A: intent selector moved to Step 1. Here in Step 6
+                                we show a read-only badge of the selected intent so the
+                                user remembers what they picked, plus the quantity/
+                                budget/deaddown fields. */}
+                            <div className="sm:col-span-2">
+                              <label className={labelCls}>نوع تقاضا (انتخاب‌شده در مرحله ۱)</label>
+                              <div className="flex h-10 items-center rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 text-sm font-bold text-amber-200">
+                                {isServiceRequest ? "خدمات" : wanted.intent === "SALE" ? "خرید"
+                                  : wanted.intent === "RENT" ? "اجاره"
+                                  : wanted.intent === "SALE_AND_RENT" ? "خرید/اجاره"
+                                  : wanted.intent === "SERVICE_REQUEST" ? "خدمات"
+                                  : "—"}
+                              </div>
+                            </div>
+                            <div>
+                              <label className={labelCls}>تعداد موردنیاز *</label>
+                              <input value={wanted.quantity} onChange={(e) => setWanted((v) => ({ ...v, quantity: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>مهلت موردنیاز (اختیاری)</label>
+                              <input type="date" value={wanted.deadline} onChange={(e) => setWanted((v) => ({ ...v, deadline: e.target.value }))} dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>حداقل بودجه (تومان)</label>
+                              <input value={wanted.budgetMin} onChange={(e) => setWanted((v) => ({ ...v, budgetMin: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>حداکثر بودجه (تومان)</label>
+                              <input value={wanted.budgetMax} onChange={(e) => setWanted((v) => ({ ...v, budgetMax: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                          </div>
+                          <p className="mt-3 text-xs text-white/55">تعداد، بودجه و مهلت در اطلاعات ساختاریافته درخواست ذخیره می‌شوند.</p>
+                        </div>
+                      )}
+
+                      {transactionType === "QUOTE" && (
+                        <div className="rounded-2xl border border-sky-400/20 bg-sky-400/[0.04] p-5">
+                          <p className="mb-3 text-sm font-black text-sky-300">جزئیات استعلام قیمت (RFQ)</p>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <label className={labelCls}>تعداد موردنیاز *</label>
+                              <input value={rfq.quantity} onChange={(e) => setRfq((v) => ({ ...v, quantity: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>مهلت دریافت پیشنهاد</label>
+                              <input type="date" value={rfq.deadline} onChange={(e) => setRfq((v) => ({ ...v, deadline: e.target.value }))} dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>حداقل بودجه (تومان)</label>
+                              <input value={rfq.budgetMin} onChange={(e) => setRfq((v) => ({ ...v, budgetMin: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>حداکثر بودجه (تومان)</label>
+                              <input value={rfq.budgetMax} onChange={(e) => setRfq((v) => ({ ...v, budgetMax: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <label className={labelCls}>شرایط تأمین و تحویل</label>
+                            <textarea value={rfq.terms} onChange={(e) => setRfq((v) => ({ ...v, terms: e.target.value }))} rows={3} maxLength={3000} className={inputCls} />
+                          </div>
+                        </div>
+                      )}
+
+                      {isAuction && (
+                        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
+                          <p className="mb-3 text-sm font-black text-amber-300">شرایط مزایده</p>
+                          <p className="mb-3 text-xs text-white/55">قیمت پایه از فیلد قیمت بالا دریافت می‌شود؛ سایر پارامترها باید دقیق وارد شوند.</p>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <div>
+                              <label className={labelCls}>قیمت ذخیره (اختیاری)</label>
+                              <input value={auction.reservePrice} onChange={(e) => setAuction((v) => ({ ...v, reservePrice: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>حداقل افزایش هر پیشنهاد *</label>
+                              <input value={auction.minIncrement} onChange={(e) => setAuction((v) => ({ ...v, minIncrement: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>تاریخ و ساعت شروع *</label>
+                              <input type="datetime-local" value={auction.startDate} onChange={(e) => setAuction((v) => ({ ...v, startDate: e.target.value }))} dir="ltr" className={inputCls} />
+                            </div>
+                            <div>
+                              <label className={labelCls}>تاریخ و ساعت پایان *</label>
+                              <input type="datetime-local" value={auction.endDate} onChange={(e) => setAuction((v) => ({ ...v, endDate: e.target.value }))} dir="ltr" className={inputCls} />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {!isServiceFlow && (
+                        <div className="grid gap-5 sm:grid-cols-2">
+                          <div>
+                            <label className={labelCls}>سال ساخت</label>
+                            <input
+                              value={form.year}
+                              onChange={(e) => set("year", e.target.value)}
+                              placeholder="مثلاً: 2019"
+                              dir="ltr"
+                              className={inputCls}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>ساعت کارکرد</label>
+                            <input
+                              value={form.hours}
+                              onChange={(e) => set("hours", e.target.value)}
+                              placeholder="مثلاً: 4200"
+                              dir="ltr"
+                              className={inputCls}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>
+                              {transactionType === "WANTED" ? "قیمت پیشنهادی دقیق (اختیاری؛ به‌جای بازه بودجه)" : isRequestFlow ? "بودجه یا قیمت پیشنهادی (اختیاری)" : isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
+                              {!isRequestFlow && "*"}
+                            </label>
+                            <input
+                              value={form.price}
+                              onChange={(e) => set("price", isRequestFlow ? e.target.value.replace(/[^\d]/g, "") : e.target.value)}
+                              placeholder="مثلاً: 8500000000"
+                              dir="ltr"
+                              className={inputCls}
+                            />
+                          </div>
+                          {!isRequestFlow && (
+                            <div>
+                              <label className={labelCls}>نوع قیمت</label>
+                              <select
+                                value={isAuction ? "AUCTION" : form.priceType}
+                                onChange={(e) => set("priceType", e.target.value)}
+                                disabled={isAuction}
+                                className={inputCls}
+                              >
+                                <option value="NEGOTIABLE">توافقی</option>
+                                <option value="FIXED">مقطوع</option>
+                                <option value="CALL_FOR_PRICE">تماس بگیرید</option>
+                                <option value="AUCTION">مزایده</option>
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Rental period (only for RENT) */}
                       {isRent && (
@@ -1123,61 +1645,22 @@ export default function NewListingPage() {
                       </div>
 
                       {/* Media */}
-                      <div>
-                        <label className="mb-1.5 block text-xs font-bold text-white/60">
-                          تصاویر دستگاه *
-                        </label>
-                        <label className="flex h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-white/10 bg-black/30 text-center transition hover:border-[#F58220]/40">
-                          <ImagePlus className="mb-3 h-10 w-10 text-white/30" />
-                          <span className="text-sm font-bold text-white/60">
-                            تصاویر دستگاه را اینجا بکشید یا کلیک کنید
-                          </span>
-                          <span className="mt-1 text-[11px] text-white/30">PNG, JPG تا ۱۰ مگابایت</span>
-                          <input
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => {
-                              const files = Array.from(e.target.files ?? []);
-                              const placeholders = files.map(
-                                (_, i) => `/uploads/placeholder-${Date.now()}-${i}.jpg`,
-                              );
-                              setImages((prev) => [...prev, ...placeholders].slice(0, 30));
-                            }}
-                          />
-                        </label>
-
-                        {images.length > 0 && (
-                          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">
-                            {images.map((img, i) => (
-                              <div
-                                key={i}
-                                className="group relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-black/40"
-                              >
-                                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1f1f1f] to-[#0c0c0c]">
-                                  <span className="text-3xl">🖼️</span>
-                                </div>
-                                {i === 0 && (
-                                  <span className="absolute right-1 top-1 rounded bg-[#F58220] px-1.5 py-0.5 text-[8px] font-black text-white">
-                                    اصلی
-                                  </span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
-                                  className="absolute left-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white/70 transition hover:bg-red-500 hover:text-white"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
+                      <>
+                        {(transactionType === "WANTED" || isServiceRequest) && (
+                          <p className="text-xs leading-6 text-white/55">
+                            تصاویر درخواست ابتدا به‌صورت خصوصی بارگذاری می‌شوند و فقط پس از تأیید کارشناسان و انتشار درخواست برای عموم قابل مشاهده خواهند بود.
+                          </p>
                         )}
-                        <p className="mt-3 text-[11px] text-white/35">
-                          {images.length} تصویر انتخاب شده. حداقل یک تصویر الزامی است.
-                        </p>
-                      </div>
+                        {isRequestFlow && transactionType !== "WANTED" && <p className="text-xs leading-6 text-white/45">برای استعلام قیمت، افزودن تصویر اختیاری است.</p>}
+                        <ListingImageUploader
+                          images={images}
+                          onChange={handleImagesChange}
+                          onAssetsChange={handleStagedAssetsChange}
+                          onUploadingChange={setImagesUploading}
+                          entityType={isServiceRequest || transactionType === "WANTED" ? "BuyRequest" : "Listing"}
+                          required={!isRequestFlow && !isServiceFlow}
+                        />
+                      </>
                     </div>
                   </div>
                 )}
@@ -1192,12 +1675,35 @@ export default function NewListingPage() {
                     />
                     <div className="mt-6 space-y-4">
                       <ReviewRow label="نوع معامله" value={transactionType} />
+                      {isServiceFlow && <ReviewRow label="نوع خدمت" value={serviceTypes.find((item) => item.id === serviceTypeId)?.nameFa ?? "—"} />}
+                      {(transactionType === "WANTED" || isServiceRequest) && (
+                        <>
+                          <ReviewRow label="تعداد موردنیاز" value={wanted.quantity || "—"} />
+                          <ReviewRow
+                            label="بازه بودجه"
+                            value={[wanted.budgetMin, wanted.budgetMax].filter(Boolean).join(" تا ") || (form.price.trim() ? `${Number(form.price).toLocaleString("fa-IR")} تومان · قیمت دقیق` : "توافقی")}
+                          />
+                          <ReviewRow label="مهلت درخواست" value={wanted.deadline || "—"} />
+                        </>
+                      )}
+                      {transactionType === "QUOTE" && (
+                        <>
+                          <ReviewRow label="تعداد موردنیاز" value={rfq.quantity || "—"} />
+                          <ReviewRow label="بازه بودجه" value={[rfq.budgetMin, rfq.budgetMax].filter(Boolean).join(" تا ") || "توافقی"} />
+                          <ReviewRow label="مهلت استعلام" value={rfq.deadline || "—"} />
+                        </>
+                      )}
+                      {isAuction && (
+                        <>
+                          <ReviewRow label="حداقل افزایش مزایده" value={auction.minIncrement || "—"} />
+                          <ReviewRow label="قیمت ذخیره" value={auction.reservePrice || "—"} />
+                          <ReviewRow label="شروع مزایده" value={auction.startDate || "—"} />
+                          <ReviewRow label="پایان مزایده" value={auction.endDate || "—"} />
+                        </>
+                      )}
                       <ReviewRow
                         label="دسته‌بندی"
-                        value={
-                          catalogRoots.find((r) => r.id === selectedRootId)?.name ??
-                          "—"
-                        }
+                        value={categoryPath.map((item) => item.name).join(" / ") || "—"}
                       />
                       <ReviewRow label="برند" value={form.brandLabel || "—"} />
                       <ReviewRow label="مدل" value={models.find((m) => m.id === modelId)?.name ?? "—"} />
@@ -1205,7 +1711,7 @@ export default function NewListingPage() {
                       <ReviewRow label="وضعیت" value={{ NEW: "نو", USED: "کارکرده", REFURBISHED: "بازسازی‌شده", FOR_PARTS: "قطعات" }[form.condition] ?? "—"} />
                       <ReviewRow label="سال ساخت" value={form.year || "—"} />
                       <ReviewRow label="ساعت کارکرد" value={form.hours ? `${form.hours} ساعت` : "—"} />
-                      <ReviewRow label="قیمت" value={form.price ? `${Number(form.price).toLocaleString("fa-IR")} تومان` : "—"} />
+                      {!isRequestFlow && <ReviewRow label="قیمت" value={form.price ? `${Number(form.price).toLocaleString("fa-IR")} تومان` : "—"} />}
                       {isRent && (
                         <ReviewRow
                           label="دوره اجاره"
@@ -1237,11 +1743,50 @@ export default function NewListingPage() {
                       <ReviewRow
                         label="موقعیت"
                         value={
-                          [location.countryId, location.provinceId, location.cityId]
+                          [location.countryLabel, location.provinceLabel, location.cityLabel]
                             .filter(Boolean)
                             .join(" / ") || "—"
                         }
                       />
+                      {location.latitude?.trim() && location.longitude?.trim() && (
+                        <ReviewRow
+                          label="نقطهٔ دقیق دستگاه"
+                          value={`${location.latitude} ، ${location.longitude}`}
+                        />
+                      )}
+                      {form.shortDesc && (
+                        <ReviewRow label="خلاصه" value={form.shortDesc} />
+                      )}
+                      {form.description && (
+                        <ReviewRow label="توضیحات" value={form.description.length > 100 ? form.description.slice(0, 100) + "…" : form.description} />
+                      )}
+                      {form.sellerName && (
+                        <ReviewRow label="نام تماس" value={form.sellerName} />
+                      )}
+                      {form.sellerPhone && (
+                        <ReviewRow label="شماره تماس" value={form.sellerPhone} />
+                      )}
+                      {transactionType === "RENT" && rental.availabilityStart && (
+                        <ReviewRow label="شروع دسترس‌پذیری" value={rental.availabilityStart} />
+                      )}
+                      {transactionType === "RENT" && rental.availabilityEnd && (
+                        <ReviewRow label="پایان دسترس‌پذیری" value={rental.availabilityEnd} />
+                      )}
+                      {transactionType === "QUOTE" && rfq.terms && (
+                        <ReviewRow label="شرایط استعلام" value={rfq.terms.length > 100 ? rfq.terms.slice(0, 100) + "…" : rfq.terms} />
+                      )}
+                      {(transactionType === "WANTED" || isServiceRequest) && (wanted.intent || isServiceRequest) && (
+                        <ReviewRow
+                          label="نوع تقاضا"
+                          value={
+                            isServiceRequest ? "خدمات" : wanted.intent === "SALE" ? "خرید"
+                            : wanted.intent === "RENT" ? "اجاره"
+                            : wanted.intent === "SALE_AND_RENT" ? "خرید/اجاره"
+                            : wanted.intent === "SERVICE_REQUEST" ? "خدمات"
+                            : wanted.intent
+                          }
+                        />
+                      )}
                       <ReviewRow
                         label="ویژگی‌ها"
                         value={
@@ -1293,7 +1838,7 @@ export default function NewListingPage() {
                   ) : (
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || imagesUploading}
                       className="flex h-12 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-8 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-400 disabled:opacity-50"
                     >
                       {submitting ? (

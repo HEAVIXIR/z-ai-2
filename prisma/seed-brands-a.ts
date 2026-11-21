@@ -56,6 +56,8 @@ type BrandSeed = {
   industries: string[];
   aliases?: string[];
   featured?: boolean;
+  /** Explicitly refresh curated identity metadata for a reviewed legacy correction. */
+  refreshIdentity?: boolean;
 };
 
 // ════════════════════════════════════════════════════════════
@@ -785,7 +787,8 @@ async function upsertBrand(b: BrandSeed) {
       brandFamily: b.family ? { connect: { slug: b.family } } : undefined,
       parentBrand: b.parent ? { connect: { slug: b.parent } } : undefined,
     },
-    update: {
+    // Preserve curated identity by default; refresh only with an explicit reviewed opt-in.
+    update: b.refreshIdentity ? {
       name: b.name,
       nameEn: b.nameEn,
       country: b.country ?? null,
@@ -796,7 +799,7 @@ async function upsertBrand(b: BrandSeed) {
       featured: !!b.featured,
       brandFamily: b.family ? { connect: { slug: b.family } } : undefined,
       parentBrand: b.parent ? { connect: { slug: b.parent } } : undefined,
-    },
+    } : {},
   });
 
   // Industries — upsert each (idempotent; never removes existing rows)
@@ -841,15 +844,23 @@ async function upsertBrand(b: BrandSeed) {
 // MAIN
 // ════════════════════════════════════════════════════════════
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
+  }
+
   console.log("Seeding industries...");
   for (const ind of INDUSTRIES) {
-    await db.industry.upsert({ where: { key: ind.key }, create: ind, update: ind });
+    await db.industry.upsert({ where: { key: ind.key }, create: ind, update: {} });
   }
   console.log(`  ✓ ${INDUSTRIES.length} industries`);
 
   console.log("Seeding families...");
   for (const f of FAMILIES) {
-    await db.brandFamily.upsert({ where: { slug: f.slug }, create: f, update: f });
+    await db.brandFamily.upsert({ where: { slug: f.slug }, create: f, update: {} });
   }
   console.log(`  ✓ ${FAMILIES.length} families`);
 

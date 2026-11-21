@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
+import { checkCsrf } from "@/lib/csrf";
 import {
   createReturn,
   listReturns,
@@ -71,6 +72,9 @@ export async function POST(req: Request) {
     await requirePermission(user.id, 'returns.manage');
   } catch {
     return NextResponse.json({ error: "Forbidden: requires returns.manage" }, { status: 403 });
+  }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const body = await req.json();

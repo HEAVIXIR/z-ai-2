@@ -1,0 +1,156 @@
+name: HEAVIX WANTED media browser acceptance
+
+on:
+  push:
+    branches:
+      - feat/buyrequest-media-staging-2026-11-20
+      - integration/preview-readiness-workerd-2026-11-15
+    paths:
+      - .github/workflows/heavix-wanted-media-browser-e2e.yml
+      - scripts/e2e/wanted-media-browser-acceptance.ts
+      - scripts/e2e/initialize-image-wasm.mjs
+      - src/app/listings/new/page.tsx
+      - src/components/listings/ListingImageUploader.tsx
+      - tests/contract/wanted-journey-contract.test.ts
+      - tests/unit/listing-image-b2-contract.test.ts
+      - tests/unit/listing-image-uploader-contract.test.ts
+      - tests/unit/listing-wizard-flow-contract.test.ts
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-wanted-media-browser-e2e
+  cancel-in-progress: false
+
+jobs:
+  wanted-media-browser-e2e:
+    if: (github.ref == 'refs/heads/feat/buyrequest-media-staging-2026-11-20' || github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15') && contains(github.event.head_commit.message, 'WANTED_MEDIA_BROWSER_E2E')
+    environment: b2-media-isolated-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heavix_media_browser_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: development
+      HEAVIX_ENV: preview
+      # Run the local E2E server with the Node.js Prisma adapter; HEAVIX_ENV still preserves Preview media policy.
+      VERCEL: "1"
+      CI: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/heavix_media_browser_test?schema=public
+      ADMIN_USERNAME: ci-admin
+      ADMIN_PASSWORD: ci-password-not-real
+      HEAVIX_ALLOW_TEST_FIXTURE_SEED: "1"
+      HEAVIX_E2E_BASE_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+      NEXTAUTH_URL: http://127.0.0.1:3000
+      HEAVIX_PREVIEW_URL: http://127.0.0.1:3000
+      HEAVIX_PREVIEW_ORIGIN: http://127.0.0.1:3000
+      B2_KEY_ID: ${{ secrets.B2_MEDIA_TEST_KEY_ID }}
+      B2_APPLICATION_KEY: ${{ secrets.B2_MEDIA_TEST_APPLICATION_KEY }}
+      B2_BUCKET_NAME: heavix-dev-assets
+      B2_MEDIA_PREFIX: heavix-media/
+      B2_REGION: us-east-005
+      B2_S3_ENDPOINT: https://s3.us-east-005.backblazeb2.com
+    steps:
+      - name: Enforce isolated branch, disposable database, and scoped B2 configuration
+        shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          case "$GITHUB_REF" in
+            refs/heads/feat/buyrequest-media-staging-2026-11-20|refs/heads/integration/preview-readiness-workerd-2026-11-15) ;;
+            *) echo "FAIL: browser acceptance is restricted to the approved feature or Integration branch."; exit 1 ;;
+          esac
+          [[ "$COMMIT_MESSAGE" == *"WANTED_MEDIA_BROWSER_E2E"* ]]
+          [[ "$DATABASE_URL" == *"127.0.0.1:5432/heavix_media_browser_test"* ]]
+          test "$HEAVIX_ENV" = "preview"
+          test "$B2_BUCKET_NAME" = "heavix-dev-assets"
+          test "$B2_MEDIA_PREFIX" = "heavix-media/"
+          test "$B2_REGION" = "us-east-005"
+          test "$B2_S3_ENDPOINT" = "https://s3.us-east-005.backblazeb2.com"
+          echo "PASS: approved feature/Integration branch, loopback-only disposable PostgreSQL, and fixed B2 scope."
+      - name: Verify dedicated B2 credentials exist without printing them
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$B2_KEY_ID"
+          test -n "$B2_APPLICATION_KEY"
+          test "${#B2_KEY_ID}" -ge 20
+          test "${#B2_APPLICATION_KEY}" -ge 20
+          echo "PASS: isolated B2 credentials are present and remain redacted."
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - name: Install locked application dependencies and generate Prisma clients
+        run: bun install --frozen-lockfile
+      - name: Parse global CSS before starting the application
+        run: |
+          set -euo pipefail
+          bun -e 'import postcss from "postcss"; import { readFileSync } from "node:fs"; postcss.parse(readFileSync("src/app/globals.css", "utf8"), { from: "src/app/globals.css" }); console.log("PASS: globals.css parses cleanly.");'
+      - name: Push schema into the disposable PostgreSQL database
+        run: bunx prisma db push --accept-data-loss --schema=prisma/schema.prisma
+      - name: Seed isolated RBAC and deterministic buyer fixtures
+        run: |
+          set -euo pipefail
+          bun run db:seed-rbac
+          bun run db:seed-user-roles
+          bun run db:seed-test-fixtures
+      - name: Install pinned Playwright runtime outside the repository
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/heavix-playwright"
+          npm install --prefix "$RUNNER_TEMP/heavix-playwright" --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+          "$RUNNER_TEMP/heavix-playwright/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Start local Next.js app against disposable PostgreSQL and isolated B2
+        shell: bash
+        run: |
+          set -euo pipefail
+          NODE_OPTIONS="--import=$GITHUB_WORKSPACE/scripts/e2e/initialize-image-wasm.mjs" nohup node ./node_modules/next/dist/bin/next dev --webpack --hostname 127.0.0.1 --port 3000 > "$RUNNER_TEMP/heavix-next-dev.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/heavix-next-dev.pid"
+          ready=0
+          for attempt in $(seq 1 60); do
+            code="$(curl --silent --output /dev/null --write-out '%{http_code}' "$HEAVIX_E2E_BASE_URL" || true)"
+            if [[ "$code" =~ ^(200|301|302|307|308)$ ]]; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$ready" != "1" ]]; then
+            cat "$RUNNER_TEMP/heavix-next-dev.log"
+            exit 1
+          fi
+          echo "PASS: local application is responding on 127.0.0.1:3000."
+      - name: Run Chromium BuyRequest media acceptance journey
+        env:
+          PLAYWRIGHT_INSTALL_DIR: ${{ runner.temp }}/heavix-playwright/node_modules
+        run: bunx tsx scripts/e2e/wanted-media-browser-acceptance.ts
+      - name: Stop local Next.js app
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f "$RUNNER_TEMP/heavix-next-dev.pid" ]]; then
+            kill "$(cat "$RUNNER_TEMP/heavix-next-dev.pid")" 2>/dev/null || true
+          fi
+
+# The owner-authorized WANTED_MEDIA_BROWSER_E2E token triggers this isolated
+# acceptance job. It never targets Preview/Production or a persistent database.
+# WANTED_MEDIA_BROWSER_E2E — explicit owner-authorized execution marker.

@@ -26,10 +26,19 @@
  */
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
+import { readBoundedJson } from "@/lib/read-bounded-json";
+import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
+import { rateLimitKey } from "@/lib/request-context";
+import { RFQ_CREATE } from "@/lib/rate-limit-presets";
 import { createRFQ, listRFQs, RFQServiceError } from "@/lib/rfq-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// H.2.4b: body-size ceiling for standalone RFQ creation. RFQs carry a
+// title/description + optional specs snapshot; 256 KiB is generous.
+const MAX_RFQ_BODY_BYTES = 256 * 1024;
 
 /* GET /api/rfq — list open RFQs (paginated). */
 export async function GET(req: Request) {
@@ -63,7 +72,13 @@ export async function GET(req: Request) {
 }
 
 /* POST /api/rfq — create a new RFQ (authenticated).
- * Delegates validation + persistence + audit to rfq-service. */
+ * Delegates validation + persistence + audit to rfq-service.
+ *
+ * H.2.4b: previously this route accepted an UNBOUNDED body with NO CSRF
+ * check and NO rate limit — a logged-in user could submit unbounded
+ * CSRF-free RFQs. It now applies CSRF + bounded-body + RFQ_CREATE rate-
+ * limit, matching the security baseline of /api/wanted and /api/listings.
+ */
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser();
@@ -74,7 +89,34 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json().catch(() => ({}));
+    // CSRF — state-changing mutation, must be origin-checked.
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
+
+    // Rate limit — user-scoped, caps RFQ-spam against the quote marketplace.
+    const rl = rateLimit({
+      key: rateLimitKey(user.id, RFQ_CREATE.label),
+      limit: RFQ_CREATE.limit,
+      windowMs: RFQ_CREATE.windowMs,
+    });
+    if (!rl.ok) {
+      const retryAfter = retryAfterSeconds(rl.resetAt);
+      return NextResponse.json(
+        { error: "تعداد درخواست‌ها بیش از حد مجاز است. لطفاً بعداً تلاش کنید." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } },
+      );
+    }
+
+    // Bounded read BEFORE JSON.parse — caps body size at 256 KiB.
+    const parsedBody = await readBoundedJson<Record<string, unknown>>(req, MAX_RFQ_BODY_BYTES);
+    if (!parsedBody.ok) {
+      return NextResponse.json({ error: parsedBody.error }, { status: parsedBody.status });
+    }
+    const body = parsedBody.value;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "بدنه درخواست معتبر نیست." }, { status: 400 });
+    }
     const {
       title,
       description,
@@ -83,7 +125,7 @@ export async function POST(req: Request) {
       categoryId,
       brandId,
       specs,
-    } = body;
+    } = body as Record<string, unknown>;
 
     // STEP 13.01 P0-5 FIX: buyerId is NEVER accepted from the request
     // body. The authenticated user IS the buyer — always. Previously
@@ -96,14 +138,14 @@ export async function POST(req: Request) {
     // it must go through a separate RBAC-checked endpoint that
     // explicitly verifies the admin role — not this public route.
     const created = await createRFQ({
-      title,
-      description,
+      title: title as string,
+      description: description as string | null | undefined,
       buyerId: user.id,
-      sellerId,
-      deadline,
-      categoryId,
-      brandId,
-      specs,
+      sellerId: sellerId as string | null | undefined,
+      deadline: deadline as string | Date | null | undefined,
+      categoryId: categoryId as string | null | undefined,
+      brandId: brandId as string | null | undefined,
+      specs: specs as string | null | undefined,
       userId: user.id,
     });
 

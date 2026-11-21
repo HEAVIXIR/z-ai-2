@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
       }
 
       const links = await db.categoryAttribute.findMany({
-        where: { categoryId: category.id },
+        where: { categoryId: category.id, active: true },
         orderBy: [
           { displayOrder: "asc" },
           { attribute: { sortOrder: "asc" } },
@@ -184,6 +185,7 @@ export async function GET(req: Request) {
    ============================================================ */
 export async function POST(req: Request) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
 

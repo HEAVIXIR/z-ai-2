@@ -32,8 +32,8 @@ function deriveLiveStatus(a: { status: string; startDate: Date; endDate: Date })
 export async function GET(_req: Request, { params }: Args) {
   try {
     const { id } = await params;
-    const auction = await db.auction.findUnique({
-      where: { id },
+    const auction = await db.auction.findFirst({
+      where: { id, listing: { status: "PUBLISHED" } },
       include: {
         listing: {
           select: {

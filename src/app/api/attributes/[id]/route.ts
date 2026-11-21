@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ interface Args {
    ============================================================ */
 export async function PATCH(req: Request, { params }: Args) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -82,32 +84,32 @@ export async function PATCH(req: Request, { params }: Args) {
     // Options replace strategy (only when `options` key is present in body)
     const hasOptionsPayload = Array.isArray(body.options);
 
-    if (hasOptionsPayload) {
-      await db.$transaction([
-        db.attributeOption.deleteMany({ where: { attributeId: id } }),
-      ]);
-      const optionsData = (body.options as any[])
-        .filter((o) => o && String(o.value ?? "").trim() !== "")
-        .map((o, idx) => ({
-          attributeId: id,
-          value: String(o.value),
-          label: o.label ? String(o.label) : null,
-          sortOrder: Number(o.sortOrder) || idx,
-        }));
-      if (optionsData.length) {
-        await db.attributeOption.createMany({ data: optionsData });
+    const attribute = await db.$transaction(async (tx) => {
+      if (hasOptionsPayload) {
+        await tx.attributeOption.deleteMany({ where: { attributeId: id } });
+        const optionsData = (body.options as any[])
+          .filter((o) => o && String(o.value ?? "").trim() !== "")
+          .map((o, idx) => ({
+            attributeId: id,
+            value: String(o.value).trim(),
+            label: o.label ? String(o.label).trim() : null,
+            sortOrder: Number(o.sortOrder) || idx,
+          }));
+        if (optionsData.length) {
+          await tx.attributeOption.createMany({ data: optionsData });
+        }
       }
-    }
 
-    const attribute = await db.attributeDefinition.update({
-      where: { id },
-      data,
-      include: {
-        options: { orderBy: [{ sortOrder: "asc" }, { value: "asc" }] },
-        categories: {
-          include: { category: { select: { id: true, name: true, slug: true } } },
+      return tx.attributeDefinition.update({
+        where: { id },
+        data,
+        include: {
+          options: { orderBy: [{ sortOrder: "asc" }, { value: "asc" }] },
+          categories: {
+            include: { category: { select: { id: true, name: true, slug: true } } },
+          },
         },
-      },
+      });
     });
 
     return NextResponse.json({ ok: true, attribute });
@@ -127,8 +129,9 @@ export async function PATCH(req: Request, { params }: Args) {
    - CategoryAttribute (onDelete: Cascade)
    - ListingAttributeValue (onDelete: Cascade)
    ============================================================ */
-export async function DELETE(_req: Request, { params }: Args) {
+export async function DELETE(req: Request, { params }: Args) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     const existing = await db.attributeDefinition.findUnique({
@@ -137,6 +140,13 @@ export async function DELETE(_req: Request, { params }: Args) {
     });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    const linkedValues = await db.listingAttributeValue.count({ where: { attributeId: id } });
+    if (linkedValues > 0) {
+      return NextResponse.json(
+        { error: `این ویژگی در ${linkedValues} آگهی استفاده شده است؛ برای حفظ داده‌ها حذف آن مجاز نیست.` },
+        { status: 409 },
+      );
     }
     await db.attributeDefinition.delete({ where: { id } });
     return NextResponse.json({ ok: true });

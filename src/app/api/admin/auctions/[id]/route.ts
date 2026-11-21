@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { parseBig } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
@@ -101,6 +102,10 @@ export async function PATCH(req: Request, { params }: Params) {
       { error: "Forbidden: requires auction.manage" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;
@@ -246,7 +251,7 @@ export async function PATCH(req: Request, { params }: Params) {
 /* DELETE /api/admin/auctions/[id]
    Note: AuctionBid has onDelete: Cascade, so bids will be removed automatically.
 */
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -256,6 +261,10 @@ export async function DELETE(_req: Request, { params }: Params) {
       { error: "Forbidden: requires auction.manage" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;

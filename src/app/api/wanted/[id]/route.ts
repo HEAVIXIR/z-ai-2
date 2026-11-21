@@ -24,6 +24,7 @@ import { HOMEPAGE_CACHE_TAGS } from "@/lib/homepage-cache-tags";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { getCurrentUserId } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import {
   closeWanted,
   getWanted,
@@ -43,7 +44,18 @@ export async function GET(
   try {
     const { id } = await params;
     const request = await getWanted(id);
-    return NextResponse.json({ success: true, data: request });
+    const now = Date.now();
+    if (
+      request.status !== "ACTIVE" ||
+      !(request.publishedAt instanceof Date) ||
+      request.publishedAt.getTime() > now ||
+      (request.expiresAt instanceof Date && request.expiresAt.getTime() <= now)
+    ) {
+      return NextResponse.json({ error: "درخواست خرید یافت نشد" }, { status: 404 });
+    }
+    // Never expose internal account identifiers on the public detail API.
+    const { userId: _ownerId, ...publicRequest } = request;
+    return NextResponse.json({ success: true, data: publicRequest });
   } catch (err: any) {
     if (err instanceof WantedServiceError) {
       return NextResponse.json(
@@ -73,6 +85,16 @@ export async function PATCH(
         { error: "Unauthorized" },
         { status: 401 },
       );
+    }
+
+    // H.2.4a (P0 security): the public PATCH (close) handler is a
+    // state-changing mutation that runs on the caller's session cookie.
+    // Without an Origin/Referer check, a cross-site request could close
+    // the victim's wanted request (and DELETE aliases to PATCH, so the
+    // same hole existed there too). checkCsrf is fail-closed and reads
+    // only headers, so it is safe to run before the body is parsed.
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));

@@ -62,6 +62,8 @@ type BrandSeed = {
   industries: string[];
   aliases?: string[];
   featured?: boolean;
+  /** Explicitly allow identity metadata updates for a reviewed legacy correction. */
+  refreshIdentity?: boolean;
 };
 
 // ════════════════════════════════════════════════════════════
@@ -105,8 +107,8 @@ const BRANDS: BrandSeed[] = [
     aliases: ["داف"],
   },
   {
-    // Already in DB (seed.ts) — fix wrong name (was "ایکاروس"), add TRUCKS + INDUSTRIAL_VEHICLES
-    name: "ایوکو", nameEn: "Iveco", country: "Italy",
+    // Explicit legacy correction: fix wrong name (was "ایکاروس"), then add industries.
+    name: "ایوکو", nameEn: "Iveco", country: "Italy", refreshIdentity: true,
     industries: ["TRUCKS", "INDUSTRIAL_VEHICLES"],
     aliases: ["ایوکو"],
   },
@@ -1227,7 +1229,10 @@ async function upsertBrand(b: BrandSeed) {
       brandFamily: b.family ? { connect: { slug: b.family } } : undefined,
       parentBrand: b.parent ? { connect: { slug: b.parent } } : undefined,
     },
-    update: {
+    // Phase B is additive for existing brands: preserve curated identity,
+    // featured state, family, parent, website, and verification by default.
+    // Only an explicitly reviewed correction may refresh those fields.
+    update: b.refreshIdentity ? {
       name: b.name,
       nameEn: b.nameEn,
       country: b.country ?? null,
@@ -1238,7 +1243,7 @@ async function upsertBrand(b: BrandSeed) {
       featured: !!b.featured,
       brandFamily: b.family ? { connect: { slug: b.family } } : undefined,
       parentBrand: b.parent ? { connect: { slug: b.parent } } : undefined,
-    },
+    } : {},
   });
 
   // Industries — upsert each (idempotent; never removes existing rows)
@@ -1283,6 +1288,14 @@ async function upsertBrand(b: BrandSeed) {
 // MAIN
 // ════════════════════════════════════════════════════════════
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
+  }
+
   // Guard: Phase A must have run first (industries + families exist).
   const industryCount = await db.industry.count();
   if (industryCount === 0) {

@@ -22,6 +22,13 @@ export const dynamic = "force-dynamic";
  * command output, connection URLs, or raw process errors.
  */
 export async function POST() {
+  // The backup implementation requires a real Node process, bash, pg_dump,
+  // and a writable container filesystem. Workers and serverless hosts must
+  // remain disabled unless their operator explicitly enables this capability.
+  if (process.env.HEAVIX_BACKUP_EXECUTION_ENABLED !== "true") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -38,8 +45,7 @@ export async function POST() {
   }
 
   try {
-    const projectRoot = path.resolve(process.cwd());
-    const scriptPath = path.join(projectRoot, "scripts", "backup.sh");
+    const scriptPath = path.join(process.cwd(), "scripts", "backup.sh");
     await fs.access(scriptPath);
 
     const backupEnv = buildBackupEnvironment({
@@ -47,7 +53,7 @@ export async function POST() {
       STORE_DATABASE_URL: process.env.STORE_DATABASE_URL,
     });
     const { stdout } = await execFileAsync("bash", [scriptPath], {
-      cwd: projectRoot,
+      cwd: process.cwd(),
       env: { ...process.env, ...backupEnv, BACKUP_ROOT: "./backups", BACKUP_DOCKER_MODE: "0" },
       maxBuffer: 64 * 1024,
       timeout: 240_000,
@@ -59,7 +65,7 @@ export async function POST() {
       throw new Error("Backup script did not return the expected completion marker");
     }
 
-    const backupDir = path.join(projectRoot, "backups", backupId);
+    const backupDir = path.join(process.cwd(), "backups", backupId);
     for (const filename of ["main.sql", "store.sql", "checksums.txt"]) {
       const info = await fs.stat(path.join(backupDir, filename));
       if (!info.isFile() || info.size <= 0) {

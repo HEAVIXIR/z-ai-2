@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { runModerationBatch } from "@/lib/moderation";
 import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,6 +91,20 @@ export async function GET(req: Request) {
       return true;
     });
 
+    // AI-imported drafts need a dedicated human-review lane even when the
+    // automated risk scanner has not flagged them. Never auto-publish these rows.
+    const pendingImports = await db.listing.findMany({
+      where: { status: "PENDING", sourceUrl: { not: null } },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true, title: true, slug: true, status: true, price: true,
+        createdAt: true, sourceUrl: true, sourceSite: true,
+        brand: { select: { name: true } },
+        category: { select: { name: true } },
+      },
+    });
+
     return NextResponse.json({
       ok: true,
       stats: {
@@ -122,6 +137,18 @@ export async function GET(req: Request) {
             }
           : null,
       })),
+      pendingImports: pendingImports.map((listing) => ({
+        id: listing.id,
+        title: listing.title,
+        slug: listing.slug,
+        status: listing.status,
+        price: listing.price ? listing.price.toString() : null,
+        createdAt: listing.createdAt.toISOString(),
+        sourceUrl: listing.sourceUrl,
+        sourceSite: listing.sourceSite,
+        brandName: listing.brand?.name ?? null,
+        categoryName: listing.category?.name ?? null,
+      })),
     });
   } catch (err: any) {
     return NextResponse.json(
@@ -143,6 +170,10 @@ export async function POST(req: Request) {
       { error: "Forbidden: requires moderation.moderate" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
 
   try {
@@ -192,12 +223,25 @@ export async function POST(req: Request) {
 
       const listing = await db.listing.findUnique({
         where: { id: listingId },
-        select: { id: true, title: true, status: true, slug: true },
+        select: { id: true, title: true, status: true, slug: true, sourceUrl: true },
       });
       if (!listing) {
         return NextResponse.json(
           { error: "Listing not found" },
           { status: 404 },
+        );
+      }
+
+      // Scraped/imported listings remain quarantined until a dedicated,
+      // auditable seller-consent and media-rights clearance flow exists.
+      // Generic moderation approval is intentionally insufficient evidence.
+      if (action === "approve" && listing.sourceUrl) {
+        return NextResponse.json(
+          {
+            error: "آگهی واردشده از منبع خارجی تا تکمیل بررسی رضایت فروشنده و حقوق رسانه قابل انتشار نیست.",
+            code: "IMPORTED_LISTING_CLEARANCE_REQUIRED",
+          },
+          { status: 409 },
         );
       }
 
@@ -214,13 +258,16 @@ export async function POST(req: Request) {
         },
       });
 
-      // Apply the status transition:
-      //  approve → PUBLISHED (re-publish if it was flagged to PENDING)
-      //  reject  → REJECTED
+      // Apply the status transition. Set publishedAt on the first transition
+      // to PUBLISHED; preserve the original publication timestamp on re-approval.
       const newStatus = action === "approve" ? "PUBLISHED" : "REJECTED";
+      const publicationFields =
+        action === "approve" && listing.status !== "PUBLISHED"
+          ? { publishedAt: new Date() }
+          : {};
       await db.listing.update({
         where: { id: listingId },
-        data: { status: newStatus },
+        data: { status: newStatus, ...publicationFields },
       });
 
       await logAudit({
@@ -230,7 +277,7 @@ export async function POST(req: Request) {
         entityType: "Listing",
         entityId: listingId,
         before: { status: listing.status },
-        after: { status: newStatus, reason, logId: log.id },
+        after: { status: newStatus, ...publicationFields, reason, logId: log.id },
         reason: `${action === "approve" ? "تأیید" : "رد"} آگهی «${listing.title}» توسط ادمین.`,
       });
 

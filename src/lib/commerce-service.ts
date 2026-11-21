@@ -46,6 +46,7 @@
 import { storeDb } from "@/lib/store-db";
 import { logAudit } from "@/lib/audit";
 import { getEffectiveRate, usdToIrr } from "@/lib/store-currency";
+import { enqueueAuditOutbox } from "@/lib/store-audit-outbox";
 
 // ── Service error (maps to HTTP status in route handler) ──
 export class CommerceServiceError extends Error {
@@ -55,6 +56,176 @@ export class CommerceServiceError extends Error {
   ) {
     super(message);
     this.name = 'CommerceServiceError';
+  }
+}
+
+/**
+ * Cancel an unpaid, not-yet-dispatched store order and restore the exact
+ * checkout stock allocations. All inventory, coupon, order-state and audit
+ * writes are committed in one Serializable store transaction.
+ *
+ * Paid/pending-payment, shipped, returned, or legacy orders without a
+ * complete SALE movement ledger fail closed and require their dedicated
+ * payment/returns reconciliation flow.
+ */
+export async function cancelStoreOrder(orderId: string, actorId: string): Promise<any> {
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          items: { select: { id: true, partId: true, quantity: true } },
+          payments: { select: { id: true, status: true } },
+          shipment: { select: { status: true } },
+          returns: { select: { id: true, status: true } },
+        },
+      });
+      if (!order) throw new CommerceServiceError(404, "سفارش یافت نشد");
+      if (order.status === "CANCELLED") throw new CommerceServiceError(409, "سفارش قبلاً لغو شده است");
+      if (!["PENDING", "CONFIRMED", "PROCESSING"].includes(order.status)) {
+        throw new CommerceServiceError(409, "لغو فقط پیش از ارسال سفارش مجاز است");
+      }
+      if (order.paymentStatus !== "UNPAID" || order.payments.some((p: any) => p.status !== "REJECTED")) {
+        throw new CommerceServiceError(409, "سفارش دارای پرداخت یا فیش در جریان است؛ ابتدا وضعیت مالی را تعیین تکلیف کنید");
+      }
+      if (order.shipment && order.shipment.status !== "PENDING") {
+        throw new CommerceServiceError(409, "برای سفارش ارسال‌شده یا در حال ارسال، از گردش مرجوعی استفاده کنید");
+      }
+      if (order.returns.length > 0) {
+        throw new CommerceServiceError(409, "برای سفارش دارای پرونده مرجوعی، لغو مستقیم مجاز نیست");
+      }
+
+      const movements = await tx.stockMovement.findMany({
+        where: { reference: orderId, type: "SALE" },
+        orderBy: [{ partId: "asc" }, { warehouseId: "asc" }, { id: "asc" }],
+      });
+      const expected = new Map<string, number>();
+      for (const item of order.items) {
+        expected.set(item.partId, (expected.get(item.partId) ?? 0) + item.quantity);
+      }
+      const consumed = new Map<string, number>();
+      for (const movement of movements) {
+        if (!Number.isSafeInteger(movement.quantity) || movement.quantity >= 0) {
+          throw new CommerceServiceError(409, "دفتر گردش خروج موجودی سفارش ناسازگار است");
+        }
+        consumed.set(movement.partId, (consumed.get(movement.partId) ?? 0) + Math.abs(movement.quantity));
+      }
+      if (expected.size !== consumed.size || [...expected].some(([partId, qty]) => consumed.get(partId) !== qty)) {
+        throw new CommerceServiceError(409, "گردش خروج موجودی سفارش ناقص یا ناسازگار است؛ لغو خودکار متوقف شد");
+      }
+
+      const grouped = new Map<string, { partId: string; warehouseId: string | null; quantity: number }>();
+      for (const movement of movements) {
+        const key = movement.partId + "::" + (movement.warehouseId ?? "LEGACY");
+        const row = grouped.get(key) ?? { partId: movement.partId, warehouseId: movement.warehouseId, quantity: 0 };
+        row.quantity += Math.abs(movement.quantity);
+        grouped.set(key, row);
+      }
+
+      const claimed = await tx.order.updateMany({
+        where: { id: orderId, status: order.status, paymentStatus: "UNPAID" },
+        data: { status: "CANCELLED" },
+      });
+      if (claimed.count !== 1) throw new CommerceServiceError(409, "وضعیت سفارش هم‌زمان تغییر کرده است");
+
+      for (const allocation of grouped.values()) {
+        const part = await tx.part.findUnique({
+          where: { id: allocation.partId },
+          select: { id: true, stock: true, soldCount: true },
+        });
+        if (!part || part.soldCount < allocation.quantity) {
+          throw new CommerceServiceError(409, "موجودی یا شمارنده فروش قطعه با دفتر سفارش سازگار نیست");
+        }
+
+        if (allocation.warehouseId) {
+          const balances = await tx.inventoryBalance.findMany({
+            where: { partId: allocation.partId },
+            select: { id: true, warehouseId: true, quantity: true, reserved: true },
+          });
+          const total = balances.reduce((sum: number, row: any) => sum + row.quantity, 0);
+          if (total !== part.stock) {
+            throw new CommerceServiceError(409, "موجودی کل و انبارها همگام نیست؛ لغو متوقف شد");
+          }
+          const balance = balances.find((row: any) => row.warehouseId === allocation.warehouseId);
+          if (!balance || balance.reserved > balance.quantity) {
+            throw new CommerceServiceError(409, "ردیف موجودی انبار مبدأ قابل بازیابی نیست");
+          }
+          const changedBalance = await tx.inventoryBalance.updateMany({
+            where: { id: balance.id, quantity: balance.quantity, reserved: balance.reserved },
+            data: { quantity: { increment: allocation.quantity } },
+          });
+          if (changedBalance.count !== 1) throw new CommerceServiceError(409, "موجودی انبار هم‌زمان تغییر کرده است");
+        } else {
+          const existingBalances = await tx.inventoryBalance.count({ where: { partId: allocation.partId } });
+          if (existingBalances > 0) {
+            throw new CommerceServiceError(409, "ردیف خروج قدیمی با موجودی انبار فعلی قابل تطبیق نیست");
+          }
+        }
+
+        const changedPart = await tx.part.updateMany({
+          where: { id: allocation.partId, stock: part.stock, soldCount: { gte: allocation.quantity } },
+          data: {
+            stock: { increment: allocation.quantity },
+            soldCount: { decrement: allocation.quantity },
+          },
+        });
+        if (changedPart.count !== 1) throw new CommerceServiceError(409, "موجودی قطعه هم‌زمان تغییر کرده است");
+
+        const movement = await tx.stockMovement.create({
+          data: {
+            partId: allocation.partId,
+            warehouseId: allocation.warehouseId,
+            type: "ADJUSTMENT",
+            quantity: allocation.quantity,
+            balanceAfter: part.stock + allocation.quantity,
+            reason: "Order cancellation — restore original checkout allocation",
+            reference: orderId,
+            createdBy: actorId,
+          },
+        });
+        await enqueueAuditOutbox(tx, {
+          actorId,
+          actorType: "ADMIN",
+          action: "store.inventory.order_cancel_restore",
+          entityType: "StockMovement",
+          entityId: movement.id,
+          after: { orderId, partId: allocation.partId, warehouseId: allocation.warehouseId, quantity: allocation.quantity, balanceAfter: part.stock + allocation.quantity },
+        });
+      }
+
+      if (order.couponCode) {
+        const couponClaim = await tx.coupon.updateMany({
+          where: { code: order.couponCode, usedCount: { gt: 0 } },
+          data: { usedCount: { decrement: 1 } },
+        });
+        if (couponClaim.count !== 1) {
+          throw new CommerceServiceError(409, "مصرف کوپن با سفارش همگام نیست؛ لغو متوقف شد");
+        }
+      }
+
+      const cancelled = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          customer: { select: { id: true, name: true, family: true, phone: true } },
+          items: true,
+          payments: true,
+        },
+      });
+      if (!cancelled) throw new CommerceServiceError(404, "سفارش پس از لغو یافت نشد");
+      await enqueueAuditOutbox(tx, {
+        actorId,
+        actorType: "ADMIN",
+        action: "store.order.cancel",
+        entityType: "Order",
+        entityId: orderId,
+        before: { status: order.status, paymentStatus: order.paymentStatus },
+        after: { status: "CANCELLED", restoredAllocations: [...grouped.values()] },
+      });
+      return cancelled;
+    }, { isolationLevel: "Serializable" });
+  } catch (error: any) {
+    if (error?.code === "P2034") throw new CommerceServiceError(409, "سفارش یا موجودی هم‌زمان تغییر کرده است؛ وضعیت را دوباره بررسی کنید");
+    throw error;
   }
 }
 
@@ -558,126 +729,142 @@ export async function refundPayment(
   reason?: string | null,
   userId?: string | null,
 ): Promise<any> {
-  if (!paymentId) {
-    throw new CommerceServiceError(400, 'paymentId الزامی است');
-  }
+  if (!paymentId) throw new CommerceServiceError(400, 'paymentId الزامی است');
   const amtIrr = Number(amount);
-  if (!Number.isFinite(amtIrr) || amtIrr <= 0) {
-    throw new CommerceServiceError(400, 'مبلغ بازگردانی نامعتبر است');
+  if (!Number.isSafeInteger(amtIrr) || amtIrr <= 0) {
+    throw new CommerceServiceError(400, 'مبلغ بازگردانی باید عدد صحیح مثبت و امن به ریال باشد');
   }
 
-  const original = await storeDb.payment.findUnique({
-    where: { id: paymentId },
-    include: {
-      order: {
-        select: {
-          id: true,
-          orderNumber: true,
-          totalIrr: true,
-          paymentStatus: true,
-          customerId: true,
-          currencyRateAtOrder: true,
-          marginPercentAtOrder: true,
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      const original = await tx.payment.findUnique({
+        where: { id: paymentId },
+        include: {
+          order: {
+            select: {
+              id: true,
+              orderNumber: true,
+              totalIrr: true,
+              paymentStatus: true,
+              customerId: true,
+              currencyRateAtOrder: true,
+              marginPercentAtOrder: true,
+            },
+          },
         },
-      },
-    },
-  });
-  if (!original) {
-    throw new CommerceServiceError(404, 'پرداخت یافت نشد');
+      });
+      if (!original) throw new CommerceServiceError(404, 'پرداخت یافت نشد');
+      if (original.status !== 'APPROVED') {
+        throw new CommerceServiceError(409, `پرداخت در وضعیت ${original.status} قرار دارد و قابل بازگردانی نیست`);
+      }
+      // No provider-side refund adapter is configured here. Never mark a
+      // gateway payment REFUNDED locally while the external provider still
+      // holds the funds.
+      if (original.method === 'GATEWAY' || original.gateway) {
+        throw new CommerceServiceError(409, 'بازپرداخت درگاه تا اتصال و تأیید API بازپرداخت ارائه‌دهنده غیرفعال است');
+      }
+      if (!Number.isSafeInteger(Number(original.amountIrr)) || Number(original.amountIrr) <= 0) {
+        throw new CommerceServiceError(409, 'مبلغ پرداخت اصلی در دفتر مالی معتبر نیست');
+      }
+
+      // Touch the source payment with a compare-and-swap so concurrent
+      // partial refunds serialize on the same original ledger row.
+      const claimed = await tx.payment.updateMany({
+        where: { id: paymentId, status: 'APPROVED', updatedAt: original.updatedAt },
+        data: { updatedAt: new Date() },
+      });
+      if (claimed.count !== 1) {
+        throw new CommerceServiceError(409, 'پرداخت هم‌زمان تغییر کرده است؛ دوباره تلاش کنید');
+      }
+
+      const priorRefunds = await tx.payment.findMany({
+        where: {
+          orderId: original.orderId,
+          status: 'REFUNDED',
+          OR: [
+            { note: { startsWith: `refund-of-payment:${paymentId};` } },
+            { note: { startsWith: `refund of ${paymentId}` } },
+          ],
+        },
+        select: { amountIrr: true },
+      });
+      const alreadyRefunded = priorRefunds.reduce((sum: number, row: any) => sum + Number(row.amountIrr ?? 0), 0);
+      if (!Number.isSafeInteger(alreadyRefunded) || alreadyRefunded + amtIrr > Number(original.amountIrr)) {
+        throw new CommerceServiceError(409, 'مجموع بازپرداخت‌های قبلی و جدید از مبلغ پرداخت اصلی بیشتر می‌شود');
+      }
+
+      const amountUsd = original.order.currencyRateAtOrder > 0
+        ? Number((amtIrr / (original.order.currencyRateAtOrder *
+            (1 + (original.order.marginPercentAtOrder || 0) / 100))).toFixed(2))
+        : 0;
+      const refundPaymentRow = await tx.payment.create({
+        data: {
+          orderId: original.orderId,
+          customerId: original.customerId,
+          amountIrr: amtIrr,
+          amountUsd,
+          method: original.method,
+          status: 'REFUNDED',
+          referenceCode: original.referenceCode,
+          receiptImageUrl: null,
+          payerName: original.payerName,
+          payerCard: original.payerCard,
+          note: `refund-of-payment:${paymentId}; ${reason ? reason.slice(0, 400) : 'refund'}`,
+          gateway: null,
+          authority: null,
+          refId: null,
+          gatewayUrl: null,
+          reviewedById: userId ?? null,
+          reviewedAt: new Date(),
+        },
+      });
+
+      const allPayments = await tx.payment.findMany({
+        where: { orderId: original.orderId },
+        select: { amountIrr: true, status: true },
+      });
+      const approvedTotal = allPayments
+        .filter((p: any) => p.status === 'APPROVED')
+        .reduce((sum: number, p: any) => sum + Number(p.amountIrr ?? 0), 0);
+      const refundedTotal = allPayments
+        .filter((p: any) => p.status === 'REFUNDED')
+        .reduce((sum: number, p: any) => sum + Number(p.amountIrr ?? 0), 0);
+      const netApproved = approvedTotal - refundedTotal;
+      const newPayStatus = computePaymentStatus(Number(original.order.totalIrr), netApproved, refundedTotal > 0);
+      await tx.order.update({
+        where: { id: original.orderId },
+        data: { paymentStatus: newPayStatus },
+      });
+
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.payment.refund',
+        entityType: 'Payment',
+        entityId: refundPaymentRow.id,
+        before: {
+          originalPaymentId: paymentId,
+          originalAmount: Number(original.amountIrr),
+          alreadyRefundedIrr: alreadyRefunded,
+          originalStatus: original.status,
+        },
+        after: {
+          orderId: original.orderId,
+          orderNumber: original.order.orderNumber,
+          refundAmountIrr: amtIrr,
+          refundAmountUsd: amountUsd,
+          reason: reason?.slice(0, 400) ?? null,
+          newOrderPaymentStatus: newPayStatus,
+        },
+      });
+      return serializePayment(refundPaymentRow);
+    }, { isolationLevel: 'Serializable' });
+  } catch (error: any) {
+    if (error?.code === 'P2034') {
+      throw new CommerceServiceError(409, 'پرداخت هم‌زمان بازپرداخت شده است؛ وضعیت دفتر مالی را دوباره بررسی کنید');
+    }
+    throw error;
   }
-  // Refunds are only valid against APPROVED payments.
-  if (original.status !== 'APPROVED') {
-    throw new CommerceServiceError(
-      400,
-      `پرداخت در وضعیت ${original.status} قرار دارد و قابل بازگردانی نیست`,
-    );
-  }
-  // The refund amount cannot exceed the original payment amount.
-  if (amtIrr > Number(original.amountIrr) + 1) {
-    throw new CommerceServiceError(
-      400,
-      `مبلغ بازگردانی (${amtIrr}) بیشتر از مبلغ پرداخت اصلی (${original.amountIrr}) است`,
-    );
-  }
-
-  const amountUsd =
-    original.order.currencyRateAtOrder > 0
-      ? Number(
-          (amtIrr /
-            (original.order.currencyRateAtOrder *
-              (1 + (original.order.marginPercentAtOrder || 0) / 100))).toFixed(2),
-        )
-      : 0;
-
-  const refundPaymentRow = await storeDb.payment.create({
-    data: {
-      orderId: original.orderId,
-      customerId: original.customerId,
-      amountIrr: amtIrr,
-      amountUsd,
-      method: original.method,
-      status: 'REFUNDED',
-      referenceCode: original.referenceCode,
-      receiptImageUrl: null,
-      payerName: original.payerName,
-      payerCard: original.payerCard,
-      note: `refund of ${paymentId}${reason ? ` — ${reason}` : ''}`,
-      gateway: original.gateway,
-      authority: null,
-      refId: null,
-      gatewayUrl: null,
-      reviewedById: userId ?? null,
-      reviewedAt: new Date(),
-    },
-  });
-
-  // Recompute the Order.paymentStatus accounting for the refund.
-  const allPayments = await storeDb.payment.findMany({
-    where: { orderId: original.orderId },
-    select: { amountIrr: true, status: true },
-  });
-  const approvedTotal = allPayments
-    .filter((p: any) => p.status === 'APPROVED')
-    .reduce((s: number, p: any) => s + Number(p.amountIrr ?? 0), 0);
-  const refundedTotal = allPayments
-    .filter((p: any) => p.status === 'REFUNDED')
-    .reduce((s: number, p: any) => s + Number(p.amountIrr ?? 0), 0);
-  const netApproved = approvedTotal - refundedTotal;
-  const newPayStatus = computePaymentStatus(
-    Number(original.order.totalIrr),
-    netApproved,
-    refundedTotal > 0,
-  );
-  if (newPayStatus !== original.order.paymentStatus) {
-    await storeDb.order.update({
-      where: { id: original.orderId },
-      data: { paymentStatus: newPayStatus },
-    });
-  }
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.payment.refund',
-    entityType: 'Payment',
-    entityId: refundPaymentRow.id,
-    before: {
-      originalPaymentId: paymentId,
-      originalAmount: Number(original.amountIrr),
-      originalStatus: original.status,
-    },
-    after: {
-      orderId: original.orderId,
-      orderNumber: original.order.orderNumber,
-      refundAmountIrr: amtIrr,
-      refundAmountUsd: amountUsd,
-      reason: reason ?? null,
-      newOrderPaymentStatus: newPayStatus,
-    },
-    reason: `بازگردانی ${amtIrr} تومان از پرداخت ${paymentId}${reason ? ` — ${reason}` : ''}`,
-  });
-
-  return serializePayment(refundPaymentRow);
 }
 
 // ── getOrderDetail ────────────────────────────────────────

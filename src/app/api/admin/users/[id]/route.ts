@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { hasPermission } from "@/lib/rbac";
 import { hashPassword } from "@/lib/password";
-import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,7 +107,8 @@ export async function GET(_req: Request, { params }: Args) {
 
     return NextResponse.json({ success: true, data: serialized });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] request failed:", err);
+    return NextResponse.json({ error: "Unable to process user request" }, { status: 500 });
   }
 }
 
@@ -123,6 +124,10 @@ export async function PATCH(req: Request, { params }: Args) {
       { error: "Forbidden: missing permission 'user.suspend'" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
     const { id } = await params;
@@ -213,101 +218,101 @@ export async function PATCH(req: Request, { params }: Args) {
       data.lastLoginAt = body.lastLoginAt === null ? null : new Date(body.lastLoginAt);
     }
 
-    // ── STEP 15.40 Phase B (BLOCKER-1): Transactional dual-write ──
-    // When role is being changed, wrap the legacy column update +
-    // UserRole deleteMany + UserRole upsert in a single $transaction.
-    // If ANY of these throw, ALL roll back — no partial state.
-    // Audit log remains OUTSIDE the transaction (best-effort, never
-    // blocks the mutation per REVISION-6).
-    let updated: any;
-    if (roleChange) {
-      const replaceableKeys = ["ADMIN", "SELLER", "BUYER"];
-      updated = await db.$transaction(async (tx) => {
-        // ── STEP 15.44-B (defense-in-depth): explicit row lock at TX start ──
-        // Acquire a row-level lock on the User row BEFORE any reads or writes.
-        // This serializes concurrent dual-write transactions for the same user
-        // at the DB level, INDEPENDENT of the order of subsequent operations.
-        //
-        // Why: under READ COMMITTED (PostgreSQL default), `userRole.findMany`
-        // sees only COMMITTED rows. If a future refactor moves findMany BEFORE
-        // user.update, two concurrent PATCHes for the same user could both
-        // read stale `existingUserRoles` lists, both delete nothing relevant,
-        // and both upsert DIFFERENT replaceable roles — leaving BOTH ADMIN and
-        // SELLER UserRole rows simultaneously (the race the design addendum at
-        // docs/phase3/RBAC-MIGRATION-ADDENDUM-STEP-15.43.md:127-129 acknowledges).
-        // The current code is safe because user.update is FIRST (acquires the
-        // lock implicitly), but `SELECT ... FOR UPDATE` here makes the lock
-        // acquisition EXPLICIT and ordering-independent — verified by
-        // tests/integration/rbac-concurrency-real.test.ts C-2e.
-        //
-        // Cost: one round-trip (~0.2ms localhost, ~1ms network). Bounded by
-        // the dual-write transaction's existing cost (~3-5ms for user.update +
-        // findMany + deleteMany + upsert). Negligible.
-        await tx.$queryRaw`SELECT id FROM "User" WHERE "id" = ${id} FOR UPDATE`;
+    // Identity, canonical role assignment and audit are one atomic unit.
+    // Re-read the before snapshot under the row lock to prevent stale audit state.
+    const replaceableKeys = ["ADMIN", "SELLER", "BUYER"];
+    const roleChangeForTransaction = roleChange;
+    const updated = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "User" WHERE "id" = ${id} FOR UPDATE`;
 
-        // 1. Update legacy User.role column (+ any other fields in `data`)
-        const u = await tx.user.update({
-          where: { id },
-          data,
-          include: {
-            _count: { select: { listings: true, offers: true, requests: true } },
-          },
-        });
-
-        // 2. Delete existing replaceable UserRoles (ADMIN/SELLER/BUYER)
-        const existingUserRoles = await tx.userRole.findMany({
-          where: { userId: id, role: { key: { in: replaceableKeys } } },
-          select: { id: true },
-        });
-        if (existingUserRoles.length > 0) {
-          await tx.userRole.deleteMany({
-            where: { id: { in: existingUserRoles.map((e) => e.id) } },
-          });
-        }
-
-        // 3. Upsert the new UserRole (idempotent via @@unique([userId, roleId]))
-        await tx.userRole.upsert({
-          where: { userId_roleId: { userId: id, roleId: roleChange.roleId } },
-          create: { userId: id, roleId: roleChange.roleId },
-          update: {},
-        });
-
-        return u;
+      const before = await tx.user.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          mobile: true,
+          userType: true,
+          role: true,
+          status: true,
+          companyName: true,
+          emailVerified: true,
+          mobileVerified: true,
+          lastLoginAt: true,
+        },
       });
-      // ── End transaction ──
-      // If we reach here, ALL three ops succeeded atomically.
-    } else {
-      // No role change — single non-transactional update (same as Phase A)
-      updated = await db.user.update({
+      if (!before) return null;
+
+      const user = await tx.user.update({
         where: { id },
         data,
         include: {
           _count: { select: { listings: true, offers: true, requests: true } },
         },
       });
-    }
 
-    // Audit log OUTSIDE transaction (best-effort, never blocks mutation).
-    // Per REVISION-6: during Phase B, `role` in the audit payload is still
-    // the legacy column value (dual-write keeps it in sync), so the audit
-    // log content is unchanged. Phase D cutover will switch this to the
-    // canonical UserRole key.
-    await logAudit({
-      actorId: sessionUser.id,
-      actorType: "ADMIN",
-      action: "admin.users.update",
-      entityType: "User",
-      entityId: updated.id,
-      before: { firstName: existing.firstName, lastName: existing.lastName, email: existing.email, role: existing.role, status: existing.status, companyName: existing.companyName },
-      after: { firstName: updated.firstName, lastName: updated.lastName, email: updated.email, role: updated.role, status: updated.status, companyName: updated.companyName },
-      reason: "via admin API",
-    }).catch(() => {
-      /* audit failure does not roll back the mutation */
+      if (roleChangeForTransaction) {
+        const existingUserRoles = await tx.userRole.findMany({
+          where: { userId: id, role: { key: { in: replaceableKeys } } },
+          select: { id: true },
+        });
+        if (existingUserRoles.length > 0) {
+          await tx.userRole.deleteMany({
+            where: { id: { in: existingUserRoles.map((entry) => entry.id) } },
+          });
+        }
+        await tx.userRole.upsert({
+          where: { userId_roleId: { userId: id, roleId: roleChangeForTransaction.roleId } },
+          create: { userId: id, roleId: roleChangeForTransaction.roleId },
+          update: {},
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "admin.users.update",
+          entityType: "User",
+          entityId: user.id,
+          beforeJson: JSON.stringify({
+            firstName: before.firstName,
+            lastName: before.lastName,
+            email: before.email,
+            mobile: before.mobile,
+            userType: before.userType,
+            role: before.role,
+            status: before.status,
+            companyName: before.companyName,
+            emailVerified: before.emailVerified,
+            mobileVerified: before.mobileVerified,
+            lastLoginAt: before.lastLoginAt,
+          }),
+          afterJson: JSON.stringify({
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            mobile: user.mobile,
+            userType: user.userType,
+            role: user.role,
+            status: user.status,
+            companyName: user.companyName,
+            emailVerified: user.emailVerified,
+            mobileVerified: user.mobileVerified,
+            lastLoginAt: user.lastLoginAt,
+          }),
+          reason: "via admin API",
+        },
+      });
+      return user;
     });
 
+    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ success: true, data: serializeUser(updated) });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] mutation failed:", err);
+    return NextResponse.json({ error: "Unable to process user request" }, { status: 500 });
   }
 }
 
@@ -317,7 +322,7 @@ export async function PATCH(req: Request, { params }: Args) {
    (P0-RBAC: requires security.manage — destructive user deletion is reserved
     for security administrators; user.suspend covers the non-destructive case.)
 */
-export async function DELETE(_req: Request, { params }: Args) {
+export async function DELETE(req: Request, { params }: Args) {
   const sessionUser = await getCurrentUser();
   if (!sessionUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -328,30 +333,42 @@ export async function DELETE(_req: Request, { params }: Args) {
       { status: 403 },
     );
   }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const { id } = await params;
-    const existing = await db.user.findUnique({ where: { id } });
-    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-    // Delete the user. Cascade rules in the schema will handle:
-    // - Session: onDelete: Cascade → sessions deleted
-    // - VerificationCode: onDelete: Cascade → codes deleted
-    // - Listing.seller: onDelete: SetNull → listings survive with sellerId=null
-    // - BuyRequest.user: check schema (cascade) → may delete or set null
-    // - Favorite.user: check schema
-    // Most user-related tables use Cascade; the listing uses SetNull to preserve ad data.
-    await db.user.delete({ where: { id } });
-    await logAudit({
-      actorId: sessionUser.id,
-      actorType: "ADMIN",
-      action: "admin.users.delete",
-      entityType: "User",
-      entityId: id,
-      before: { firstName: existing.firstName, lastName: existing.lastName, email: existing.email, role: existing.role, status: existing.status },
-      reason: "via admin API",
+    const deleted = await db.$transaction(async (tx) => {
+      const existing = await tx.user.findUnique({
+        where: { id },
+        select: { id: true, firstName: true, lastName: true, email: true, role: true, status: true },
+      });
+      if (!existing) return false;
+      await tx.user.delete({ where: { id } });
+      await tx.auditLog.create({
+        data: {
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "admin.users.delete",
+          entityType: "User",
+          entityId: id,
+          beforeJson: JSON.stringify({
+            firstName: existing.firstName,
+            lastName: existing.lastName,
+            email: existing.email,
+            role: existing.role,
+            status: existing.status,
+          }),
+          reason: "via admin API",
+        },
+      });
+      return true;
     });
+    if (!deleted) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] mutation failed:", err);
+    return NextResponse.json({ error: "Unable to process user request" }, { status: 500 });
   }
 }

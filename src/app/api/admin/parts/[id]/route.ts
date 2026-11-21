@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 
@@ -43,6 +44,10 @@ export async function PATCH(req: Request, { params }: Args) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   await requirePermission(user.id, "part.update");
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -78,12 +83,16 @@ export async function PATCH(req: Request, { params }: Args) {
   }
 }
 
-export async function DELETE(_req: Request, { params }: Args) {
+export async function DELETE(req: Request, { params }: Args) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   await requirePermission(user.id, "part.update");
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
   try {
     const { id } = await params;
     const before = await db.part.findUnique({ where: { id } });

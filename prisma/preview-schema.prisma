@@ -50,6 +50,7 @@ model Brand {
   listings    Listing[]
   aliases     BrandAlias[]
   industries  BrandIndustry[]
+  buyRequests BuyRequest[]  @relation("BuyRequestBrand")
 
   // STEP 15-B.4.1: PROVEN via EXPLAIN ANALYZE before/after simulation in 15-B.2
   // Query: SELECT * FROM "Brand" WHERE active=true ORDER BY name ASC LIMIT 24 OFFSET 0
@@ -185,18 +186,20 @@ model Category {
   // relations
   listings    Listing[]
   attributes  CategoryAttribute[]
+  modelAttributes ProductModelAttribute[]
   brands      BrandCategory[]
   modelCategories ModelCategory[]
   models      ProductModel[]
   products    Product[]
   appIndustries CategoryApplicationIndustry[]
   priceObservations PriceObservation[]
+  buyRequests BuyRequest[]  @relation("BuyRequestCategory")
 }
 
 // HBR Taxonomy V1.1 §18: Transaction Layer (separate from Category)
 model TransactionType {
   id          String   @id @default(cuid())
-  key         String   @unique // SALE | RENT | WANTED | QUOTE | AUCTION | SERVICE_REQUEST
+  key         String   @unique // SALE | SERVICE_OFFER | RENT | WANTED | QUOTE | AUCTION | SERVICE_REQUEST
   nameFa      String
   nameEn      String?
   description String?
@@ -218,6 +221,8 @@ model ServiceType {
   active      Boolean  @default(true)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
+  listings    Listing[]
+  buyRequests BuyRequest[]  @relation("BuyRequestService")
 }
 
 // FIX-SERVICES-KNOWLEDGE-CATS-BRANDS (Part 3): homepage Services section.
@@ -282,6 +287,8 @@ model Country {
   createdAt DateTime @default(now())
   provinces Province[]
   listings  Listing[]
+  buyRequests BuyRequest[] @relation("BuyRequestCountry")
+  geoZones GeoZone[] @relation("GeoZoneCountry")
 }
 
 model Province {
@@ -290,11 +297,14 @@ model Province {
   country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
   name      String
   nameEn    String?
-  code      String?
-  sortOrder Int     @default(0)
+  code       String?
+  sourceCode String? @unique
+  sortOrder  Int     @default(0)
   createdAt DateTime @default(now())
   cities    City[]
   listings  Listing[] @relation("ListingProvince")
+  buyRequests BuyRequest[] @relation("BuyRequestProvince")
+  geoZones GeoZone[] @relation("GeoZoneProvince")
   @@unique([countryId, name])
 }
 
@@ -304,13 +314,35 @@ model City {
   province   Province @relation(fields: [provinceId], references: [id], onDelete: Cascade)
   name       String
   nameEn     String?
+  sourceCode String? @unique
   latitude   Float?
   longitude  Float?
   sortOrder  Int     @default(0)
   createdAt  DateTime @default(now())
   listings   Listing[] @relation("ListingCity")
+  buyRequests BuyRequest[] @relation("BuyRequestCity")
   branches   CompanyBranch[]
   @@unique([provinceId, name])
+}
+
+model GeoZone {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  level             String
+  boundaryGeoJson   String
+  centerLatitude    Float?
+  centerLongitude   Float?
+  countryId         String?
+  country           Country?  @relation("GeoZoneCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  provinceId        String?
+  province          Province? @relation("GeoZoneProvince", fields: [provinceId], references: [id], onDelete: SetNull)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  @@index([level, isActive])
+  @@index([countryId, isActive])
+  @@index([provinceId, isActive])
 }
 
 model AttributeDefinition {
@@ -335,7 +367,9 @@ model AttributeDefinition {
   updatedAt   DateTime @default(now()) @updatedAt
   options     AttributeOption[]
   categories  CategoryAttribute[]
+  modelAttributes ProductModelAttribute[]
   values      ListingAttributeValue[]
+  buyRequestValues BuyRequestAttributeValue[]  @relation("BuyRequestAttributeValueAttribute")
 }
 
 model AttributeOption {
@@ -345,6 +379,8 @@ model AttributeOption {
   value       String
   label       String?
   sortOrder   Int      @default(0)
+  buyRequestValues     BuyRequestAttributeValue[]  @relation("BuyRequestAttributeValueOption")
+  buyRequestOptionRows BuyRequestAttributeOption[]  @relation("BuyRequestAttributeOptionOption")
 }
 
 model CategoryAttribute {
@@ -353,6 +389,7 @@ model CategoryAttribute {
   category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   attributeId String
   attribute   AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  active      Boolean  @default(true)
   required    Boolean  @default(false)
   filterable  Boolean  @default(false)
   searchable  Boolean  @default(false)
@@ -405,9 +442,11 @@ model ProductModel {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   modelCategories ModelCategory[]
+  modelAttributes ProductModelAttribute[]
   generations   Generation[]
   listings      Listing[]
   products      Product[]
+  buyRequests BuyRequest[]  @relation("BuyRequestModel")
   @@unique([brandId, slug])
 }
 
@@ -418,6 +457,26 @@ model ModelCategory {
   categoryId String
   category  Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   @@unique([modelId, categoryId])
+}
+
+model ProductModelAttribute {
+  id          String   @id @default(cuid())
+  modelId     String
+  model       ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  attributeId String
+  attribute   AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  required    Boolean  @default(false)
+  filterable  Boolean  @default(false)
+  searchable  Boolean  @default(false)
+  sortable    Boolean  @default(false)
+  displayOrder Int     @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([modelId, categoryId, attributeId])
+  @@index([modelId, categoryId])
+  @@index([attributeId])
 }
 
 model Generation {
@@ -453,6 +512,10 @@ model Listing {
   condition    String?
   province     String?
   city         String?
+  locationLatitude       Float?
+  locationLongitude      Float?
+  locationAccuracyMeters Float?
+  locationUpdatedAt      DateTime?
   year         Int?
   workingHours Int?
   status       String         @default("PUBLISHED")
@@ -495,6 +558,9 @@ model Listing {
   product          Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
   transactionTypeId String?
   transactionType   TransactionType? @relation(fields: [transactionTypeId], references: [id], onDelete: SetNull)
+  serviceTypeId     String?
+  serviceType        ServiceType? @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  rfq                RFQ?
   countryId      String?
   country        Country?  @relation(fields: [countryId], references: [id], onDelete: SetNull)
   provinceId     String?
@@ -530,6 +596,9 @@ model Listing {
   // REVIEW-01 — reviews anchored to this listing
   reviews        Review[]
   deals          Deal[]
+  @@index([serviceTypeId])
+  @@index([countryId, provinceId, cityId])
+  @@index([locationLatitude, locationLongitude])
 }
 
 model ListingImage {
@@ -557,6 +626,13 @@ model BuyRequest {
   budgetMax   BigInt?
   city        String?
   province    String?
+  countryId   String?
+  provinceId  String?
+  cityId      String?
+  locationLatitude       Float?
+  locationLongitude      Float?
+  locationAccuracyMeters Float?
+  locationUpdatedAt      DateTime?
   deadline    String?
   status      String   @default("ACTIVE")
   verified    Boolean  @default(false)
@@ -570,6 +646,86 @@ model BuyRequest {
   updatedAt   DateTime  @updatedAt
   userId      String?
   user        User?     @relation("UserRequests", fields: [userId], references: [id], onDelete: SetNull)
+  quantity        Int?
+  categoryId      String?
+  brandId         String?
+  modelId         String?
+  serviceTypeId   String?
+  intent          String?
+  idempotencyKey  String?
+  categoryRef     Category?        @relation("BuyRequestCategory", fields: [categoryId],    references: [id], onDelete: SetNull)
+  brandRef        Brand?           @relation("BuyRequestBrand",   fields: [brandId],       references: [id], onDelete: SetNull)
+  modelRef        ProductModel?    @relation("BuyRequestModel",   fields: [modelId],       references: [id], onDelete: SetNull)
+  serviceTypeRef  ServiceType?     @relation("BuyRequestService", fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  countryRef      Country?         @relation("BuyRequestCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  provinceRef     Province?        @relation("BuyRequestProvince", fields: [provinceId], references: [id], onDelete: SetNull)
+  cityRef         City?            @relation("BuyRequestCity", fields: [cityId], references: [id], onDelete: SetNull)
+  attributeValues BuyRequestAttributeValue[]
+  images          BuyRequestImage[]
+  // Idempotency keys are scoped to the authenticated owner; different users
+  // may legitimately generate the same client-side key without colliding.
+  @@unique([userId, idempotencyKey])
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([modelId])
+  @@index([status, expiresAt])
+  @@index([userId, status])
+  @@index([intent])
+  @@index([countryId, provinceId, cityId])
+  @@index([locationLatitude, locationLongitude])
+}
+
+model BuyRequestImage {
+  id           String      @id @default(cuid())
+  buyRequestId String
+  assetId      String      @unique
+  url          String
+  alt          String?
+  isPrimary    Boolean     @default(false)
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+  buyRequest  BuyRequest  @relation(fields: [buyRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([buyRequestId, sortOrder])
+  @@index([buyRequestId])
+}
+
+model BuyRequestAttributeValue {
+  id            String   @id @default(cuid())
+  buyRequestId  String
+  attributeId   String
+  attribute     AttributeDefinition @relation("BuyRequestAttributeValueAttribute", fields: [attributeId], references: [id], onDelete: Cascade)
+  optionId      String?
+  option        AttributeOption?  @relation("BuyRequestAttributeValueOption", fields: [optionId], references: [id], onDelete: SetNull)
+  textValue     String?
+  numberValue   Float?
+  booleanValue  Boolean?
+  dateValue     DateTime?
+  unit          String?
+  sourceType    String?
+  confidence    Float?
+  sourceReference String?
+  verifiedAt    DateTime?
+  verifiedBy    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  buyRequest    BuyRequest       @relation(fields: [buyRequestId], references: [id], onDelete: Cascade)
+  selectedOptions BuyRequestAttributeOption[]
+  @@unique([buyRequestId, attributeId])
+  @@index([buyRequestId])
+  @@index([attributeId])
+}
+
+model BuyRequestAttributeOption {
+  id              String   @id @default(cuid())
+  attributeValueId String
+  attributeValue  BuyRequestAttributeValue @relation(fields: [attributeValueId], references: [id], onDelete: Cascade)
+  optionId        String
+  option          AttributeOption @relation("BuyRequestAttributeOptionOption", fields: [optionId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  @@unique([attributeValueId, optionId])
+  @@index([attributeValueId])
+  @@index([optionId])
 }
 
 // ════════════════════════════════════════════════════════════
@@ -863,6 +1019,8 @@ model DemandSignal {
 
 model RFQ {
   id          String   @id @default(cuid())
+  listingId   String?  @unique
+  listing     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
   title       String
   description String?
   // requirements
@@ -1210,6 +1368,7 @@ model Company {
   name        String
   slug        String   @unique
   description String?
+  businessType String?
   logoUrl     String?
   coverImage  String?
   website     String?
@@ -1243,6 +1402,8 @@ model Company {
   avgRating      Float?
   reviewCount    Int      @default(0)
   reviews        Review[]
+  memberships    CompanyMembership[]
+  invitations    CompanyInvitation[]
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1450,6 +1611,9 @@ model HomePageSection {
 }
 
 model HeroConfig {
+  // HEAVIX selectable hero templates; classic remains the backward-compatible default.
+  activeTemplate   String?  @default("classic")
+  cinematicConfig  String?
   id              String   @id @default("main")
   badge           String?
   title1          String?
@@ -1638,6 +1802,67 @@ model User {
   //   (Lead.scoreOverrideById). Kept for audit traceability.
   assignedLeads       Lead[] @relation("LeadAssignee")
   scoreOverrideLeads  Lead[] @relation("LeadScoreOverride")
+
+  commercialPersonas UserCommercialPersona[]
+  companyMemberships CompanyMembership[]
+  sentCompanyInvitations CompanyInvitation[] @relation("CompanyInvitationInviter")
+  acceptedCompanyInvitations CompanyInvitation[] @relation("CompanyInvitationAcceptedBy")
+}
+
+model UserCommercialPersona {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  personaKey String  // INDIVIDUAL | DEALER | MANUFACTURER | IMPORTER_DISTRIBUTOR | RENTAL_COMPANY | AUCTION_HOUSE | BROKER | SERVICE_PROVIDER | FLEET_OPERATOR | PUBLIC_ORGANIZATION
+  isPrimary Boolean  @default(false)
+  status    String   @default("ACTIVE") // ACTIVE | INACTIVE | PENDING_REVIEW
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, personaKey])
+  @@index([personaKey, status])
+}
+
+model CompanyMembership {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleKey   String   // OWNER | ORG_ADMIN | SALES_MANAGER | SALES_REP | INVENTORY_MANAGER | BUYER | FINANCE | SERVICE_MANAGER | TECHNICIAN | VIEWER
+  status    String   @default("ACTIVE") // INVITED | ACTIVE | SUSPENDED | REMOVED
+  isPrimary Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([companyId, userId])
+  @@index([userId, status])
+  @@index([companyId, status])
+}
+
+model CompanyInvitation {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  emailNormalized String
+  roleKey        String
+  tokenHash      String   @unique
+  // Non-null only while one invitation for this company/email is pending.
+  // A unique nullable key prevents concurrent duplicate pending invitations.
+  activeKey      String?  @unique
+  status         String   @default("PENDING") // PENDING | ACCEPTED | REVOKED | EXPIRED | DELIVERY_FAILED
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  invitedById    String?
+  invitedBy      User?    @relation("CompanyInvitationInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+  acceptedById   String?
+  acceptedBy     User?    @relation("CompanyInvitationAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([companyId, status, expiresAt])
+  @@index([emailNormalized, status])
+  @@index([invitedById])
+  @@index([acceptedById])
 }
 
 model Session {

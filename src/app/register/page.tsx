@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { UserPlus, Mail, ShieldCheck, ArrowLeft } from "lucide-react";
+import { safeInternalRedirect } from "@/lib/auth-redirect";
 
 /* ============================================================
    /register — user registration with email confirmation.
@@ -12,8 +13,10 @@ import { UserPlus, Mail, ShieldCheck, ArrowLeft } from "lucide-react";
    Step 3: success → redirect to login
    ============================================================ */
 
-export default function RegisterPage() {
-  const router = useRouter();
+function RegisterContent() {
+  const sp = useSearchParams();
+  const returnPath = safeInternalRedirect(sp.get("redirect"), "");
+  const loginHref = returnPath ? `/login?redirect=${encodeURIComponent(returnPath)}` : "/login";
   const [step, setStep] = useState<"form" | "verify" | "success">("form");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +32,7 @@ export default function RegisterPage() {
   // Verification
   const [userId, setUserId] = useState("");
   const [code, setCode] = useState("");
-  const [devCode, setDevCode] = useState(""); // shown in dev mode
+  const [emailDeliveryFailed, setEmailDeliveryFailed] = useState(false);
 
   const submitForm = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,13 +49,38 @@ export default function RegisterPage() {
 
       if (res.ok && data.ok) {
         setUserId(data.userId);
-        setDevCode(data.devEmailCode ?? "");
+        setEmailDeliveryFailed(data.emailDelivery === false);
         setStep("verify");
       } else {
         setError(data.error ?? "ثبت‌نام ناموفق بود.");
       }
     } catch {
       setError("خطای شبکه — اتصال اینترنت را بررسی کنید.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendCode = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setEmailDeliveryFailed(false);
+        setError(data.message ?? "درخواست ارسال مجدد ثبت شد.");
+      } else {
+        setEmailDeliveryFailed(true);
+        setError(data.error ?? "ارسال ایمیل انجام نشد. تنظیمات ارسال ایمیل باید تکمیل شود.");
+      }
+    } catch {
+      setEmailDeliveryFailed(true);
+      setError("خطای شبکه هنگام ارسال مجدد ایمیل.");
     } finally {
       setLoading(false);
     }
@@ -132,8 +160,11 @@ export default function RegisterPage() {
                 <label className="mb-1 block text-xs font-bold text-white/60">شماره موبایل *</label>
                 <input
                   value={mobile}
-                  onChange={(e) => setMobile(e.target.value)}
+                  onChange={(e) => setMobile(e.target.value.replace(/[^0-9۰-۹٠-٩+]/g, "").slice(0, 16))}
                   required
+                  inputMode="tel"
+                  autoComplete="tel"
+                  maxLength={16}
                   dir="ltr"
                   className={inputCls + " text-right"}
                   placeholder="09123456789"
@@ -147,6 +178,8 @@ export default function RegisterPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  autoComplete="email"
+                  maxLength={254}
                   dir="ltr"
                   className={inputCls + " text-right"}
                   placeholder="you@example.com"
@@ -160,6 +193,9 @@ export default function RegisterPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  minLength={8}
+                  maxLength={128}
+                  autoComplete="new-password"
                   className={inputCls}
                   placeholder="حداقل ۸ کاراکتر"
                 />
@@ -186,7 +222,7 @@ export default function RegisterPage() {
 
             <p className="mt-4 text-center text-xs text-white/40">
               قبلاً ثبت‌نام کرده‌اید؟{" "}
-              <Link href="/login" className="font-bold text-[#F58220] hover:underline">
+              <Link href={loginHref} className="font-bold text-[#F58220] hover:underline">
                 ورود
               </Link>
             </p>
@@ -208,9 +244,9 @@ export default function RegisterPage() {
               کد ۶ رقمی به ایمیل شما ارسال شد. در صورت عدم دریافت، پوشه هرزنامه را بررسی کنید.
             </p>
 
-            {devCode && (
-              <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-center text-sm font-bold text-amber-400">
-                کد تأیید (دمو): <span dir="ltr" className="tracking-widest">{devCode}</span>
+            {emailDeliveryFailed && (
+              <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-center text-xs font-bold text-amber-300">
+                ارسال ایمیل برقرار نیست. تنظیمات سرویس ایمیل باید تکمیل شود؛ سپس کد را دوباره درخواست کنید.
               </div>
             )}
 
@@ -223,8 +259,11 @@ export default function RegisterPage() {
             <div className="mt-5">
               <input
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
+                onChange={(e) => setCode(e.target.value.replace(/\\D/g, "").slice(0, 6))}
                 required
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
                 dir="ltr"
                 maxLength={6}
                 className={inputCls + " text-center text-2xl tracking-[0.5em] font-black"}
@@ -247,6 +286,14 @@ export default function RegisterPage() {
 
             <button
               type="button"
+              onClick={resendCode}
+              disabled={loading}
+              className="mt-3 flex w-full items-center justify-center gap-1 text-xs font-bold text-[#F58220] transition hover:text-white disabled:opacity-50"
+            >
+              ارسال مجدد کد به ایمیل
+            </button>
+            <button
+              type="button"
               onClick={() => setStep("form")}
               className="mt-3 flex w-full items-center justify-center gap-1 text-xs text-white/40 transition hover:text-white"
             >
@@ -263,10 +310,10 @@ export default function RegisterPage() {
             </div>
             <h1 className="text-xl font-black text-white">حساب شما فعال شد!</h1>
             <p className="mt-2 text-sm text-white/55">
-              اکنون می‌توانید با شماره موبایل و رمز عبور خود وارد شوید.
+              ایمیل شما تأیید شد. اکنون می‌توانید با ایمیل یا شماره موبایل ثبت‌شده و رمز عبور وارد شوید.
             </p>
             <Link
-              href="/login"
+              href={loginHref}
               className="mt-5 inline-flex h-12 items-center justify-center rounded-xl bg-[#F58220] px-8 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
             >
               ورود به حساب
@@ -281,5 +328,14 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#0b0b0b] text-white/50">در حال بارگذاری…</div>}>
+      <RegisterContent />
+    </Suspense>
   );
 }

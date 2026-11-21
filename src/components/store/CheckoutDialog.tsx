@@ -158,7 +158,7 @@ export function CheckoutDialog({
       const res = await fetch("/api/store/payments/gateway/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId: createdOrder.id, phone }),
+        body: JSON.stringify({ orderId: createdOrder.id }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "خطا در ایجاد درگاه");
@@ -185,12 +185,11 @@ export function CheckoutDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId: createdOrder.id,
-          phone,
           method: mMethod,
           amountIrr: createdOrder.totalIrr,
           referenceCode: refCode,
           payerName: payerName || `${name} ${family}`.trim(),
-          payerCard: payerCard,
+          payerCard: payerCard.replace(/\D/g, "").slice(-4),
           note: mNote,
         }),
       });
@@ -415,8 +414,8 @@ export function CheckoutDialog({
                     <Input value={payerName} onChange={(e) => setPayerName(e.target.value)} className="h-9" placeholder={`${name} ${family}`} />
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-xs">شماره کارت (اختیاری)</Label>
-                    <Input value={payerCard} onChange={(e) => setPayerCard(e.target.value)} className="h-9" dir="ltr" placeholder="6037-xxxx-xxxx-xxxx" />
+                    <Label className="text-xs">چهار رقم آخر کارت (اختیاری)</Label>
+                    <Input value={payerCard} onChange={(e) => setPayerCard(e.target.value.replace(/\D/g, "").slice(0, 4))} className="h-9" dir="ltr" inputMode="numeric" maxLength={4} placeholder="مثلاً 1234" />
                   </div>
                 </div>
                 <div className="space-y-1">

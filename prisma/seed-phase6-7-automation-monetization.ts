@@ -10,8 +10,10 @@
  *
  * Phase 7 — Monetization:
  * - SubscriptionPlans (BASIC/PRO/PREMIUM)
- * - Payment records
- * - PremiumSubscription for existing users
+ *
+ * This seed intentionally does NOT fabricate Payment or PremiumSubscription
+ * rows. Financial settlement and entitlements must come from verified,
+ * audited operational flows, never from user ordering or demo seed data.
  */
 import { db } from "../src/lib/db";
 
@@ -99,15 +101,18 @@ async function main() {
     await db.aIBudget.create({
       data: {
         id: "main",
-        dailyLimitUsd: 10.0,
-        monthlyLimitUsd: 200.0,
-        active: true,
+        dailyLimitUsd: 0,
+        monthlyLimitUsd: 0,
+        active: false,
       },
     }).catch(() => {});
-    console.log("  ✓ AI budget created (daily: $10, monthly: $200)");
-  } else {
-    console.log("  ✓ AI budget already exists");
+  } else if (existingBudget.active) {
+    await db.aIBudget.update({
+      where: { id: "main" },
+      data: { active: false },
+    }).catch(() => {});
   }
+  console.log("  ✓ AI budget remains disabled under the free-infrastructure policy");
 
   // 5. Seed background jobs (placeholder records)
   console.log("\n5. Seeding background job records...");
@@ -128,13 +133,13 @@ async function main() {
       priceMonthly: 0n,
       priceYearly: 0n,
       featuredCredits: 0,
-      maxListings: 5,
-      maxImages: 8,
+      maxListings: 4,
+      maxImages: 4,
       supportLevel: "BASIC",
       sortOrder: 1,
       active: true,
       popular: false,
-      featuresJson: JSON.stringify(["۵ آگهی فعال", "۸ تصویر برای هر آگهی", "نمایش در نتایج جستجو", "پنل کاربری ساده"]),
+      featuresJson: JSON.stringify(["۴ آگهی فعال", "۴ تصویر برای هر آگهی", "نمایش استاندارد در نتایج", "پشتیبانی ایمیلی", "داشبورد پایه"]),
     },
     {
       code: "PRO",
@@ -143,18 +148,18 @@ async function main() {
       description: "برترین انتخاب شرکت‌های متوسط و نمایندگی‌ها",
       priceMonthly: 2900000n,
       priceYearly: 29000000n,
-      featuredCredits: 10,
+      featuredCredits: 2,
       analyticsAccess: true,
-      aiAssistantAccess: true,
-      priorityLeads: true,
-      maxListings: 50,
-      maxImages: 16,
+      aiAssistantAccess: false,
+      priorityLeads: false,
+      maxListings: 10,
+      maxImages: 8,
       verifiedBadge: true,
-      supportLevel: "PRIORITY",
+      supportLevel: "PHONE",
       sortOrder: 2,
       active: true,
       popular: true,
-      featuresJson: JSON.stringify(["۵۰ آگهی فعال", "۱۶ تصویر برای هر آگهی", "۱۰ اعتبار آگهی ویژه", "دسترسی به تحلیل بازار", "دسترسی به دستیار هوش مصنوعی", "اولویت در سرنخ‌ها", "نشان تأییدشده", "پشتیبانی اولویت‌دار"]),
+      featuresJson: JSON.stringify(["۱۰ آگهی فعال", "۸ تصویر برای هر آگهی", "۲ آگهی ویژه ماهانه", "دسترسی به تحلیل بازار", "اولویت در نتایج جستجو", "نشان تأییدشده", "پشتیبانی تلفنی"]),
     },
     {
       code: "PREMIUM",
@@ -163,19 +168,19 @@ async function main() {
       description: "راهکار کامل برای نمایندگی‌های رسمی و شرکت‌های بزرگ",
       priceMonthly: 8900000n,
       priceYearly: 89000000n,
-      featuredCredits: 50,
+      featuredCredits: 5,
       analyticsAccess: true,
       aiAssistantAccess: true,
       priorityLeads: true,
       companyPage: true,
-      maxListings: 0,
-      maxImages: 32,
+      maxListings: 20,
+      maxImages: 8,
       verifiedBadge: true,
       supportLevel: "DEDICATED",
       sortOrder: 3,
       active: true,
       popular: false,
-      featuresJson: JSON.stringify(["آگهی نامحدود", "۳۲ تصویر برای هر آگهی", "۵۰ اعتبار آگهی ویژه", "دسترسی کامل به تحلیل بازار", "دسترسی کامل به دستیار هوش مصنوعی", "اولویت ویژه در سرنخ‌ها", "صفحه شرکت اختصاصی", "نشان تأییدشده طلایی", "پشتیبانی اختصاصی ۲۴/۷"]),
+      featuresJson: JSON.stringify(["۲۰ آگهی فعال", "۸ تصویر برای هر آگهی", "۵ آگهی ویژه ماهانه", "دسترسی به تحلیل بازار", "اولویت در نتایج جستجو", "دسترسی به هوش مصنوعی", "صفحه اشتراک اختصاصی", "سرنخ‌های اولویت‌دار", "نشان تأییدشده طلایی", "پشتیبانی اختصاصی ۲۴ ساعته"]),
     },
   ];
 
@@ -192,58 +197,10 @@ async function main() {
   }
   console.log(`  ✓ ${planCount} subscription plans created/updated`);
 
-  // 7. Seed Payment records
-  console.log("\n7. Seeding Payment records...");
-  const users = await db.user.findMany({ take: 2 });
-  let paymentCount = 0;
-  for (let i = 0; i < users.length; i++) {
-    const existing = await db.payment.findFirst({ where: { userId: users[i].id } }).catch(() => null);
-    if (!existing) {
-      await db.payment.create({
-        data: {
-          userId: users[i].id,
-          amount: i === 0 ? 2900000n : 0n,
-          currency: "IRR",
-          type: i === 0 ? "SUBSCRIPTION" : "FEATURED_LISTING",
-          status: i === 0 ? "PAID" : "PENDING",
-          gateway: i === 0 ? "MANUAL" : null,
-          paidAt: i === 0 ? new Date() : null,
-        },
-      }).catch(() => {});
-      paymentCount++;
-    }
-  }
-  console.log(`  ✓ ${paymentCount} payment records created`);
-
-  // 8. Seed PremiumSubscription for admin user
-  console.log("\n8. Seeding PremiumSubscription...");
-  const adminUser = users[0];
-  if (adminUser) {
-    const existing = await db.premiumSubscription.findUnique({ where: { userId: adminUser.id } }).catch(() => null);
-    if (!existing) {
-      const expiresAt = new Date();
-      expiresAt.setMonth(expiresAt.getMonth() + 1);
-      await db.premiumSubscription.create({
-        data: {
-          userId: adminUser.id,
-          plan: "PREMIUM",
-          status: "ACTIVE",
-          startedAt: new Date(),
-          expiresAt,
-          featuredCredits: 50,
-          analyticsAccess: true,
-          aiAssistantAccess: true,
-          priorityLeads: true,
-          companyPage: true,
-          amount: 8900000n,
-          paymentRef: "MANUAL-SEED",
-        },
-      });
-      console.log("  ✓ Premium subscription (PREMIUM plan) assigned to admin user");
-    } else {
-      console.log("  ✓ Premium subscription already exists");
-    }
-  }
+  // 7. Do not seed synthetic financial records or paid entitlements.
+  // A fabricated PAID payment or PREMIUM subscription could grant access
+  // to an arbitrary first user and corrupt the financial ledger.
+  console.log("\n7. Skipping synthetic Payment and PremiumSubscription records.");
 
   console.log("\n=== PHASE 6+7 SEED COMPLETE ===");
 }

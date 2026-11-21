@@ -86,7 +86,7 @@ vi.mock("z-ai-web-dev-sdk", () => ({
       chat: {
         completions: {
           create: vi.fn(async () => ({
-            choices: [{ message: { content: '{"price":1000,"note":"ok"}' } }],
+            choices: [{ message: { content: '{"title":"بیل مکانیکی","price":1000}' } }],
           })),
         },
       },
@@ -104,9 +104,16 @@ beforeEach(() => {
 });
 
 function makePostReq(url: string, body: any): Request {
-  return new Request(url, {
+  const requestUrl = new URL(url);
+  if (requestUrl.hostname === "localhost" && !requestUrl.port) {
+    requestUrl.port = "3000";
+  }
+  return new Request(requestUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: requestUrl.origin,
+    },
     body: JSON.stringify(body),
   });
 }

@@ -3,6 +3,8 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { checkCsrf } from "@/lib/csrf";
+import { getAsset, attachAsset } from "@/lib/media-service";
 import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
@@ -124,6 +126,9 @@ export async function GET(_req: Request, { params }: Args) {
    save edits to.
 */
 export async function PATCH(req: Request, { params }: Args) {
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const auth = await authorize(id);
@@ -208,6 +213,63 @@ export async function PATCH(req: Request, { params }: Args) {
       // Seller extend: keep current status (PUBLISHED stays PUBLISHED).
     }
 
+    // Validate every requested image mutation before changing the listing row.
+    // This keeps malformed/foreign media requests from producing partial updates.
+    if (Array.isArray(body.addImages)) {
+      const additions = body.addImages;
+      if (additions.length > 10 || additions.filter((image: any) => image?.isPrimary === true).length > 1) {
+        return NextResponse.json({ error: "فهرست تصاویر یا تصویر اصلی نامعتبر است." }, { status: 400 });
+      }
+      const existingCount = await db.listingImage.count({ where: { listingId: id } });
+      if (existingCount + additions.length > 10) {
+        return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
+      }
+      const assetIds: string[] = [];
+      for (const image of additions) {
+        const match = new RegExp("^/api/media/([a-f0-9]{24})$").exec(String(image?.url ?? image ?? ""));
+        if (!match) {
+          return NextResponse.json({ error: "تصاویر باید از مسیر امن رسانه بارگذاری شوند." }, { status: 400 });
+        }
+        assetIds.push(match[1]);
+      }
+      if (new Set(assetIds).size !== assetIds.length) {
+        return NextResponse.json({ error: "تصویر تکراری در فهرست ارسال شده است." }, { status: 400 });
+      }
+      for (const assetId of assetIds) {
+        const asset = await getAsset(assetId);
+        if (!asset || asset.uploadedBy !== auth.userId || asset.visibility !== "PRIVATE" ||
+            asset.status !== "STAGED" || asset.entityType !== "Listing" || asset.entityId !== null) {
+          return NextResponse.json({ error: "یکی از تصاویر متعلق به حساب شما نیست یا قبلاً استفاده شده است." }, { status: 403 });
+        }
+      }
+    }
+    if (Array.isArray(body.removeImages)) {
+      const ids = body.removeImages.map(String);
+      if (new Set(ids).size !== ids.length) {
+        return NextResponse.json({ error: "شناسه تصویر تکراری است." }, { status: 400 });
+      }
+      const owned = await db.listingImage.findMany({ where: { listingId: id, id: { in: ids } }, select: { id: true } });
+      if (owned.length !== ids.length) {
+        return NextResponse.json({ error: "فهرست حذف شامل تصویر متعلق به آگهی دیگر یا نامعتبر است." }, { status: 403 });
+      }
+    }
+    if (body.setPrimaryImage) {
+      const owned = await db.listingImage.findFirst({
+        where: { id: String(body.setPrimaryImage), listingId: id }, select: { id: true },
+      });
+      if (!owned) return NextResponse.json({ error: "تصویر متعلق به این آگهی نیست." }, { status: 404 });
+    }
+    if (Array.isArray(body.reorderImages)) {
+      const ids = body.reorderImages.map(String);
+      if (new Set(ids).size !== ids.length) {
+        return NextResponse.json({ error: "شناسه تصویر تکراری است." }, { status: 400 });
+      }
+      const owned = await db.listingImage.findMany({ where: { listingId: id, id: { in: ids } }, select: { id: true } });
+      if (owned.length !== ids.length) {
+        return NextResponse.json({ error: "فهرست تصاویر شامل تصویر متعلق به آگهی دیگر است." }, { status: 403 });
+      }
+    }
+
     await db.listing.update({ where: { id }, data }).catch(async (updateErr: any) => {
       // Stale PrismaClient may reject the new P1-5/6 scalar fields. Strip them and retry.
       const msg = String(updateErr?.message ?? "");
@@ -224,38 +286,122 @@ export async function PATCH(req: Request, { params }: Args) {
       }
     });
 
-    // Image management (seller can add/remove/reorder/primary)
+    // Image management (seller can add/remove/reorder/primary).
+    // Keep manifest rows when finalization fails: the canonical /media retry
+    // endpoint needs these rows to discover and safely re-attach staged assets.
+    let mediaPendingCount = 0;
     if (body.addImages && Array.isArray(body.addImages)) {
+      const additions = body.addImages;
+      if (additions.filter((image: any) => image?.isPrimary === true).length > 1) {
+        return NextResponse.json({ error: "فقط یک تصویر می‌تواند تصویر اصلی باشد." }, { status: 400 });
+      }
+      if (additions.length > 10) {
+        return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
+      }
       const existingCount = await db.listingImage.count({ where: { listingId: id } });
+      if (existingCount + additions.length > 10) {
+        return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
+      }
+      const hasRequestedPrimary = additions.some((image: any) => image?.isPrimary === true);
+      const staged: Array<{ id: string; url: string; alt: string | null; isPrimary: boolean; sortOrder: number }> = [];
+      for (const [idx, image] of additions.entries()) {
+        const imageUrl = String(image?.url ?? image ?? "");
+        const match = /^\/api\/media\/([a-f0-9]{24})$/.exec(imageUrl);
+        if (!match) {
+          return NextResponse.json({ error: "تصاویر باید از مسیر امن رسانه بارگذاری شوند." }, { status: 400 });
+        }
+        const asset = await getAsset(match[1]);
+        if (
+          !asset ||
+          asset.uploadedBy !== auth.userId ||
+          asset.visibility !== "PRIVATE" ||
+          asset.status !== "STAGED" ||
+          asset.entityType !== "Listing" ||
+          asset.entityId !== null
+        ) {
+          return NextResponse.json({ error: "یکی از تصاویر متعلق به حساب شما نیست یا قبلاً استفاده شده است." }, { status: 403 });
+        }
+        staged.push({
+          id: asset.id,
+          url: asset.url,
+          alt: typeof image?.alt === "string" ? image.alt.slice(0, 500) : null,
+          isPrimary: Boolean(image?.isPrimary) || (!hasRequestedPrimary && idx === 0 && existingCount === 0),
+          sortOrder: Number.isSafeInteger(image?.sortOrder) && image.sortOrder >= 0 ? image.sortOrder : idx,
+        });
+      }
+      if (new Set(staged.map((asset) => asset.id)).size !== staged.length) {
+        return NextResponse.json({ error: "تصویر تکراری در فهرست ارسال شده است." }, { status: 400 });
+      }
       await db.listingImage.createMany({
-        data: body.addImages.map((img: any, idx: number) => ({
+        data: staged.map((asset, idx) => ({
           listingId: id,
-          url: String(img.url ?? img),
-          alt: img.alt ?? null,
-          isPrimary: img.isPrimary ?? (existingCount === 0 && idx === 0),
-          sortOrder: img.sortOrder ?? existingCount + idx,
+          url: asset.url,
+          alt: asset.alt,
+          isPrimary: asset.isPrimary,
+          sortOrder: existingCount + idx,
         })),
       });
+      const primaryAsset = staged.find((asset) => asset.isPrimary);
+      if (primaryAsset) {
+        await db.listingImage.updateMany({
+          where: { listingId: id },
+          data: { isPrimary: false },
+        });
+        await db.listingImage.updateMany({
+          where: { listingId: id, url: primaryAsset.url },
+          data: { isPrimary: true },
+        });
+      }
+      for (const asset of staged) {
+        try {
+          const attached = await attachAsset(asset.id, "Listing", id, auth.userId);
+          if (!attached.ok) mediaPendingCount += 1;
+        } catch (attachError) {
+          // The staged asset and its ListingImage manifest row remain intact.
+          // The seller can retry through POST /api/listings/[id]/media.
+          mediaPendingCount += 1;
+        }
+      }
     }
     if (body.removeImages && Array.isArray(body.removeImages)) {
+      const ids = body.removeImages.map(String);
+      if (new Set(ids).size !== ids.length) {
+        return NextResponse.json({ error: "شناسه تصویر تکراری است." }, { status: 400 });
+      }
       await db.listingImage.deleteMany({
-        where: { id: { in: body.removeImages.map(String) } },
+        where: { listingId: id, id: { in: ids } },
       });
     }
     if (body.setPrimaryImage) {
+      const imageId = String(body.setPrimaryImage);
+      const ownedImage = await db.listingImage.findFirst({ where: { id: imageId, listingId: id }, select: { id: true } });
+      if (!ownedImage) {
+        return NextResponse.json({ error: "تصویر متعلق به این آگهی نیست." }, { status: 404 });
+      }
       await db.listingImage.updateMany({
         where: { listingId: id },
         data: { isPrimary: false },
       });
-      await db.listingImage.update({
-        where: { id: String(body.setPrimaryImage) },
+      await db.listingImage.updateMany({
+        where: { id: imageId, listingId: id },
         data: { isPrimary: true },
       });
     }
     if (body.reorderImages && Array.isArray(body.reorderImages)) {
+      const ids = body.reorderImages.map(String);
+      if (new Set(ids).size !== ids.length) {
+        return NextResponse.json({ error: "شناسه تصویر تکراری است." }, { status: 400 });
+      }
+      const ownedImages = await db.listingImage.findMany({
+        where: { listingId: id, id: { in: ids } },
+        select: { id: true },
+      });
+      if (ownedImages.length !== ids.length) {
+        return NextResponse.json({ error: "فهرست تصاویر شامل تصویر متعلق به آگهی دیگر است." }, { status: 403 });
+      }
       await Promise.all(
-        body.reorderImages.map((imgId: string, idx: number) =>
-          db.listingImage.update({ where: { id: String(imgId) }, data: { sortOrder: idx } }),
+        ids.map((imgId: string, idx: number) =>
+          db.listingImage.updateMany({ where: { id: imgId, listingId: id }, data: { sortOrder: idx } }),
         ),
       );
     }
@@ -309,22 +455,30 @@ export async function PATCH(req: Request, { params }: Args) {
         images: { orderBy: { sortOrder: "asc" } },
       },
     });
-    return NextResponse.json({
-      ok: true,
-      listing: fresh
-        ? {
-            ...fresh,
-            price: fresh.price ? fresh.price.toString() : null,
-          }
-        : null,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        mediaStatus: mediaPendingCount > 0 ? "PENDING" : "ATTACHED",
+        mediaPendingCount,
+        listing: fresh
+          ? {
+              ...fresh,
+              price: fresh.price ? fresh.price.toString() : null,
+            }
+          : null,
+      },
+      { headers: { "Cache-Control": "private, no-store" } },
+    );
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
   }
 }
 
 /* DELETE /api/listings/[id] — seller can delete own listing. */
-export async function DELETE(_req: Request, { params }: Args) {
+export async function DELETE(req: Request, { params }: Args) {
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const auth = await authorize(id);

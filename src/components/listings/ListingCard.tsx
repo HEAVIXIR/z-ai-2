@@ -37,15 +37,17 @@ export default function ListingCard({ l }: { l: ListingCardData }) {
   return (
     <Link
       href={`/listings/${l.slug}`}
+      prefetch={false}
       className="group block h-full overflow-hidden rounded-3xl border border-white/10 bg-[#111] transition-all duration-500 hover:-translate-y-2 hover:border-[#F58220]/40 hover:shadow-[0_25px_60px_rgba(0,0,0,.45)]"
     >
       {/* Image */}
       <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-[#1f1f1f] to-[#0c0c0c]">
         {l.image ? (
-           
           <img
             src={l.image}
             alt={l.title}
+            loading="lazy"
+            decoding="async"
             className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
           />
         ) : (

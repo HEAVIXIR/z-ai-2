@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { normalizeAliasValue } from "@/lib/brand-alias";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 
 /* ============================================================
    HEAVIX — Search normalization + indexing layer (P1-18)
@@ -211,7 +212,12 @@ export async function searchListings(
   const limit = Math.min(100, Math.max(1, params.limit ?? 20));
   const offset = Math.max(0, params.offset ?? 0);
 
-  const where: PrismaWhere = { status: "PUBLISHED" };
+  const where: PrismaWhere = {
+    status: "PUBLISHED",
+    // Public catalog search must never surface legacy demand-side rows
+    // that were incorrectly materialized as Listing records.
+    listingType: { in: [...SUPPLY_LISTING_TYPES] },
+  };
 
   // Free text
   const q = params.q?.trim();
@@ -449,7 +455,7 @@ export interface BrandSearchHit {
  */
 export async function searchBrands(
   q: string,
-  opts: { take?: number } = {},
+  opts: { take?: number; categoryId?: string } = {},
 ): Promise<BrandSearchHit[]> {
   const rawQ = (q ?? "").trim();
   if (!rawQ) return [];
@@ -461,6 +467,8 @@ export async function searchBrands(
   // The raw query is also OR-ed in so partial English matches
   // (e.g. "cat" → "Caterpillar") work.
   const where: PrismaWhere = {
+    active: true,
+    status: "ACTIVE",
     OR: [
       { name: { contains: rawQ } },
       { name: { contains: normQ } },
@@ -471,6 +479,9 @@ export async function searchBrands(
       { aliases: { some: { normalizedValue: { contains: normQ } } } },
     ],
   };
+  if (opts.categoryId) {
+    where.categories = { some: { categoryId: opts.categoryId } };
+  }
 
   const brands = await db.brand.findMany({
     where: where as any,

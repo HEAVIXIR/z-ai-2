@@ -1,0 +1,399 @@
+name: HEAVIX App Preview sequential single-migration gate
+
+on:
+  push:
+    branches: [integration/preview-readiness-workerd-2026-11-15]
+    paths: [.github/preview-migration-request.json]
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: heavix-app-preview-sequential-single-migration
+  cancel-in-progress: false
+
+jobs:
+  resolve_request:
+    runs-on: ubuntu-latest
+    outputs:
+      apply: ${{ steps.resolve.outputs.apply }}
+      migration: ${{ steps.resolve.outputs.migration }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
+      confirm: ${{ steps.resolve.outputs.confirm }}
+    steps:
+      - name: Checkout exact Integration request commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate one-time migration request and resolve pinned source
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test -f .github/preview-migration-request.json
+          target="$(jq -r '.target // empty' .github/preview-migration-request.json)"
+          migration="$(jq -r '.migration // empty' .github/preview-migration-request.json)"
+          confirm="$(jq -r '.confirm // empty' .github/preview-migration-request.json)"
+          test "$target" = "APP_PREVIEW_ONLY"
+          if [[ "$migration" == "NONE" && "$confirm" == "NONE" ]]; then
+            echo "apply=false" >> "$GITHUB_OUTPUT"
+            echo "migration=NONE" >> "$GITHUB_OUTPUT"
+            echo "source_sha=NONE" >> "$GITHUB_OUTPUT"
+            echo "confirm=NONE" >> "$GITHUB_OUTPUT"
+            echo "No migration requested; no environment or database access will occur."
+            exit 0
+          fi
+          case "$migration" in
+            LINK_LISTING_SERVICE_RFQ) source_sha="6de80f7e275bb455b77e061c27d21eb0e4f2d107"; token="APPLY_APP_PREVIEW_20261118152000" ;;
+            WANTED_STRUCTURAL) source_sha="2b83df673c28df9ce66a1799b042e1639c53f75d"; token="APPLY_APP_PREVIEW_20261119160000" ;;
+            GEO_FOUNDATION) source_sha="3aa4416163df4fec7dde5e8adde6c6b1761637fd"; token="APPLY_APP_PREVIEW_20261119190000" ;;
+            LOCATION_SOURCE_CODES) source_sha="31ebac549e6c334548965208701a92e9f70aa464"; token="APPLY_APP_PREVIEW_20261120113000" ;;
+            CATEGORY_ATTRIBUTE_ACTIVE_POLICY) source_sha="8b96679d6ee648df47f25cbdeac915212cac3b06"; token="APPLY_APP_PREVIEW_20261120130000" ;;
+            BUY_REQUEST_IMAGES) source_sha="d0b5058a4278a9f1d36d99a0ac1305152951b98a"; token="APPLY_APP_PREVIEW_20261120150000" ;;
+            *) echo "Unsupported migration request."; exit 1 ;;
+          esac
+          test "$confirm" = "$token"
+          commit_message="$(git log -1 --format=%B)"
+          grep -Fq "$token" <<< "$commit_message"
+          echo "apply=true" >> "$GITHUB_OUTPUT"
+          echo "migration=$migration" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "confirm=$confirm" >> "$GITHUB_OUTPUT"
+          echo "PASS: one-time typed migration request and pinned source SHA validated."
+
+  backup-restore-and-migrate:
+    needs: resolve_request
+    if: needs.resolve_request.outputs.apply == 'true' && github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    environment: preview-backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    services:
+      restore-db:
+        image: postgres:17
+        env:
+          POSTGRES_USER: restore
+          POSTGRES_PASSWORD: local-restore-only
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U restore -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    steps:
+      - name: Checkout pinned source containing exactly one pending migration
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ needs.resolve_request.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Resolve and enforce exact migration target, source SHA and typed approval
+        shell: bash
+        env:
+          TARGET: APP_PREVIEW_ONLY
+          MIGRATION: ${{ needs.resolve_request.outputs.migration }}
+          CONFIRM: ${{ needs.resolve_request.outputs.confirm }}
+          SOURCE_SHA_INPUT: ${{ needs.resolve_request.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$TARGET" = "APP_PREVIEW_ONLY"
+          BASE="20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes,20261116120000_industrial_marketplace_identity_core,20261116130000_company_invitations"
+          RFQ="$BASE,20261118152000_link_listing_service_rfq"
+          WANTED="$RFQ,20261119160000_wanted_structural_storage"
+          GEO="$WANTED,20261119190000_first_party_geospatial_foundation"
+          SOURCE="$GEO,20261120113000_location_source_codes"
+          POLICY="$SOURCE,20261120130000_category_attribute_active_policy"
+          case "$MIGRATION" in
+            LINK_LISTING_SERVICE_RFQ)
+              SOURCE_SHA="6de80f7e275bb455b77e061c27d21eb0e4f2d107"; NAME="20261118152000_link_listing_service_rfq"
+              FOLDERS=7; PRE_COUNT=6; POST_COUNT=7; PRE="$BASE"; POST="$RFQ"; TOKEN="APPLY_APP_PREVIEW_20261118152000" ;;
+            WANTED_STRUCTURAL)
+              SOURCE_SHA="2b83df673c28df9ce66a1799b042e1639c53f75d"; NAME="20261119160000_wanted_structural_storage"
+              FOLDERS=8; PRE_COUNT=7; POST_COUNT=8; PRE="$RFQ"; POST="$WANTED"; TOKEN="APPLY_APP_PREVIEW_20261119160000" ;;
+            GEO_FOUNDATION)
+              SOURCE_SHA="3aa4416163df4fec7dde5e8adde6c6b1761637fd"; NAME="20261119190000_first_party_geospatial_foundation"
+              FOLDERS=9; PRE_COUNT=8; POST_COUNT=9; PRE="$WANTED"; POST="$GEO"; TOKEN="APPLY_APP_PREVIEW_20261119190000" ;;
+            LOCATION_SOURCE_CODES)
+              SOURCE_SHA="31ebac549e6c334548965208701a92e9f70aa464"; NAME="20261120113000_location_source_codes"
+              FOLDERS=10; PRE_COUNT=9; POST_COUNT=10; PRE="$GEO"; POST="$SOURCE"; TOKEN="APPLY_APP_PREVIEW_20261120113000" ;;
+            CATEGORY_ATTRIBUTE_ACTIVE_POLICY)
+              SOURCE_SHA="8b96679d6ee648df47f25cbdeac915212cac3b06"; NAME="20261120130000_category_attribute_active_policy"
+              FOLDERS=11; PRE_COUNT=10; POST_COUNT=11; PRE="$SOURCE"; POST="$POLICY"; TOKEN="APPLY_APP_PREVIEW_20261120130000" ;;
+            BUY_REQUEST_IMAGES)
+              SOURCE_SHA="d0b5058a4278a9f1d36d99a0ac1305152951b98a"; NAME="20261120150000_buy_request_images"
+              FOLDERS=12; PRE_COUNT=11; POST_COUNT=12; PRE="$POLICY"; POST="$POLICY,20261120150000_buy_request_images"; TOKEN="APPLY_APP_PREVIEW_20261120150000" ;;
+            *) echo "Unsupported migration target."; exit 1 ;;
+          esac
+          test "$CONFIRM" = "$TOKEN"
+          test "$SOURCE_SHA_INPUT" = "$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -f "prisma/migrations/$NAME/migration.sql"
+          actual_folders="$(find prisma/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | wc -l | tr -d ' ')"
+          test "$actual_folders" = "$FOLDERS"
+          {
+            echo "MIGRATION_NAME=$NAME"
+            echo "SOURCE_SHA=$SOURCE_SHA"
+            echo "EXPECTED_PRE_HISTORY=$PRE_COUNT|$PRE"
+            echo "EXPECTED_POST_HISTORY=$POST_COUNT|$POST"
+            echo "EXPECTED_PRE_COUNT=$PRE_COUNT"
+          } >> "$GITHUB_ENV"
+          echo "PASS: pinned source SHA, one pending migration, exact folder count and typed App Preview approval verified."
+
+      - name: Install age, PostgreSQL client and Bun
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes age postgresql-client
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Validate App Preview database access and age encryption keypair
+        shell: bash
+        env:
+          APP_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+          AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
+        run: |
+          set -euo pipefail
+          test -n "$APP_PREVIEW_DATABASE_URL"
+          case "$APP_PREVIEW_DATABASE_URL" in postgres://*|postgresql://*) ;; *) echo "Invalid App Preview URL scheme."; exit 1 ;; esac
+          test -n "$AGE_RECIPIENT" && test -n "$AGE_IDENTITY"
+          printf '%s\n' "$AGE_IDENTITY" > "$RUNNER_TEMP/age-identity.txt"
+          chmod 600 "$RUNNER_TEMP/age-identity.txt"
+          test "$(age-keygen -y "$RUNNER_TEMP/age-identity.txt")" = "$AGE_RECIPIENT"
+          rm -f "$RUNNER_TEMP/age-identity.txt"
+          echo "PASS: App Preview database URL and age keypair validated; values redacted. B2 backup destination removed — backup now uses GitHub Actions encrypted artifacts."
+
+      - name: Verify exact App Preview identity, migration history and schema preconditions
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+          MIGRATION: ${{ needs.resolve_request.outputs.migration }}
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]] && (( EXPECTED_DATABASE_OID <= 4294967295 ))
+          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+          test "$identity" = "postgres|$EXPECTED_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
+          history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$history" = "$EXPECTED_PRE_HISTORY"
+          test "$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")" = "0"
+          test "$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE rolled_back_at IS NOT NULL")" = "0"
+          case "$MIGRATION" in
+            LINK_LISTING_SERVICE_RFQ) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='serviceTypeId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='RFQ' AND column_name='listingId'))::text")"; test "$markers" = "true|true" ;;
+            WANTED_STRUCTURAL) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='quantity'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeValue'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='BuyRequestAttributeOption'))::text")"; test "$markers" = "true|true|true" ;;
+            GEO_FOUNDATION) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='locationLatitude'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='countryId'))::text || '|' || (to_regclass('public.\"GeoZone\"') IS NULL)::text")"; test "$markers" = "true|true|true" ;;
+            LOCATION_SOURCE_CODES) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Province' AND column_name='sourceCode'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='City' AND column_name='sourceCode'))::text")"; test "$markers" = "true|true" ;;
+            CATEGORY_ATTRIBUTE_ACTIVE_POLICY) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='CategoryAttribute' AND column_name='active'))::text")"; test "$markers" = "true" ;;
+            BUY_REQUEST_IMAGES) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public.\"BuyRequestImage\"') IS NULL)::text")"; test "$markers" = "true" ;;
+          esac
+          echo "PASS: exact App Preview identity, clean history and target schema preconditions verified."
+
+      - name: Create encrypted App Preview-only backup
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          umask 077
+          WORK="$RUNNER_TEMP/heavix-app-preview-backup"
+          mkdir -m 700 -p "$WORK"
+          pg_dump --serializable-deferrable --format=custom --no-owner --no-acl --dbname="$DATABASE_URL" > "$WORK/app-preview.dump"
+          test -s "$WORK/app-preview.dump"
+          pg_restore --list "$WORK/app-preview.dump" > "$WORK/restore.list"
+          sha256sum "$WORK/app-preview.dump" > "$WORK/SHA256SUMS"
+          {
+            echo "format=heavix-app-preview-backup-v1"
+            echo "created_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "integration_sha=$GITHUB_SHA"
+            echo "migration_source_sha=$SOURCE_SHA"
+            echo "migration_name=$MIGRATION_NAME"
+            echo "app_system_identifier=7701427422680793119"
+            echo "app_database_oid=${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}"
+            cat "$WORK/SHA256SUMS"
+          } > "$WORK/manifest.txt"
+          for table in User Listing BuyRequest RFQ Category Brand _prisma_migrations; do
+            count="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"$table\"")"
+            [[ "$count" =~ ^[0-9]+$ ]]
+            printf 'rowcount_%s=%s\n' "$table" "$count" >> "$WORK/manifest.txt"
+          done
+          age -r "$AGE_RECIPIENT" -o "$WORK/app-preview.dump.age" "$WORK/app-preview.dump"
+          age -r "$AGE_RECIPIENT" -o "$WORK/manifest.txt.age" "$WORK/manifest.txt"
+          (cd "$WORK" && sha256sum app-preview.dump.age manifest.txt.age > ENCRYPTED_SHA256SUMS)
+          rm -f "$WORK/app-preview.dump" "$WORK/manifest.txt" "$WORK/SHA256SUMS"
+          echo "PASS: consistent App Preview dump encrypted and checksummed."
+
+      - name: Upload encrypted App Preview backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-preview-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/heavix-app-preview-backup/app-preview.dump.age
+            ${{ runner.temp }}/heavix-app-preview-backup/manifest.txt.age
+            ${{ runner.temp }}/heavix-app-preview-backup/ENCRYPTED_SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Download encrypted backup and verify independent artifact read-back
+        uses: actions/download-artifact@v4
+        with:
+          name: app-preview-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/heavix-app-preview-backup/readback
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify downloaded encrypted backup read-back checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/heavix-app-preview-backup"
+          test -s "$WORK/readback/app-preview.dump.age"
+          test -s "$WORK/readback/manifest.txt.age"
+          test -s "$WORK/readback/ENCRYPTED_SHA256SUMS"
+          (cd "$WORK/readback" && sha256sum -c ENCRYPTED_SHA256SUMS)
+          echo "PASS: encrypted backup independently downloaded from GitHub artifact storage and checksum verified."
+
+      - name: Restore backup into disposable PostgreSQL 17
+        shell: bash
+        env:
+          AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
+          RESTORE_PASSWORD: local-restore-only
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/heavix-app-preview-backup"
+          printf '%s\n' "$AGE_IDENTITY" > "$WORK/age-identity.txt"
+          chmod 600 "$WORK/age-identity.txt"
+          age -d -i "$WORK/age-identity.txt" -o "$WORK/app-preview.dump" "$WORK/readback/app-preview.dump.age"
+          age -d -i "$WORK/age-identity.txt" -o "$WORK/manifest.txt" "$WORK/readback/manifest.txt.age"
+          grep -Fxq "integration_sha=$GITHUB_SHA" "$WORK/manifest.txt"
+          grep -Fxq "migration_source_sha=$SOURCE_SHA" "$WORK/manifest.txt"
+          grep -Fxq "migration_name=$MIGRATION_NAME" "$WORK/manifest.txt"
+          (cd "$WORK" && sha256sum -c <(grep 'app-preview.dump$' manifest.txt))
+          export PGPASSWORD="$RESTORE_PASSWORD"
+          createdb -h 127.0.0.1 -U restore app_preview_restore
+          pg_restore --list "$WORK/app-preview.dump" > "$WORK/restore.list"
+          if grep -Eq ' EXTENSION - prisma_postgres' "$WORK/restore.list"; then
+            awk 'index($0, " EXTENSION - prisma_postgres") || index($0, " COMMENT - EXTENSION prisma_postgres") {next} {sub(/\r$/, ""); print}' "$WORK/restore.list" > "$WORK/restore.filtered.list"
+            pg_restore --exit-on-error --no-owner --no-acl --use-list="$WORK/restore.filtered.list" -h 127.0.0.1 -U restore -d app_preview_restore "$WORK/app-preview.dump"
+          else
+            pg_restore --exit-on-error --no-owner --no-acl -h 127.0.0.1 -U restore -d app_preview_restore "$WORK/app-preview.dump"
+          fi
+          for table in User Listing BuyRequest RFQ Category Brand _prisma_migrations; do
+            expected="$(sed -n "s/^rowcount_\${table}=//p" "$WORK/manifest.txt")"
+            actual="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"$table\"")"
+            test -n "$expected" && test "$actual" = "$expected"
+          done
+          history="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$history" = "$EXPECTED_PRE_HISTORY"
+          echo "PASS: encrypted backup restored; critical row counts and exact migration pre-state preserved."
+
+      - name: Install dependencies and rehearse Prisma migration on restored backup
+        shell: bash
+        env:
+          DATABASE_URL: "postgresql://restore:local-restore-only@127.0.0.1:5432/app_preview_restore?schema=public&sslmode=disable"
+          PSQL_DATABASE_URL: "postgresql://restore:local-restore-only@127.0.0.1:5432/app_preview_restore?sslmode=disable"
+          PGSSLMODE: disable
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma migrate deploy --schema=prisma/schema.prisma
+          history="$(psql "$PSQL_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$history" = "$EXPECTED_POST_HISTORY"
+          echo "PASS: exactly one migration applied to the disposable restored database."
+
+      - name: Verify target schema on restored database
+        shell: bash
+        env:
+          DATABASE_URL: "postgresql://restore:local-restore-only@127.0.0.1:5432/app_preview_restore?schema=public&sslmode=disable"
+          PSQL_DATABASE_URL: "postgresql://restore:local-restore-only@127.0.0.1:5432/app_preview_restore?sslmode=disable"
+          MIGRATION: ${{ needs.resolve_request.outputs.migration }}
+        run: |
+          set -euo pipefail
+          case "$MIGRATION" in
+            LINK_LISTING_SERVICE_RFQ) markers="$(psql "$PSQL_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='serviceTypeId')::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='RFQ' AND column_name='listingId')::text || '|' || (SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('Listing_serviceTypeId_idx','RFQ_listingId_key'))::text || '|' || (SELECT count(*) FROM pg_constraint WHERE conname IN ('Listing_serviceTypeId_fkey','RFQ_listingId_fkey'))::text")"; echo "DEBUG markers=$markers expected=1|1|2|2" ;;
+            WANTED_STRUCTURAL) markers="$(psql "$PSQL_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name IN ('quantity','categoryId','brandId','modelId','serviceTypeId','intent','idempotencyKey'))::text || '|' || (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('BuyRequestAttributeValue','BuyRequestAttributeOption'))::text || '|' || (SELECT count(*) FROM pg_constraint WHERE conname IN ('BuyRequest_categoryId_fkey','BuyRequest_brandId_fkey','BuyRequest_modelId_fkey','BuyRequest_serviceTypeId_fkey','BuyRequestAttributeValue_attributeId_fkey','BuyRequestAttributeValue_optionId_fkey','BuyRequestAttributeValue_buyRequestId_fkey','BuyRequestAttributeOption_attributeValueId_fkey','BuyRequestAttributeOption_optionId_fkey'))::text || '|' || (SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('BuyRequest_userId_idempotencyKey_key','BuyRequestAttributeValue_buyRequestId_attributeId_key','BuyRequestAttributeOption_attributeValueId_optionId_key'))::text")"; echo "DEBUG markers=$markers expected=7|2|9|3" ;;
+            GEO_FOUNDATION) markers="$(psql "$PSQL_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name IN ('locationLatitude','locationLongitude','locationAccuracyMeters','locationUpdatedAt'))::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name IN ('countryId','provinceId','cityId','locationLatitude','locationLongitude','locationAccuracyMeters','locationUpdatedAt'))::text || '|' || (to_regclass('public.\"GeoZone\"') IS NOT NULL)::text")"; echo "DEBUG markers=$markers expected=4|7|true" ;;
+            LOCATION_SOURCE_CODES) markers="$(psql "$PSQL_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Province' AND column_name='sourceCode')::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='City' AND column_name='sourceCode')::text || '|' || (SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('Province_sourceCode_key','City_sourceCode_key'))::text")"; echo "DEBUG markers=$markers expected=1|1|2" ;;
+            CATEGORY_ATTRIBUTE_ACTIVE_POLICY) markers="$(psql "$PSQL_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='CategoryAttribute' AND column_name='active')::text || '|' || (SELECT column_default='true' FROM information_schema.columns WHERE table_schema='public' AND table_name='CategoryAttribute' AND column_name='active')::text")"; echo "DEBUG markers=$markers expected=1|true" ;;
+            BUY_REQUEST_IMAGES) markers="$(psql "$PSQL_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public.\"BuyRequestImage\"') IS NOT NULL)::text || '|' || (SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('BuyRequestImage_assetId_key','BuyRequestImage_buyRequestId_sortOrder_key','BuyRequestImage_buyRequestId_idx'))::text || '|' || (SELECT count(*) FROM pg_constraint WHERE conname='BuyRequestImage_buyRequestId_fkey')::text")"; echo "DEBUG markers=$markers expected=true|3|1" ;;
+          esac
+          # Verify markers match expected values
+          case "$MIGRATION" in
+            LINK_LISTING_SERVICE_RFQ) test "$markers" = "1|1|2|2" ;;
+            WANTED_STRUCTURAL) test "$markers" = "7|2|9|3" ;;
+            GEO_FOUNDATION) test "$markers" = "4|7|true" ;;
+            LOCATION_SOURCE_CODES) test "$markers" = "1|1|2" ;;
+            CATEGORY_ATTRIBUTE_ACTIVE_POLICY) test "$markers" = "1|true" ;;
+            BUY_REQUEST_IMAGES) test "$markers" = "true|3|1" ;;
+          esac
+          echo "PASS: target migration schema verified on the restored backup."
+
+      - name: Recheck exact live App Preview identity and migration pre-state immediately before apply
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+          test "$identity" = "postgres|$EXPECTED_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
+          history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$history" = "$EXPECTED_PRE_HISTORY"
+          test "$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")" = "0"
+          echo "PASS: exact live App Preview identity and pre-migration history revalidated."
+
+      - name: Apply exactly one selected App Preview migration
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          bunx prisma migrate deploy --schema=prisma/schema.prisma
+
+      - name: Verify exact post-migration history and live App Preview schema
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+          PGSSLMODE: verify-full
+          MIGRATION: ${{ needs.resolve_request.outputs.migration }}
+        run: |
+          set -euo pipefail
+          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+          test "$identity" = "postgres|$EXPECTED_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
+          history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$history" = "$EXPECTED_POST_HISTORY"
+          test "$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")" = "0"
+          case "$MIGRATION" in
+            LINK_LISTING_SERVICE_RFQ) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='serviceTypeId')::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='RFQ' AND column_name='listingId')::text")"; test "$markers" = "1|1" ;;
+            WANTED_STRUCTURAL) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name IN ('quantity','categoryId','brandId','modelId','serviceTypeId','intent','idempotencyKey'))::text || '|' || (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('BuyRequestAttributeValue','BuyRequestAttributeOption'))::text")"; test "$markers" = "7|2" ;;
+            GEO_FOUNDATION) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name IN ('locationLatitude','locationLongitude','locationAccuracyMeters','locationUpdatedAt'))::text || '|' || (to_regclass('public.\"GeoZone\"') IS NOT NULL)::text")"; echo "DEBUG live markers=$markers expected=4|true"; test "$markers" = "4|true" ;;
+            LOCATION_SOURCE_CODES) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Province' AND column_name='sourceCode')::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='City' AND column_name='sourceCode')::text")"; test "$markers" = "1|1" ;;
+            CATEGORY_ATTRIBUTE_ACTIVE_POLICY) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='CategoryAttribute' AND column_name='active'")"; test "$markers" = "1" ;;
+            BUY_REQUEST_IMAGES) markers="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public.\"BuyRequestImage\"') IS NOT NULL)::text || '|' || (SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND indexname IN ('BuyRequestImage_assetId_key','BuyRequestImage_buyRequestId_sortOrder_key','BuyRequestImage_buyRequestId_idx'))::text || '|' || (SELECT count(*) FROM pg_constraint WHERE conname='BuyRequestImage_buyRequestId_fkey')::text")"; test "$markers" = "true|3|1" ;;
+          esac
+          {
+            echo "## App Preview single-migration result"
+            echo
+            echo "- Integration dispatch SHA: $GITHUB_SHA"
+            echo "- Pinned migration source SHA: $SOURCE_SHA"
+            echo "- App Preview only: \`$MIGRATION_NAME\` applied and verified."
+            echo "- Backup: encrypted GitHub Actions artifact read-back and disposable PostgreSQL 17 Prisma migration rehearsal passed before live apply."
+            echo "- Exact pre/post migration history and target schema objects verified."
+            echo "- Store: no Store database URL or credentials were provided to this job."
+            echo "- Production: not accessed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS: exactly one requested Main migration is recorded and verified on App Preview."

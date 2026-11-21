@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import { trackEvent } from "@/lib/analytics";
 import {
   toFa,
@@ -39,6 +40,7 @@ import {
   Handshake,
 } from "lucide-react";
 import type { Metadata } from "next";
+import { getSEO } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -49,9 +51,10 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const listing = await db.listing.findUnique({
-    where: { slug },
+  const listing = await db.listing.findFirst({
+    where: { slug, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
     select: {
+      id: true,
       title: true,
       shortDesc: true,
       description: true,
@@ -66,24 +69,27 @@ export async function generateMetadata({
     },
   });
   if (!listing) {
-    return { title: "آگهی یافت نشد" };
+    return { title: "آگهی یافت نشد", robots: { index: false, follow: false } };
   }
-  const title = `${listing.title}${listing.brand ? ` — ${listing.brand.name}` : ""}`;
+  const seo = await getSEO("Listing", listing.id);
+  const title = seo?.metaTitle?.trim() || `${listing.title}${listing.brand ? ` — ${listing.brand.name}` : ""}`;
   const description =
+    seo?.metaDescription?.trim() ||
     listing.shortDesc ||
     (listing.description ?? "").slice(0, 155) ||
     `خرید، فروش یا اجاره ${listing.title} در ${listing.city || "ایران"}. وضعیت: ${listing.condition}.`;
   return {
     title,
     description,
-    alternates: { canonical: `/listings/${slug}` },
+    alternates: { canonical: seo?.canonicalUrl?.trim() || `/listings/${encodeURIComponent(slug)}` },
     openGraph: {
-      title,
-      description,
+      title: seo?.ogTitle?.trim() || title,
+      description: seo?.ogDescription?.trim() || description,
+      images: seo?.ogImage ? [seo.ogImage] : listing.images[0]?.url ? [{ url: listing.images[0].url }] : undefined,
       type: "website",
       locale: "fa_IR",
-      images: listing.images[0]?.url ? [{ url: listing.images[0].url }] : undefined,
     },
+    robots: { index: seo?.robotsIndex ?? true, follow: seo?.robotsFollow ?? true },
   };
 }
 
@@ -95,8 +101,8 @@ export default async function ListingDetailPage({
   const { slug } = await params;
 
   const [listing, headerCats, currentUser] = await Promise.all([
-    db.listing.findUnique({
-      where: { slug },
+    db.listing.findFirst({
+      where: { slug, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       include: {
         brand: { select: { name: true, nameEn: true, country: true } },
         category: { select: { name: true, slug: true, icon: true } },
@@ -114,32 +120,33 @@ export default async function ListingDetailPage({
 
   if (!listing || listing.status !== "PUBLISHED") notFound();
 
-  // Seed the favorite button state for the authed user (1 row max).
-  const existingFav = currentUser
-    ? await db.favorite.findUnique({
-        where: {
-          userId_listingId: { userId: currentUser.id, listingId: listing.id },
-        },
-        select: { id: true },
-      })
-    : null;
-  const isOwner = !!currentUser && !!listing.sellerId && currentUser.id === listing.sellerId;
-
-  /* ── Attribute values (Technical Specifications) — server-side fetch ── */
-  const attrRows = await db.listingAttributeValue.findMany({
-    where: { listingId: listing.id },
-    orderBy: [
-      { attribute: { sortOrder: "asc" } },
-      { attribute: { name: "asc" } },
-    ],
-    include: {
-      attribute: {
-        include: {
-          options: { orderBy: [{ sortOrder: "asc" }, { value: "asc" }] },
+  // Favorite state and technical attributes are independent once the listing
+  // is known. Fetch them together to avoid adding serial database latency.
+  const [existingFav, attrRows] = await Promise.all([
+    currentUser
+      ? db.favorite.findUnique({
+          where: {
+            userId_listingId: { userId: currentUser.id, listingId: listing.id },
+          },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    db.listingAttributeValue.findMany({
+      where: { listingId: listing.id },
+      orderBy: [
+        { attribute: { sortOrder: "asc" } },
+        { attribute: { name: "asc" } },
+      ],
+      include: {
+        attribute: {
+          include: {
+            options: { orderBy: [{ sortOrder: "asc" }, { value: "asc" }] },
+          },
         },
       },
-    },
-  });
+    }),
+  ]);
+  const isOwner = !!currentUser && !!listing.sellerId && currentUser.id === listing.sellerId;
 
   // Filter to visibleOnDetail AND non-empty value, then project for the display component.
   const specsRows: AttributeValueDisplayValue[] = attrRows

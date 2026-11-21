@@ -5,6 +5,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+generator workerClient {
+  provider   = "prisma-client"
+  output     = "../src/lib/generated/worker-client"
+  engineType = "client"
+  runtime    = "workerd"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -50,6 +57,7 @@ model Brand {
   listings    Listing[]
   aliases     BrandAlias[]
   industries  BrandIndustry[]
+  buyRequests BuyRequest[]  @relation("BuyRequestBrand")
 
   // STEP 15-B.4.1: PROVEN via EXPLAIN ANALYZE before/after simulation in 15-B.2
   // Query: SELECT * FROM "Brand" WHERE active=true ORDER BY name ASC LIMIT 24 OFFSET 0
@@ -185,18 +193,20 @@ model Category {
   // relations
   listings    Listing[]
   attributes  CategoryAttribute[]
+  modelAttributes ProductModelAttribute[]
   brands      BrandCategory[]
   modelCategories ModelCategory[]
   models      ProductModel[]
   products    Product[]
   appIndustries CategoryApplicationIndustry[]
   priceObservations PriceObservation[]
+  buyRequests BuyRequest[]  @relation("BuyRequestCategory")
 }
 
 // HBR Taxonomy V1.1 §18: Transaction Layer (separate from Category)
 model TransactionType {
   id          String   @id @default(cuid())
-  key         String   @unique // SALE | RENT | WANTED | QUOTE | AUCTION | SERVICE_REQUEST
+  key         String   @unique // SALE | SERVICE_OFFER | RENT | WANTED | QUOTE | AUCTION | SERVICE_REQUEST
   nameFa      String
   nameEn      String?
   description String?
@@ -218,6 +228,8 @@ model ServiceType {
   active      Boolean  @default(true)
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
+  listings    Listing[]
+  buyRequests BuyRequest[]  @relation("BuyRequestService")
 }
 
 // FIX-SERVICES-KNOWLEDGE-CATS-BRANDS (Part 3): homepage Services section.
@@ -282,6 +294,8 @@ model Country {
   createdAt DateTime @default(now())
   provinces Province[]
   listings  Listing[]
+  buyRequests BuyRequest[] @relation("BuyRequestCountry")
+  geoZones GeoZone[] @relation("GeoZoneCountry")
 }
 
 model Province {
@@ -290,11 +304,14 @@ model Province {
   country   Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
   name      String
   nameEn    String?
-  code      String?
-  sortOrder Int     @default(0)
+  code       String?
+  sourceCode String? @unique
+  sortOrder  Int     @default(0)
   createdAt DateTime @default(now())
   cities    City[]
   listings  Listing[] @relation("ListingProvince")
+  buyRequests BuyRequest[] @relation("BuyRequestProvince")
+  geoZones GeoZone[] @relation("GeoZoneProvince")
   @@unique([countryId, name])
 }
 
@@ -304,13 +321,39 @@ model City {
   province   Province @relation(fields: [provinceId], references: [id], onDelete: Cascade)
   name       String
   nameEn     String?
+  sourceCode String? @unique
   latitude   Float?
   longitude  Float?
   sortOrder  Int     @default(0)
   createdAt  DateTime @default(now())
   listings   Listing[] @relation("ListingCity")
+  buyRequests BuyRequest[] @relation("BuyRequestCity")
   branches   CompanyBranch[]
   @@unique([provinceId, name])
+}
+
+// First-party operational zones. Boundaries are stored as GeoJSON so the
+// canonical geography remains portable; a future PostGIS index can be added
+// without changing the public zone contract.
+model GeoZone {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  level             String   // COUNTRY | PROVINCE | CITY | OPERATIONAL | CUSTOM
+  boundaryGeoJson   String
+  centerLatitude    Float?
+  centerLongitude   Float?
+  countryId         String?
+  country           Country?  @relation("GeoZoneCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  provinceId        String?
+  province          Province? @relation("GeoZoneProvince", fields: [provinceId], references: [id], onDelete: SetNull)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([level, isActive])
+  @@index([countryId, isActive])
+  @@index([provinceId, isActive])
 }
 
 model AttributeDefinition {
@@ -335,7 +378,9 @@ model AttributeDefinition {
   updatedAt   DateTime @default(now()) @updatedAt
   options     AttributeOption[]
   categories  CategoryAttribute[]
+  modelAttributes ProductModelAttribute[]
   values      ListingAttributeValue[]
+  buyRequestValues BuyRequestAttributeValue[]  @relation("BuyRequestAttributeValueAttribute")
 }
 
 model AttributeOption {
@@ -345,6 +390,9 @@ model AttributeOption {
   value       String
   label       String?
   sortOrder   Int      @default(0)
+  // H.3: back-relations for BuyRequest attribute value selections.
+  buyRequestValues     BuyRequestAttributeValue[]  @relation("BuyRequestAttributeValueOption")
+  buyRequestOptionRows BuyRequestAttributeOption[]  @relation("BuyRequestAttributeOptionOption")
 }
 
 model CategoryAttribute {
@@ -353,6 +401,7 @@ model CategoryAttribute {
   category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   attributeId String
   attribute   AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  active      Boolean  @default(true)
   required    Boolean  @default(false)
   filterable  Boolean  @default(false)
   searchable  Boolean  @default(false)
@@ -405,9 +454,11 @@ model ProductModel {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   modelCategories ModelCategory[]
+  modelAttributes ProductModelAttribute[]
   generations   Generation[]
   listings      Listing[]
   products      Product[]
+  buyRequests BuyRequest[]  @relation("BuyRequestModel")
   @@unique([brandId, slug])
 }
 
@@ -418,6 +469,26 @@ model ModelCategory {
   categoryId String
   category  Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   @@unique([modelId, categoryId])
+}
+
+model ProductModelAttribute {
+  id          String   @id @default(cuid())
+  modelId     String
+  model       ProductModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  attributeId String
+  attribute   AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  required    Boolean  @default(false)
+  filterable  Boolean  @default(false)
+  searchable  Boolean  @default(false)
+  sortable    Boolean  @default(false)
+  displayOrder Int     @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@unique([modelId, categoryId, attributeId])
+  @@index([modelId, categoryId])
+  @@index([attributeId])
 }
 
 model Generation {
@@ -453,6 +524,11 @@ model Listing {
   condition    String?
   province     String?
   city         String?
+  // Exact user-selected WGS84 point; city centroid is never substituted.
+  locationLatitude       Float?
+  locationLongitude      Float?
+  locationAccuracyMeters Float?
+  locationUpdatedAt      DateTime?
   year         Int?
   workingHours Int?
   status       String         @default("PUBLISHED")
@@ -495,6 +571,9 @@ model Listing {
   product          Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
   transactionTypeId String?
   transactionType   TransactionType? @relation(fields: [transactionTypeId], references: [id], onDelete: SetNull)
+  serviceTypeId     String?
+  serviceType        ServiceType? @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  rfq                RFQ?
   countryId      String?
   country        Country?  @relation(fields: [countryId], references: [id], onDelete: SetNull)
   provinceId     String?
@@ -530,6 +609,9 @@ model Listing {
   // REVIEW-01 — reviews anchored to this listing
   reviews        Review[]
   deals          Deal[]
+  @@index([serviceTypeId])
+  @@index([countryId, provinceId, cityId])
+  @@index([locationLatitude, locationLongitude])
 }
 
 model ListingImage {
@@ -557,6 +639,14 @@ model BuyRequest {
   budgetMax   BigInt?
   city        String?
   province    String?
+  countryId   String?
+  provinceId  String?
+  cityId      String?
+  // Exact user-selected WGS84 point; nullable for legacy/imported requests.
+  locationLatitude       Float?
+  locationLongitude      Float?
+  locationAccuracyMeters Float?
+  locationUpdatedAt      DateTime?
   deadline    String?
   status      String   @default("ACTIVE")
   verified    Boolean  @default(false)
@@ -570,6 +660,125 @@ model BuyRequest {
   updatedAt   DateTime  @updatedAt
   userId      String?
   user        User?     @relation("UserRequests", fields: [userId], references: [id], onDelete: SetNull)
+
+  // ── H.3 structured-spec columns (nullable → existing rows unaffected) ──
+  // The P0 gap (Issue #345): quantity/categoryId/brandId/modelId/serviceTypeId/
+  // attributeValues were audit-only or name-resolved. These canonical FKs make
+  // the structured data queryable, matchable, editable, and filterable.
+  quantity        Int?
+  categoryId      String?
+  brandId         String?
+  modelId         String?
+  serviceTypeId   String?
+  intent          String?          // canonical demand intent (SALE/RENT/SALE_AND_RENT/SERVICE_REQUEST)
+  // DB-enforced owner-scoped idempotency: the composite unique key lets
+  // createWanted catch P2002 on concurrent retries without cross-user key
+  // collisions. Nullable → existing rows unaffected.
+  idempotencyKey  String?
+
+  // ── H.3 structured-spec relations ──
+  // SetNull: deleting a Category/Brand/ProductModel/ServiceType nulls the FK
+  // (the request survives with its free-text category/brandPref display name).
+  categoryRef     Category?        @relation("BuyRequestCategory", fields: [categoryId],    references: [id], onDelete: SetNull)
+  brandRef        Brand?           @relation("BuyRequestBrand",   fields: [brandId],       references: [id], onDelete: SetNull)
+  modelRef        ProductModel?    @relation("BuyRequestModel",   fields: [modelId],       references: [id], onDelete: SetNull)
+  serviceTypeRef  ServiceType?     @relation("BuyRequestService", fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  countryRef      Country?         @relation("BuyRequestCountry", fields: [countryId], references: [id], onDelete: SetNull)
+  provinceRef     Province?        @relation("BuyRequestProvince", fields: [provinceId], references: [id], onDelete: SetNull)
+  cityRef         City?            @relation("BuyRequestCity", fields: [cityId], references: [id], onDelete: SetNull)
+
+  // ── H.3 typed-attribute relation (parent rows; see BuyRequestAttributeOption child) ──
+  attributeValues BuyRequestAttributeValue[]
+  images          BuyRequestImage[]
+
+  // Idempotency keys are scoped to the authenticated owner; different users
+  // may legitimately generate the same client-side key without colliding.
+  @@unique([userId, idempotencyKey])
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([modelId])
+  @@index([status, expiresAt])
+  @@index([userId, status])
+  @@index([intent])
+  @@index([countryId, provinceId, cityId])
+  @@index([locationLatitude, locationLongitude])
+}
+
+model BuyRequestImage {
+  id           String      @id @default(cuid())
+  buyRequestId String
+  assetId      String      @unique
+  url          String
+  alt          String?
+  isPrimary    Boolean     @default(false)
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+  buyRequest  BuyRequest  @relation(fields: [buyRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([buyRequestId, sortOrder])
+  @@index([buyRequestId])
+}
+
+/// H.3: Parent attribute-value row — one per (BuyRequest, AttributeDefinition).
+/// Holds the typed slot for single-valued attributes (TEXT/NUMBER/BOOLEAN/
+/// DATE). For SELECT, the single chosen option lives in `optionId`. For
+/// MULTI_SELECT, the selected options live in the child `BuyRequestAttributeOption`
+/// table (one row per option) — this avoids the partial-index / SET NULL
+/// collision flaw the senior-manager audit caught in the H.2-rev2 RFC.
+model BuyRequestAttributeValue {
+  id            String   @id @default(cuid())
+  buyRequestId  String
+  attributeId   String
+  // REAL FK to AttributeDefinition (mirrors ListingAttributeValue.attribute).
+  // Cascade: deleting an AttributeDefinition removes its BuyRequest rows too.
+  attribute     AttributeDefinition @relation("BuyRequestAttributeValueAttribute", fields: [attributeId], references: [id], onDelete: Cascade)
+  // For SELECT (single option): the chosen option. For MULTI_SELECT this is
+  // null and the selections live in the child table. SetNull on option delete.
+  optionId      String?
+  option        AttributeOption?  @relation("BuyRequestAttributeValueOption", fields: [optionId], references: [id], onDelete: SetNull)
+  // Typed slots (mirror ListingAttributeValue). Exactly one is non-null per
+  // AttributeDefinition.type (enforced by the service validation layer).
+  textValue     String?
+  numberValue   Float?
+  booleanValue  Boolean?
+  dateValue     DateTime?
+  unit          String?           // AttributeDefinition.unit snapshot at write time
+  sourceType    String?           // SELLER_INPUT | ADMIN_VERIFIED | IMPORTED
+  confidence    Float?            // 0..1 (provenance, mirrors ListingAttributeValue)
+  sourceReference String?
+  verifiedAt    DateTime?
+  verifiedBy    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  buyRequest    BuyRequest       @relation(fields: [buyRequestId], references: [id], onDelete: Cascade)
+  // Child options for MULTI_SELECT. Cascade: deleting the parent row removes
+  // its selected options (the request owns them).
+  selectedOptions BuyRequestAttributeOption[]
+
+  @@unique([buyRequestId, attributeId])
+  @@index([buyRequestId])
+  @@index([attributeId])
+}
+
+/// H.3: Child option-selection row — one per selected option for a
+/// MULTI_SELECT BuyRequestAttributeValue. This is the parent/child split the
+/// senior-manager audit required: the parent holds the (request, attribute)
+/// uniqueness; the child holds (attributeValue, option) uniqueness. No partial
+/// indexes, no SET NULL collision.
+model BuyRequestAttributeOption {
+  id              String   @id @default(cuid())
+  attributeValueId String
+  attributeValue  BuyRequestAttributeValue @relation(fields: [attributeValueId], references: [id], onDelete: Cascade)
+  optionId        String
+  // REAL FK to AttributeOption. Cascade: deleting the option removes the
+  // selection (not the parent row) — the parent survives, reflecting "no
+  // longer selected" rather than destroying the attribute value entirely.
+  option          AttributeOption @relation("BuyRequestAttributeOptionOption", fields: [optionId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+
+  @@unique([attributeValueId, optionId])
+  @@index([attributeValueId])
+  @@index([optionId])
 }
 
 // ════════════════════════════════════════════════════════════
@@ -863,6 +1072,8 @@ model DemandSignal {
 
 model RFQ {
   id          String   @id @default(cuid())
+  listingId   String?  @unique
+  listing     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
   title       String
   description String?
   // requirements
@@ -1210,6 +1421,7 @@ model Company {
   name        String
   slug        String   @unique
   description String?
+  businessType String?
   logoUrl     String?
   coverImage  String?
   website     String?
@@ -1243,6 +1455,8 @@ model Company {
   avgRating      Float?
   reviewCount    Int      @default(0)
   reviews        Review[]
+  memberships    CompanyMembership[]
+  invitations    CompanyInvitation[]
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1450,6 +1664,9 @@ model HomePageSection {
 }
 
 model HeroConfig {
+  // HEAVIX selectable hero templates; classic remains the backward-compatible default.
+  activeTemplate   String?  @default("classic")
+  cinematicConfig  String?
   id              String   @id @default("main")
   badge           String?
   title1          String?
@@ -1638,6 +1855,11 @@ model User {
   //   (Lead.scoreOverrideById). Kept for audit traceability.
   assignedLeads       Lead[] @relation("LeadAssignee")
   scoreOverrideLeads  Lead[] @relation("LeadScoreOverride")
+
+  commercialPersonas UserCommercialPersona[]
+  companyMemberships CompanyMembership[]
+  sentCompanyInvitations CompanyInvitation[] @relation("CompanyInvitationInviter")
+  acceptedCompanyInvitations CompanyInvitation[] @relation("CompanyInvitationAcceptedBy")
 }
 
 model Session {
@@ -2649,4 +2871,61 @@ model AdminPageTemplate {
   sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+
+model UserCommercialPersona {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  personaKey String  // INDIVIDUAL | DEALER | MANUFACTURER | IMPORTER_DISTRIBUTOR | RENTAL_COMPANY | AUCTION_HOUSE | BROKER | SERVICE_PROVIDER | FLEET_OPERATOR | PUBLIC_ORGANIZATION
+  isPrimary Boolean  @default(false)
+  status    String   @default("ACTIVE") // ACTIVE | INACTIVE | PENDING_REVIEW
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, personaKey])
+  @@index([personaKey, status])
+}
+
+model CompanyMembership {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleKey   String   // OWNER | ORG_ADMIN | SALES_MANAGER | SALES_REP | INVENTORY_MANAGER | BUYER | FINANCE | SERVICE_MANAGER | TECHNICIAN | VIEWER
+  status    String   @default("ACTIVE") // INVITED | ACTIVE | SUSPENDED | REMOVED
+  isPrimary Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([companyId, userId])
+  @@index([userId, status])
+  @@index([companyId, status])
+}
+
+model CompanyInvitation {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  emailNormalized String
+  roleKey        String
+  tokenHash      String   @unique
+  // Non-null only while one invitation for this company/email is pending.
+  // A unique nullable key prevents concurrent duplicate pending invitations.
+  activeKey      String?  @unique
+  status         String   @default("PENDING") // PENDING | ACCEPTED | REVOKED | EXPIRED | DELIVERY_FAILED
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  revokedAt      DateTime?
+  invitedById    String?
+  invitedBy      User?    @relation("CompanyInvitationInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+  acceptedById   String?
+  acceptedBy     User?    @relation("CompanyInvitationAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([companyId, status, expiresAt])
+  @@index([emailNormalized, status])
+  @@index([invitedById])
+  @@index([acceptedById])
 }

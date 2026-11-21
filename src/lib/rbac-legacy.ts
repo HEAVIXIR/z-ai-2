@@ -20,7 +20,9 @@ export class ForbiddenError extends Error {
 export async function getUserPermissions(userId: string): Promise<string[]> {
   try {
     const userRoles = await db.userRole.findMany({
-      where: { userId },
+      // RBAC grants are effective only for active accounts. Pending and blocked users
+      // may still authenticate for limited flows, but cannot exercise permissions.
+      where: { userId, user: { status: 'ACTIVE' } },
       select: {
         role: {
           select: {

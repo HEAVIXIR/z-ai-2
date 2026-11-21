@@ -34,7 +34,7 @@ import fs from 'fs';
 const PERMISSIONS_FILE = 'src/lib/authorization/permissions.ts';
 const SCHEMA_FILE = 'prisma/schema.prisma';
 const OBSERVABILITY_PAGE = 'src/app/admin/observability/page.tsx';
-const NAV_SEED = 'prisma/seed-admin-navigation.ts';
+const NAV_DEFAULTS = 'src/lib/admin/navigation-defaults.ts';
 const METRICS_ROUTE = 'src/app/api/metrics/route.ts';
 
 function read(p: string): string {
@@ -176,11 +176,11 @@ describe('T9 Analytics/Observability — Admin Page Contract', () => {
 // ══════════════════════════════════════════════════════════════
 describe('T9 Analytics/Observability — Navigation Seed', () => {
   it('nav seed file exists', () => {
-    assertFileExists(NAV_SEED);
+    assertFileExists(NAV_DEFAULTS);
   });
 
   it('seed registers the observability standalone nav item', () => {
-    const c = read(NAV_SEED);
+    const c = read(NAV_DEFAULTS);
     expect(c).toMatch(/key:\s*['"]observability['"]/);
     expect(c).toMatch(/href:\s*['"]\/admin\/observability['"]/);
     expect(c).toMatch(/icon:\s*['"]Gauge['"]/);

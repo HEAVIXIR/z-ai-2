@@ -12,6 +12,16 @@ on:
         description: Type BACKUP_PREVIEW_ONLY
         required: true
         type: string
+      rbac_seed:
+        description: Optional RBAC-only seed after exact-SHA paired backup and Worker identity proof
+        required: true
+        type: choice
+        default: SKIP
+        options: [SKIP, RUN_PREVIEW_RBAC_SEED]
+      rbac_seed_confirm:
+        description: Type SEED_RBAC_PREVIEW_ONLY only when explicitly approving the Preview RBAC seed
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -22,7 +32,7 @@ concurrency:
 
 jobs:
   paired-backup:
-    if: github.ref == 'refs/heads/security/active-session-hardening-2026-11-08'
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
     environment: preview-backup
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -48,13 +58,20 @@ jobs:
         env:
           DISPATCH_TARGET: ${{ inputs.target }}
           DISPATCH_CONFIRM: ${{ inputs.confirm }}
+          DISPATCH_RBAC_SEED: ${{ inputs.rbac_seed }}
+          DISPATCH_RBAC_CONFIRM: ${{ inputs.rbac_seed_confirm }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/security/active-session-hardening-2026-11-08"
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$DISPATCH_TARGET" = "PREVIEW_ONLY"
           test "$DISPATCH_CONFIRM" = "BACKUP_PREVIEW_ONLY"
-          echo "Preview-only dispatch gates passed."
+          case "$DISPATCH_RBAC_SEED" in
+            SKIP) test -z "$DISPATCH_RBAC_CONFIRM" ;;
+            RUN_PREVIEW_RBAC_SEED) test "$DISPATCH_RBAC_CONFIRM" = "SEED_RBAC_PREVIEW_ONLY" ;;
+            *) echo "Unknown RBAC seed selection."; exit 1 ;;
+          esac
+          echo "Preview-only dispatch gates passed; RBAC seed selection validated."
 
       - name: Install age and AWS CLI
         run: |
@@ -270,6 +287,18 @@ jobs:
           (cd "$WORK/readback" && sha256sum -c ENCRYPTED_SHA256SUMS)
           echo "Encrypted B2 upload and read-back verified."
           echo "Object prefix: s3://$B2_BUCKET/$PREFIX"
+          echo "HEAVIX_BACKUP_PREFIX=$PREFIX" >> "$GITHUB_ENV"
+          EVIDENCE="$RUNNER_TEMP/heavix-preview-backup-evidence"
+          mkdir -m 700 -p "$EVIDENCE"
+          {
+            echo "format=heavix-preview-paired-backup-evidence-v1"
+            echo "backup_sha=$GITHUB_SHA"
+            echo "backup_run_id=$GITHUB_RUN_ID"
+            echo "backup_run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "backup_prefix=$PREFIX"
+            cat "$WORK/ENCRYPTED_SHA256SUMS"
+          } > "$EVIDENCE/backup-evidence.txt"
+          chmod 600 "$EVIDENCE/backup-evidence.txt"
 
       - name: Decrypt, verify plaintext checksums and restore both databases
         shell: bash
@@ -328,3 +357,99 @@ jobs:
           test "$store_count" -gt 0
           echo "PASS: paired dumps decrypted, checksums verified, both PostgreSQL 17 restores completed."
           echo "Restore smoke check: Main tables=$main_count; Store tables=$store_count."
+      - name: Verify backup evidence survived the disposable restore proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+
+      - name: Upload paired backup evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-preview-paired-backup-evidence
+          path: ${{ runner.temp }}/heavix-preview-backup-evidence/backup-evidence.txt
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Set up Bun for Preview RBAC seed
+        if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Verify exact Worker binding and seed RBAC on Preview
+        if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED'
+        shell: bash
+        env:
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          PREVIEW_URL: https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -s "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_run_id=$GITHUB_RUN_ID" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+
+          # The Worker health query traverses the Workerd Prisma identity guard.
+          # A 200 + db=up proves its bound database matches the pinned system ID
+          # and the protected OID; no connection string or database identifier is exposed.
+          curl --retry 5 --retry-delay 2 --retry-connrefused --max-time 20 -fsS "$PREVIEW_URL/api/health" -o "$RUNNER_TEMP/preview-health.json"
+          node -e '
+            const fs = require("node:fs");
+            const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (h.status !== "ok" || h.checks?.db !== "up") {
+              throw new Error("Preview Worker database identity/readiness check did not pass.");
+            }
+            process.stdout.write("PASS: Preview Worker app DB is healthy through its identity guard.\n");
+          ' "$RUNNER_TEMP/preview-health.json"
+
+          # Independently prove the backup/seed connection is the same Preview DB.
+          [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
+          observed="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
+          expected="7701427422680793119|$HEAVIX_APP_PREVIEW_DATABASE_OID"
+          test "$observed" = "$expected"
+          echo "PASS: seed connection matches the pinned Preview cluster and database OID."
+
+          # Seed only the canonical RBAC catalog. This does not run migrations,
+          # taxonomy/catalog seeds, owner backfills, or any Production operation.
+          bun --version
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+          DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-rbac.ts
+
+          role_keys="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT string_agg(key, ',' ORDER BY key) FROM public.\"Role\" WHERE key IN ('ADMIN','BUYER','MODERATOR','SELLER','SUPPORT')")"
+          test "$role_keys" = "ADMIN,BUYER,MODERATOR,SELLER,SUPPORT"
+          permission_count="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public."Permission"')"
+          test "$permission_count" -gt 0
+          {
+            echo "## Preview RBAC seed"
+            echo
+            echo "- Exact commit: $GITHUB_SHA"
+            echo "- Paired encrypted backup and disposable restore: passed in this run"
+            echo "- Worker-to-Preview DB identity guard: passed"
+            echo "- Role catalog: ADMIN, BUYER, MODERATOR, SELLER, SUPPORT"
+            echo "- Permission catalog count: $permission_count"
+            echo "- Production: untouched"
+          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/heavix-preview-rbac-evidence"
+          {
+            echo "format=heavix-preview-rbac-seed-evidence-v1"
+            echo "seed_sha=$GITHUB_SHA"
+            echo "backup_run_id=$GITHUB_RUN_ID"
+            echo "role_keys=$role_keys"
+            echo "permission_count=$permission_count"
+            echo "worker_app_db_identity_guard=passed"
+          } > "$RUNNER_TEMP/heavix-preview-rbac-evidence/rbac-seed-evidence.txt"
+
+      - name: Upload Preview RBAC seed evidence
+        if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED'
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-preview-rbac-seed-evidence
+          path: ${{ runner.temp }}/heavix-preview-rbac-evidence/rbac-seed-evidence.txt
+          if-no-files-found: error
+          retention-days: 7

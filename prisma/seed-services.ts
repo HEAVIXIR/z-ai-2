@@ -136,6 +136,13 @@ const SERVICES: SeedService[] = [
 ];
 
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be preview. No writes performed.");
+  }
   console.log("Seeding services…");
   let created = 0;
   let updated = 0;
@@ -153,14 +160,8 @@ async function main() {
         active: true,
         featured: !!s.featured,
       },
-      update: {
-        nameFa: s.nameFa,
-        nameEn: s.nameEn,
-        description: s.description,
-        icon: s.icon,
-        sortOrder: s.sortOrder,
-        // Intentionally NOT updating active/featured — admin edits preserved.
-      },
+      // Preserve existing administrator-managed service metadata on reruns.
+      update: {},
     });
     if ((res as any).createdAt && (res as any).updatedAt) {
       // Can't easily distinguish create vs update here; just count by checking

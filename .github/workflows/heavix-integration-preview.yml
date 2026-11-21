@@ -1,0 +1,175 @@
+name: HEAVIX Integration Preview (GitHub Actions)
+
+on:
+  push:
+    branches:
+      - integration/preview-readiness-workerd-2026-11-15
+    paths:
+      - "src/**"
+      - "prisma/**"
+      - "public/**"
+      - "scripts/**"
+      - "package.json"
+      - "bun.lock"
+      - "next.config.ts"
+      - "open-next.config.ts"
+      - "wrangler.jsonc"
+      - ".github/workflows/heavix-integration-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-integration-preview
+  cancel-in-progress: true
+
+jobs:
+  build-and-preview:
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HEAVIX_BUILD_TARGET: cloudflare
+      HEAVIX_ENV: preview
+      NEXT_PUBLIC_SITE_URL: https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev
+      NODE_ENV: production
+      HEAVIX_NEXT_BUNDLER: webpack
+      UV_THREADPOOL_SIZE: "4"
+      CI: "1"
+    steps:
+      - name: Checkout exact Integration commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify branch and Cloudflare credential availability
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "integration/preview-readiness-workerd-2026-11-15"
+          test -n "${CLOUDFLARE_API_TOKEN}" || {
+            echo "::error::CLOUDFLARE_API_TOKEN repository secret is not configured."
+            exit 1
+          }
+          echo "Integration-only deployment guard passed."
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: heavix-next-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.ref_name }}
+          restore-keys: |
+            heavix-next-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.ref_name }}-
+            heavix-next-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate both Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Build OpenNext with the proven HEAVIX Webpack profile
+        run: |
+          set -euo pipefail
+          ulimit -n 4096 2>/dev/null || true
+          echo "HEAVIX_NOFILE_SOFT=$(ulimit -Sn) HARD=$(ulimit -Hn)"
+          node scripts/patch-next-nft-concurrency.cjs
+          bun run build:cloudflare
+          test -s .open-next/worker.js
+          test -d .open-next/assets
+
+      - name: Deploy only the Integration Worker Preview
+        id: preview
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "3fe0437a0aab4bafb2e728e458f67ea0"
+        run: |
+          set -euo pipefail
+          output="$(bunx wrangler preview --name "integration/preview-readiness-workerd-2026-11-15" --worker-name "heavix-preview" --json)"
+          printf '%s\\n' "$output"
+          # Wrangler may emit human-readable progress before its JSON result.
+          # Scan for the JSON object containing preview.urls instead of piping
+          # the entire mixed stdout stream directly into jq.
+          preview_url="$(printf '%s' "$output" | node -e '
+            let input = "";
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              for (let i = 0; i < input.length; i++) {
+                if (input[i] !== "{") continue;
+                try {
+                  const parsed = JSON.parse(input.slice(i));
+                  const url = parsed && parsed.preview && parsed.preview.urls && parsed.preview.urls[0];
+                  if (typeof url === "string" && url.startsWith("https://")) {
+                    process.stdout.write(url);
+                    return;
+                  }
+                } catch (_) {}
+              }
+              process.stderr.write("Could not locate Wrangler preview JSON containing preview.urls[0].\\n");
+              process.exit(1);
+            });
+          ')"
+          test -n "$preview_url"
+          echo "preview_url=$preview_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Preview responds
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
+        run: |
+          set -euo pipefail
+          root_code="000"
+          for attempt in {1..9}; do
+            root_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-preview-root.html" -w '%{http_code}' "$PREVIEW_URL/" || true)"
+            root_code="${root_code:-000}"
+            [ "$root_code" = "200" ] && break
+            sleep 3
+          done
+          echo "HEAVIX_PREVIEW_ROOT_HTTP=$root_code"
+          health_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-preview-health.json" -w '%{http_code}' "$PREVIEW_URL/api/health" || true)"
+          echo "HEAVIX_PREVIEW_HEALTH_HTTP=$health_code"
+          if [ -s "$RUNNER_TEMP/heavix-preview-health.json" ]; then
+            cat "$RUNNER_TEMP/heavix-preview-health.json"
+          fi
+          {
+            echo "- Root HTTP: ${root_code:-000}"
+            echo "- Health HTTP: ${health_code:-000}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$root_code" != "200" ]; then
+            echo "::error::Integration Preview root must return HTTP 200 (received ${root_code:-000})."
+            exit 1
+          fi
+          echo "PASS: Integration Preview root returned HTTP 200."
+          if [ "$health_code" != "200" ]; then
+            echo "::warning::Preview root is healthy but the separate database health route returned ${health_code:-000}."
+          else
+            echo "PASS: Integration Preview health route returned HTTP 200."
+          fi
+
+      - name: Publish Preview URL in job summary
+        if: always() && steps.preview.outputs.preview_url != ''
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
+        run: |
+          {
+            echo "## HEAVIX Integration Preview"
+            echo
+            echo "- Branch: integration/preview-readiness-workerd-2026-11-15"
+            echo "- Commit: ${GITHUB_SHA}"
+            echo "- Preview: ${PREVIEW_URL}"
+            echo "- Production deploy: not invoked"
+            echo "- Database migrations/seeds: not invoked"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+# Manual-dispatch fallback: this Integration-only workflow can also be triggered by a push to this file.

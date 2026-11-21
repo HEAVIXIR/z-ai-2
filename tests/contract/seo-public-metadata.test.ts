@@ -5,12 +5,12 @@ import * as path from "node:path";
 const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), "utf8");
 
 describe("public SEO metadata safety", () => {
-  it("gives knowledge articles route-specific canonical metadata and noindexes unpublished articles", () => {
+  it("permanently redirects legacy knowledge article URLs to the canonical content route", () => {
     const source = read("src/app/knowledge/[slug]/page.tsx");
-    expect(source).toContain("export async function generateMetadata");
-    expect(source).toContain('alternates: { canonical: `/knowledge/${slug}` }');
-    expect(source).toContain('robots: { index: false, follow: false }');
-    expect(source).toContain('article.status !== "PUBLISHED"');
+    expect(source).toContain("permanentRedirect");
+    expect(source).toContain("/articles/");
+    expect(source).toContain('status: "PUBLISHED"');
+    expect(source).not.toContain("generateMetadata");
   });
 
   it("sets store canonical metadata in a server layout around the client page", () => {

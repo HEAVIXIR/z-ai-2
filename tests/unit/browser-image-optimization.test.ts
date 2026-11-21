@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  FREE_MAX_IMAGE_UPLOAD_BYTES,
   MAX_IMAGE_UPLOAD_BYTES,
   prepareImageForUpload,
 } from "@/lib/browser-image-optimization";
@@ -37,7 +38,7 @@ describe("prepareImageForUpload", () => {
     const bitmap = { width: 4000, height: 3000, close: vi.fn() } as unknown as ImageBitmap;
     vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue(bitmap));
 
-    const context = { drawImage: vi.fn() };
+    const context = { drawImage: vi.fn(), clearRect: vi.fn(), fillRect: vi.fn(), fillStyle: "" };
     const canvas = {
       width: 0,
       height: 0,
@@ -60,8 +61,70 @@ describe("prepareImageForUpload", () => {
     expect(bitmap.close).toHaveBeenCalledTimes(1);
   });
 
+  it("falls back to JPEG when WebP encoding is unavailable", async () => {
+    const file = pngFile(MAX_IMAGE_UPLOAD_BYTES + 1, 3000, 2000);
+    const bitmap = { width: 3000, height: 2000, close: vi.fn() } as unknown as ImageBitmap;
+    vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue(bitmap));
+
+    const context = { drawImage: vi.fn(), clearRect: vi.fn(), fillRect: vi.fn(), fillStyle: "" };
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+      toBlob: vi.fn((callback: BlobCallback, type?: string) => {
+        callback(type === "image/jpeg"
+          ? new Blob([new Uint8Array(2048)], { type: "image/jpeg" })
+          : new Blob([new Uint8Array(1)], { type: "image/png" }));
+      }),
+    } as unknown as HTMLCanvasElement;
+    vi.stubGlobal("document", { createElement: vi.fn(() => canvas) });
+
+    const result = await prepareImageForUpload(file);
+
+    expect(result.compressed).toBe(true);
+    expect(result.file.type).toBe("image/jpeg");
+    expect(result.file.name).toBe("large-image.jpg");
+    expect(result.uploadBytes).toBeLessThanOrEqual(MAX_IMAGE_UPLOAD_BYTES);
+    expect(context.fillRect).toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("compresses to the free-plan 1 MiB target", async () => {
+    const file = pngFile(FREE_MAX_IMAGE_UPLOAD_BYTES + 1, 3000, 2000);
+    const bitmap = { width: 3000, height: 2000, close: vi.fn() } as unknown as ImageBitmap;
+    vi.stubGlobal("createImageBitmap", vi.fn().mockResolvedValue(bitmap));
+
+    const context = { drawImage: vi.fn(), clearRect: vi.fn(), fillRect: vi.fn(), fillStyle: "" };
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+      toBlob: vi.fn((callback: BlobCallback, type?: string) => {
+        callback(type === "image/webp"
+          ? new Blob([new Uint8Array(700 * 1024)], { type: "image/webp" })
+          : new Blob([new Uint8Array(800 * 1024)], { type: "image/jpeg" }));
+      }),
+    } as unknown as HTMLCanvasElement;
+    vi.stubGlobal("document", { createElement: vi.fn(() => canvas) });
+
+    const result = await prepareImageForUpload(file, FREE_MAX_IMAGE_UPLOAD_BYTES);
+
+    expect(result.uploadBytes).toBeLessThanOrEqual(FREE_MAX_IMAGE_UPLOAD_BYTES);
+    expect(result.file.type).toBe("image/webp");
+    expect(bitmap.close).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects oversized dimensions before browser decoding", async () => {
     const file = pngFile(MAX_IMAGE_UPLOAD_BYTES + 1, 6001, 1);
+    const decode = vi.fn();
+    vi.stubGlobal("createImageBitmap", decode);
+
+    await expect(prepareImageForUpload(file)).rejects.toThrow("ابعاد تصویر بیش از حد مجاز است.");
+    expect(decode).not.toHaveBeenCalled();
+  });
+
+  it("matches the server decoded-pixel limit before browser decoding", async () => {
+    const file = pngFile(MAX_IMAGE_UPLOAD_BYTES + 1, 4000, 3200);
     const decode = vi.fn();
     vi.stubGlobal("createImageBitmap", decode);
 

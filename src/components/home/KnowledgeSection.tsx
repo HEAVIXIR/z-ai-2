@@ -190,7 +190,7 @@ function AnimatedKnowledgeCarousel({ articles }: { articles: KnowledgeCard[] }) 
               }}
             >
               <Link
-                href={`/knowledge/${current.slug}`}
+                href={`/articles/${current.slug}`}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-[#F58220] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
               >
                 مطالعه مقاله <ArrowLeft className="h-3.5 w-3.5" />

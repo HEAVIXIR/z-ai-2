@@ -26,10 +26,11 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json({ services });
-  } catch (err: any) {
+  } catch (err) {
+    console.error("[api/services GET] failed to load public services", err);
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { error: "خدمات هویکس موقتاً در دسترس نیست" },
+      { status: 503 },
     );
   }
 }

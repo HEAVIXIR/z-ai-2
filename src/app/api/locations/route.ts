@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,8 +115,12 @@ export async function GET(req: Request) {
 */
 export async function POST(req: Request) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
+    }
     const level = String(body.level ?? "country").toLowerCase();
 
     if (level === "country") {
@@ -160,13 +165,26 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
+      const hasLatitude = body.latitude !== undefined && body.latitude !== null && body.latitude !== "";
+      const hasLongitude = body.longitude !== undefined && body.longitude !== null && body.longitude !== "";
+      const latitude = hasLatitude ? Number(body.latitude) : null;
+      const longitude = hasLongitude ? Number(body.longitude) : null;
+      if (hasLatitude !== hasLongitude) {
+        return NextResponse.json({ error: "latitude and longitude must be provided together" }, { status: 400 });
+      }
+      if (
+        (latitude !== null && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) ||
+        (longitude !== null && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180))
+      ) {
+        return NextResponse.json({ error: "coordinates are outside valid WGS84 bounds" }, { status: 400 });
+      }
       const city = await db.city.create({
         data: {
           name: String(body.name),
           nameEn: body.nameEn ?? null,
           provinceId: String(body.provinceId),
-          latitude: body.latitude != null ? Number(body.latitude) : null,
-          longitude: body.longitude != null ? Number(body.longitude) : null,
+          latitude,
+          longitude,
           sortOrder: Number(body.sortOrder) || 0,
         },
       });

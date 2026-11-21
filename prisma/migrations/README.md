@@ -10,10 +10,28 @@ HEAVIX maintains two PostgreSQL schemas and two separately configured databases:
 - Main application: `prisma/schema.prisma`, connection via `DATABASE_URL`.
 - Store/Outbox: `prisma/store/schema.prisma`, connection via `STORE_DATABASE_URL`.
 
-The active main migration history currently includes:
+The active main migration history currently includes twelve append-only PostgreSQL migrations:
 
 - `20261025081255_init_postgresql_baseline/migration.sql`
 - `20261025193000_add_auditlog_idempotency_key/migration.sql`
+- `20261112160000_add_selectable_hero_templates/migration.sql`
+- `20261114150000_product_model_attributes/migration.sql`
+- `20261116120000_industrial_marketplace_identity_core/migration.sql`
+- `20261116130000_company_invitations/migration.sql`
+- `20261118152000_link_listing_service_rfq/migration.sql`
+- `20261119160000_wanted_structural_storage/migration.sql`
+- `20261119190000_first_party_geospatial_foundation/migration.sql`
+- `20261120113000_location_source_codes/migration.sql`
+- `20261120130000_category_attribute_active_policy/migration.sql`
+- `20261120150000_buy_request_images/migration.sql`
+
+The active Store/Outbox migration history currently includes three append-only PostgreSQL migrations:
+
+- `prisma/store/migrations/0001_init_store_baseline/migration.sql`
+- `prisma/store/migrations/0002_add_audit_outbox/migration.sql`
+- `prisma/store/migrations/0003_purchase_order_submitter/migration.sql`
+
+The current Preview inventory may intentionally lag the repository. Compare the exact successful migration-name sets for each database before applying anything; never infer a target's state from the number of files in the repository.
 
 Before changing migrations, inspect both schema files and the existing migration history. Do not recreate, rewrite, reorder, or squash migrations that have already been shared or applied.
 

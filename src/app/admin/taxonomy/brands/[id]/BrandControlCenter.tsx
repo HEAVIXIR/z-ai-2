@@ -177,6 +177,15 @@ export default function BrandControlCenter({ brandId }: { brandId: string }) {
     })();
   }, [brandId]);
 
+  const reloadBrand = useCallback(async () => {
+    const response = await fetch(`/api/taxonomy/brands/${brandId}`, { cache: "no-store" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.brand) {
+      throw new Error(payload?.error ?? "بارگذاری دوباره اطلاعات برند ناموفق بود.");
+    }
+    setBrand(payload.brand);
+  }, [brandId]);
+
   const save = useCallback(
     async (patch: any) => {
       setError(null);
@@ -190,10 +199,12 @@ export default function BrandControlCenter({ brandId }: { brandId: string }) {
         throw new Error(data?.error ?? "ذخیره ناموفق بود.");
       }
       const updated = await res.json();
-      setBrand(updated.brand ?? updated);
+      // The PATCH response is intentionally compact; reload the complete
+      // relation graph so switching tabs never loses models/categories/etc.
+      await reloadBrand();
       return updated;
     },
-    [brandId],
+    [brandId, reloadBrand],
   );
 
   if (loading) {
@@ -295,9 +306,9 @@ export default function BrandControlCenter({ brandId }: { brandId: string }) {
       )}
       {tab === "domains" && <DomainsTab brand={brand} save={save} />}
       {tab === "categories" && (
-        <CategoriesTab brand={brand} allCategories={allCategories} save={save} />
+        <CategoriesTab brand={brand} allCategories={allCategories} onSaved={reloadBrand} />
       )}
-      {tab === "models" && <ModelsTab brand={brand} />}
+      {tab === "models" && <ModelsTab brand={brand} categories={allCategories} onCreated={reloadBrand} />}
       {tab === "media" && <MediaTab brand={brand} />}
       {tab === "seo" && <SEOTab brand={brand} save={save} />}
       {tab === "display" && <DisplayTab brand={brand} save={save} />}
@@ -1130,17 +1141,20 @@ function DomainsTab({ brand, save }: { brand: any; save: (patch: any) => Promise
 function CategoriesTab({
   brand,
   allCategories,
-  save,
+  onSaved,
 }: {
   brand: any;
   allCategories: any[];
-  save: (patch: any) => Promise<any>;
+  onSaved: () => Promise<void>;
 }) {
-  const [selected, setSelected] = useState<Set<string>>(
-    new Set((brand.categories ?? []).map((c: any) => c.category?.id ?? c.categoryId)),
-  );
+  const initialIds = (brand.categories ?? []).map((c: any) => c.category?.id ?? c.categoryId).filter(Boolean);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialIds));
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const toggle = (id: string) => {
+    setSaved(false);
     setSelected((s) => {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
@@ -1150,63 +1164,83 @@ function CategoriesTab({
   };
 
   const submit = async () => {
-    // Note: actual category connect/disconnect isn't in the brand PATCH route.
-    // The original local editor delegated to a separate sub-route. We mirror
-    // the existing pattern by issuing per-link calls.
-    const current = new Set((brand.categories ?? []).map((c: any) => c.category?.id ?? c.categoryId));
+    if (saving) return;
+    setSaving(true);
+    setErr(null);
+    setSaved(false);
+    const current = new Set(initialIds);
     const toAdd = Array.from(selected).filter((id) => !current.has(id));
     const toRemove = Array.from(current).filter((id) => !selected.has(id));
-    for (const cid of toAdd) {
-      try {
-        await fetch(`/api/taxonomy/brands/${brand.id}/categories`, {
+    try {
+      for (const categoryId of toAdd) {
+        const response = await fetch(`/api/taxonomy/brands/${brand.id}/categories`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ categoryId: cid, isActive: true }),
+          body: JSON.stringify({ categoryId }),
         });
-      } catch {}
-    }
-    for (const cid of toRemove) {
-      try {
-        await fetch(`/api/taxonomy/brands/${brand.id}/categories?categoryId=${cid}`, {
-          method: "DELETE",
-        });
-      } catch {}
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error ?? `اتصال دسته «${categoryId}» به برند ذخیره نشد.`);
+        }
+      }
+      for (const categoryId of toRemove) {
+        const response = await fetch(
+          `/api/taxonomy/brands/${brand.id}/categories?categoryId=${encodeURIComponent(categoryId)}`,
+          { method: "DELETE" },
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.error ?? `قطع ارتباط دسته «${categoryId}» ناموفق بود.`);
+        }
+      }
+      await onSaved();
+      setSaved(true);
+    } catch (error) {
+      // A multi-link save can partially complete. Reload the server truth so
+      // the next attempt diffs against persisted links, not stale UI state.
+      try { await onSaved(); } catch {}
+      setErr(error instanceof Error ? error.message : "ذخیره دسته‌های برند ناموفق بود.");
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <div className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-black text-zinc-900">دسته‌های این برند</h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-black text-zinc-900">دسته‌های این برند</h2>
+          <p className="text-xs text-zinc-500">تغییرات فقط پس از پاسخ موفق سرور ذخیره‌شده محسوب می‌شوند.</p>
+        </div>
         <button
+          type="button"
           onClick={submit}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#F58220] px-4 py-2 text-sm font-bold text-white"
+          disabled={saving}
+          className="inline-flex items-center gap-2 rounded-xl bg-[#F58220] px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
         >
-          <Save className="h-4 w-4" /> ذخیره
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <CheckCircle2 className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+          {saving ? "در حال ذخیره..." : saved ? "ذخیره شد" : "ذخیره"}
         </button>
       </div>
+      {err && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {allCategories.map((c) => {
-          const isOn = selected.has(c.id);
+        {allCategories.map((category) => {
+          const isOn = selected.has(category.id);
           return (
             <label
-              key={c.id}
-              className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 transition ${
-                isOn ? "border-[#F58220] bg-[#F58220]/5" : "border-zinc-200 bg-zinc-50"
-              }`}
+              key={category.id}
+              className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 transition ${isOn ? "border-[#F58220] bg-[#F58220]/5" : "border-zinc-200 bg-zinc-50"}`}
             >
-              <input type="checkbox" checked={isOn} onChange={() => toggle(c.id)} className="h-4 w-4 accent-[#F58220]" />
+              <input type="checkbox" checked={isOn} onChange={() => toggle(category.id)} className="h-4 w-4 accent-[#F58220]" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-bold text-zinc-700">{c.name}</div>
-                <div className="text-[10px] text-zinc-400" dir="ltr">{c.nameEn ?? c.domain}</div>
+                <div className="truncate text-sm font-bold text-zinc-700">{category.name}</div>
+                <div className="text-[10px] text-zinc-400" dir="ltr">{category.nameEn ?? category.domain}</div>
               </div>
             </label>
           );
         })}
         {allCategories.length === 0 && (
-          <p className="col-span-full py-8 text-center text-sm text-zinc-400">
-            هیچ دسته‌ای تعریف نشده است.
-          </p>
+          <p className="col-span-full py-8 text-center text-sm text-zinc-400">هیچ دسته‌ای تعریف نشده است.</p>
         )}
       </div>
     </div>
@@ -1214,37 +1248,113 @@ function CategoriesTab({
 }
 
 /* ── Models Tab ── */
-function ModelsTab({ brand }: { brand: any }) {
+function ModelsTab({
+  brand,
+  categories,
+  onCreated,
+}: {
+  brand: any;
+  categories: any[];
+  onCreated: () => Promise<void>;
+}) {
   const models = brand.models ?? [];
+  const [showCreate, setShowCreate] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", nameEn: "", categoryId: "", description: "" });
+
+  const flatten = (nodes: any[]): any[] =>
+    nodes.flatMap((node) => [node, ...flatten(node.children ?? [])]);
+  const categoryOptions = flatten(categories).filter((category) => category.layer === "CATALOG");
+
+  const createModel = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (saving) return;
+    if (!form.name.trim() || !form.categoryId) {
+      setErr("نام مدل و دسته‌بندی مرتبط الزامی است.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const response = await fetch(`/api/taxonomy/brands/${brand.id}/models`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          nameEn: form.nameEn.trim() || null,
+          categoryId: form.categoryId,
+          description: form.description.trim() || null,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.success || !payload?.data?.id) {
+        throw new Error(payload?.error ?? "مدل در پایگاه داده ثبت نشد.");
+      }
+      setForm({ name: "", nameEn: "", categoryId: "", description: "" });
+      setShowCreate(false);
+      await onCreated();
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "ثبت مدل ناموفق بود.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-black text-zinc-900">مدل‌های این برند</h2>
-        <Link
-          href={`/admin/brands/new?brandId=${brand.id}`}
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-black text-zinc-900">مدل‌های این برند ({models.length})</h2>
+        <button
+          type="button"
+          onClick={() => { setShowCreate((value) => !value); setErr(null); }}
           className="inline-flex items-center gap-1.5 rounded-xl bg-[#F58220] px-4 py-2 text-sm font-bold text-white"
         >
-          <Plus className="h-4 w-4" /> افزودن مدل
-        </Link>
+          <Plus className="h-4 w-4" /> {showCreate ? "بستن فرم" : "افزودن مدل"}
+        </button>
       </div>
+      {showCreate && (
+        <form onSubmit={createModel} className="grid gap-3 rounded-xl border border-orange-200 bg-orange-50/40 p-4 sm:grid-cols-2">
+          <label className="text-xs font-bold text-zinc-600">
+            نام مدل *
+            <input value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-normal" />
+          </label>
+          <label className="text-xs font-bold text-zinc-600">
+            نام انگلیسی
+            <input dir="ltr" value={form.nameEn} onChange={(e) => setForm((current) => ({ ...current, nameEn: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-normal" />
+          </label>
+          <label className="text-xs font-bold text-zinc-600 sm:col-span-2">
+            دسته‌بندی مرتبط *
+            <select value={form.categoryId} onChange={(e) => setForm((current) => ({ ...current, categoryId: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm font-normal">
+              <option value="">انتخاب دسته‌بندی</option>
+              {categoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+          </label>
+          <label className="text-xs font-bold text-zinc-600 sm:col-span-2">
+            توضیحات
+            <textarea value={form.description} onChange={(e) => setForm((current) => ({ ...current, description: e.target.value }))} rows={2} className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm font-normal" />
+          </label>
+          {err && <p role="alert" className="text-sm text-red-600 sm:col-span-2">{err}</p>}
+          <div className="flex justify-end sm:col-span-2">
+            <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-[#F58220] px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {saving ? "در حال ثبت..." : "ثبت مدل در پایگاه داده"}
+            </button>
+          </div>
+        </form>
+      )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {models.map((m: any) => (
-          <div key={m.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4">
-            <div className="flex items-center justify-between">
-              <span className="font-black text-zinc-800">{m.name}</span>
-            </div>
-            {m.nameEn && <p className="text-xs text-zinc-400" dir="ltr">{m.nameEn}</p>}
+        {models.map((model: any) => (
+          <div key={model.id} className="rounded-xl border border-zinc-100 bg-zinc-50 p-4">
+            <div className="font-black text-zinc-800">{model.name}</div>
+            {model.nameEn && <p className="text-xs text-zinc-400" dir="ltr">{model.nameEn}</p>}
             <div className="mt-2 flex items-center gap-3 text-xs text-zinc-500">
-              <span className="rounded bg-zinc-100 px-1.5 py-0.5" dir="ltr">{m.slug}</span>
-              <span className="rounded bg-zinc-100 px-1.5 py-0.5" dir="ltr">{m.status}</span>
+              <span className="rounded bg-zinc-100 px-1.5 py-0.5" dir="ltr">{model.slug}</span>
+              <span className="rounded bg-zinc-100 px-1.5 py-0.5" dir="ltr">{model.status}</span>
             </div>
           </div>
         ))}
-        {models.length === 0 && (
-          <p className="col-span-full py-8 text-center text-sm text-zinc-400">
-            مدلی ثبت نشده است.
-          </p>
-        )}
+        {models.length === 0 && <p className="col-span-full py-8 text-center text-sm text-zinc-400">مدلی ثبت نشده است.</p>}
       </div>
     </div>
   );

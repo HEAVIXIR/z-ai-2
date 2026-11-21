@@ -42,6 +42,7 @@ const spies = vi.hoisted(() => ({
   userRoleUpsert: vi.fn(),
   roleFindUnique: vi.fn(),
   logAudit: vi.fn(),
+  auditLogCreate: vi.fn(),
   getCurrentUser: vi.fn(),
   hasPermission: vi.fn(),
 }));
@@ -60,6 +61,7 @@ vi.mock("@/lib/db", () => ({
       deleteMany: spies.userRoleDeleteMany,
       upsert: spies.userRoleUpsert,
     },
+    auditLog: { create: spies.auditLogCreate },
     $transaction: spies.$transaction,
   },
 }));
@@ -88,9 +90,10 @@ const { PATCH } = await import("@/app/api/admin/users/[id]/route");
 /* ── Helpers ── */
 
 function makeReq(id: string, body: unknown): Request {
-  return new Request(`http://localhost/api/admin/users/${id}`, {
+  const url = new URL(`http://localhost:3000/api/admin/users/${id}`);
+  return new Request(url, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: url.origin },
     body: JSON.stringify(body),
   });
 }
@@ -140,12 +143,13 @@ beforeEach(() => {
     _count: { listings: 0, offers: 0, requests: 0 },
   }));
   spies.logAudit.mockResolvedValue(undefined);
+  spies.auditLogCreate.mockResolvedValue({ id: "audit-1" });
 
   // Default $transaction: invoke callback with a mock tx whose methods
   // delegate to the same spies (so we can assert call counts).
   spies.$transaction.mockImplementation(async (cb: any) => {
     const mockTx = {
-      user: { update: spies.userUpdate },
+      user: { findUnique: spies.userFindUnique, update: spies.userUpdate },
       userRole: {
         findMany: spies.userRoleFindMany,
         deleteMany: spies.userRoleDeleteMany,
@@ -154,6 +158,7 @@ beforeEach(() => {
       // STEP 15.44-B: route.ts uses tx.$queryRaw for SELECT ... FOR UPDATE
       // (defense-in-depth row lock at TX start). Mock returns an empty row
       // list — the route never reads the result, it only acquires the lock.
+      auditLog: { create: spies.auditLogCreate },
       $queryRaw: vi.fn().mockResolvedValue([{ id: "user-123" }]),
     };
     return cb(mockTx);
@@ -316,6 +321,20 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
       try {
         const tx = {
           user: {
+            findUnique: async () => ({
+              id: "user-123",
+              firstName: "User",
+              lastName: "Example",
+              email: "user@example.com",
+              mobile: "1234567890",
+              userType: "INDIVIDUAL",
+              role: dbState.user.role,
+              status: "ACTIVE",
+              companyName: null,
+              emailVerified: false,
+              mobileVerified: false,
+              lastLoginAt: null,
+            }),
             update: async (args: any) => {
               dbState.user.role = args.data.role;
               return {
@@ -370,6 +389,7 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
               return newUr;
             },
           },
+          auditLog: { create: async () => ({ id: "audit-1" }) },
           // STEP 15.44-B: route.ts uses tx.$queryRaw for SELECT ... FOR UPDATE
           // (defense-in-depth row lock at TX start). Mock returns a row — the
           // route only uses this to acquire the lock, never reads the result.
@@ -422,10 +442,10 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
 
     const res = await PATCH(makeReq("user-123", { role: "SELLER" }), makeParams("user-123"));
 
-    // ── Response is 500 ──
+    // ── Response is a sanitized 500; the internal DB error is not disclosed ──
     expect(res.status).toBe(500);
     const json = await res.json();
-    expect(json.error).toContain("upsert failed");
+    expect(json.error).toBe("Unable to process user request");
 
     // ── Transaction callback threw → $transaction rethrew ──
     expect(spies.userUpdate).toHaveBeenCalledTimes(1); // ran before throw
@@ -433,9 +453,8 @@ describe("PATCH /api/admin/users/[id] — transactional dual-write (BLOCKER-1)",
     expect(spies.userRoleDeleteMany).toHaveBeenCalledTimes(1); // ran before throw
     expect(spies.userRoleUpsert).toHaveBeenCalledTimes(1); // threw
 
-    // ── Audit log MUST NOT have been called ──
-    // (logAudit runs OUTSIDE the transaction, AFTER it commits.
-    // Since the transaction threw, we never reached logAudit.)
+    // ── Transactional AuditLog MUST NOT be written after the role upsert fails. ──
+    expect(spies.auditLogCreate).not.toHaveBeenCalled();
     expect(spies.logAudit).not.toHaveBeenCalled();
   });
 });

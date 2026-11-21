@@ -106,15 +106,44 @@ const TREE: CatSeed[] = [
               { name: "Mining Excavator", nameEn: "Mining Excavator", slug: "mining-excavator",  layer: "CATALOG", sortOrder: 5, appIndustries: ["MINING"] },
             ],
           },
-          { name: "لودر",          nameEn: "Loader",            slug: "loader",            layer: "CATALOG", domain: "MACHINE", sortOrder: 2, appIndustries: ["CONSTRUCTION", "MINING", "ROAD_CONSTRUCTION"] },
+          {
+            name: "لودر", nameEn: "Loader", slug: "loader", layer: "CATALOG",
+            domain: "MACHINE", sortOrder: 2, appIndustries: ["CONSTRUCTION", "MINING", "ROAD_CONSTRUCTION"],
+            children: [
+              { name: "لودر چرخ لاستیکی", nameEn: "Wheel Loader", slug: "wheel-loader", layer: "CATALOG", sortOrder: 1 },
+              { name: "لودر زنجیری", nameEn: "Track Loader", slug: "track-loader", layer: "CATALOG", sortOrder: 2 },
+              { name: "اسکید استیر", nameEn: "Skid Steer Loader", slug: "skid-steer-loader", layer: "CATALOG", sortOrder: 3 },
+              { name: "کامپکت ترک لودر", nameEn: "Compact Track Loader", slug: "compact-track-loader", layer: "CATALOG", sortOrder: 4 },
+              { name: "لودر تلسکوپی", nameEn: "Telehandler", slug: "telehandler-loader", layer: "CATALOG", sortOrder: 5 },
+            ],
+          },
           { name: "بولدوزر",       nameEn: "Bulldozer",         slug: "bulldozer",         layer: "CATALOG", domain: "MACHINE", sortOrder: 3, appIndustries: ["CONSTRUCTION", "MINING", "ROAD_CONSTRUCTION"] },
           { name: "گریدر",         nameEn: "Grader",            slug: "grader",            layer: "CATALOG", domain: "MACHINE", sortOrder: 4, appIndustries: ["ROAD_CONSTRUCTION", "CIVIL"] },
           { name: "بکهو لودر",     nameEn: "Backhoe Loader",    slug: "backhoe-loader",    layer: "CATALOG", domain: "MACHINE", sortOrder: 5, appIndustries: ["CONSTRUCTION", "CIVIL"] },
           { name: "اسکریپر",       nameEn: "Scraper",           slug: "scraper",           layer: "CATALOG", domain: "MACHINE", sortOrder: 6, appIndustries: ["ROAD_CONSTRUCTION", "CIVIL"] },
-          { name: "غلتک",          nameEn: "Road Roller",       slug: "road-roller",       layer: "CATALOG", domain: "MACHINE", sortOrder: 7, appIndustries: ["ROAD_CONSTRUCTION", "CIVIL"] },
+          {
+            name: "غلتک", nameEn: "Road Roller", slug: "road-roller", layer: "CATALOG",
+            domain: "MACHINE", sortOrder: 7, appIndustries: ["ROAD_CONSTRUCTION", "CIVIL"],
+            children: [
+              { name: "غلتک تک‌درام", nameEn: "Single Drum Roller", slug: "single-drum-roller", layer: "CATALOG", sortOrder: 1 },
+              { name: "غلتک دو‌درام", nameEn: "Double Drum Roller", slug: "double-drum-roller", layer: "CATALOG", sortOrder: 2 },
+              { name: "غلتک ارتعاشی", nameEn: "Vibratory Roller", slug: "vibratory-roller", layer: "CATALOG", sortOrder: 3 },
+              { name: "غلتک پنوماتیک", nameEn: "Pneumatic Tire Roller", slug: "pneumatic-roller", layer: "CATALOG", sortOrder: 4 },
+            ],
+          },
           { name: "فینیشر آسفالت", nameEn: "Asphalt Finisher",  slug: "asphalt-finisher",  layer: "CATALOG", domain: "MACHINE", sortOrder: 8, appIndustries: ["ROAD_CONSTRUCTION"] },
           { name: "ماشین‌آلات آسفالت", nameEn: "Asphalt Machinery", slug: "asphalt-machinery", layer: "CATALOG", domain: "MACHINE", sortOrder: 9, appIndustries: ["ROAD_CONSTRUCTION"] },
-          { name: "ماشین‌آلات بتن", nameEn: "Concrete Machinery", slug: "concrete-machinery", layer: "CATALOG", domain: "MACHINE", sortOrder: 10, appIndustries: ["CONSTRUCTION", "CIVIL"] },
+          {
+            name: "ماشین‌آلات بتن", nameEn: "Concrete Machinery", slug: "concrete-machinery", layer: "CATALOG",
+            domain: "MACHINE", sortOrder: 10, appIndustries: ["CONSTRUCTION", "CIVIL"],
+            children: [
+              { name: "پمپ بتن", nameEn: "Concrete Pump", slug: "concrete-pump", layer: "CATALOG", sortOrder: 1 },
+              { name: "بچینگ پلانت", nameEn: "Concrete Batching Plant", slug: "batching-plant", layer: "CATALOG", sortOrder: 2 },
+              { name: "تراک میکسر", nameEn: "Transit Mixer", slug: "transit-mixer", layer: "CATALOG", sortOrder: 3 },
+              { name: "میکسر بتن", nameEn: "Concrete Mixer", slug: "concrete-mixer", layer: "CATALOG", sortOrder: 4 },
+              { name: "شاتکریت", nameEn: "Shotcrete Machine", slug: "shotcrete-machine", layer: "CATALOG", sortOrder: 5 },
+            ],
+          },
           { name: "سایر",          nameEn: "Other Road Construction", slug: "other-road-construction", layer: "CATALOG", domain: "MACHINE", sortOrder: 11 },
         ],
       },
@@ -143,7 +172,14 @@ const TREE: CatSeed[] = [
           { name: "DTH",             nameEn: "Down-The-Hole",    slug: "dth",             layer: "CATALOG", sortOrder: 3, appIndustries: ["MINING"] },
           { name: "Top Hammer",      nameEn: "Top Hammer",       slug: "top-hammer",      layer: "CATALOG", sortOrder: 4, appIndustries: ["MINING"] },
           { name: "حفاری چاه",        nameEn: "Water Well Drilling", slug: "water-well-drilling", layer: "CATALOG", sortOrder: 5, appIndustries: ["AGRICULTURE", "CIVIL"] },
-          { name: "سایر",             nameEn: "Other Drilling",  slug: "other-drilling",  layer: "CATALOG", sortOrder: 6 },
+          { name: "مغزه‌گیر", nameEn: "Core Drill", slug: "core-drill", layer: "CATALOG", sortOrder: 6, appIndustries: ["MINING", "GEOTECHNICAL"] },
+          { name: "حفاری RC", nameEn: "Reverse Circulation Drill", slug: "rc-drill", layer: "CATALOG", sortOrder: 7, appIndustries: ["MINING"] },
+          { name: "حفاری ژئوتکنیک", nameEn: "Geotechnical Drill", slug: "geotechnical-drill", layer: "CATALOG", sortOrder: 8, appIndustries: ["CIVIL", "GEOTECHNICAL"] },
+          { name: "حفاری چال انفجاری", nameEn: "Blast Hole Drill", slug: "blast-hole-drill", layer: "CATALOG", sortOrder: 9, appIndustries: ["MINING"] },
+          { name: "حفاری زیرزمینی", nameEn: "Underground Drill", slug: "underground-drill", layer: "CATALOG", sortOrder: 10, appIndustries: ["MINING"] },
+          { name: "جامبو حفاری تونل", nameEn: "Tunneling Jumbo Drill", slug: "jumbo-drill", layer: "CATALOG", sortOrder: 11, appIndustries: ["MINING", "CIVIL"] },
+          { name: "حفاری نفت و گاز", nameEn: "Oil & Gas Drilling Rig", slug: "oil-gas-drilling", layer: "CATALOG", sortOrder: 12, appIndustries: ["OIL_GAS"] },
+          { name: "سایر", nameEn: "Other Drilling", slug: "other-drilling", layer: "CATALOG", sortOrder: 13 },
         ],
       },
       {
@@ -169,14 +205,31 @@ const TREE: CatSeed[] = [
           { name: "زنجیری",       nameEn: "Chain Crane",     slug: "chain-crane",     layer: "CATALOG", sortOrder: 4, appIndustries: ["FACTORY"] },
           { name: "متحرک",        nameEn: "Mobile Crane",    slug: "mobile-crane",    layer: "CATALOG", sortOrder: 5, appIndustries: ["CONSTRUCTION", "PORT_MARINE"] },
           { name: "سقفی",         nameEn: "Overhead Crane",  slug: "overhead-crane",  layer: "CATALOG", sortOrder: 6, appIndustries: ["FACTORY", "STEEL"] },
-          { name: "دیگر",         nameEn: "Other Crane",     slug: "other-crane",     layer: "CATALOG", sortOrder: 7 },
+          { name: "جرثقیل زنجیری", nameEn: "Crawler Crane", slug: "crawler-crane", layer: "CATALOG", sortOrder: 7, appIndustries: ["CONSTRUCTION", "MINING"] },
+          { name: "جرثقیل کامیونی", nameEn: "Truck-Mounted Crane", slug: "truck-crane", layer: "CATALOG", sortOrder: 8, appIndustries: ["CONSTRUCTION", "TRANSPORT"] },
+          { name: "جرثقیل تمام‌زمین", nameEn: "All Terrain Crane", slug: "all-terrain-crane", layer: "CATALOG", sortOrder: 9, appIndustries: ["CONSTRUCTION"] },
+          { name: "جرثقیل دریایی", nameEn: "Marine Crane", slug: "marine-crane", layer: "CATALOG", sortOrder: 10, appIndustries: ["PORT_MARINE", "OIL_GAS"] },
+          { name: "دیگر", nameEn: "Other Crane", slug: "other-crane", layer: "CATALOG", sortOrder: 11 },
         ],
       },
       {
         name: "۰۱.۰۶ لیفتراک و تجهیزات انبار", nameEn: "Forklift & Warehouse",
         slug: "forklift-warehouse", layer: "CATALOG", icon: "📦", domain: "MACHINE", sortOrder: 6,
         children: [
-          { name: "لیفتراک",     nameEn: "Forklift",      slug: "forklift",      layer: "CATALOG", sortOrder: 1, appIndustries: ["FACTORY", "PORT_MARINE"] },
+          {
+            name: "لیفتراک", nameEn: "Forklift", slug: "forklift", layer: "CATALOG",
+            sortOrder: 1, appIndustries: ["FACTORY", "PORT_MARINE"],
+            children: [
+              { name: "لیفتراک دیزلی", nameEn: "Diesel Forklift", slug: "diesel-forklift", layer: "CATALOG", sortOrder: 1 },
+              { name: "لیفتراک برقی", nameEn: "Electric Forklift", slug: "electric-forklift", layer: "CATALOG", sortOrder: 2 },
+              { name: "لیفتراک LPG", nameEn: "LPG Forklift", slug: "lpg-forklift", layer: "CATALOG", sortOrder: 3 },
+              { name: "لیفتراک بنزینی", nameEn: "Gasoline Forklift", slug: "gasoline-forklift", layer: "CATALOG", sortOrder: 4 },
+              { name: "لیفتراک سنگین", nameEn: "Heavy Duty Forklift", slug: "heavy-duty-forklift", layer: "CATALOG", sortOrder: 5 },
+              { name: "لیفتراک آفرود", nameEn: "Rough Terrain Forklift", slug: "rough-terrain-forklift", layer: "CATALOG", sortOrder: 6 },
+              { name: "لیفتراک جانبی", nameEn: "Side Loader Forklift", slug: "side-loader-forklift", layer: "CATALOG", sortOrder: 7 },
+              { name: "لیفتراک کانتینری", nameEn: "Container Forklift", slug: "container-forklift", layer: "CATALOG", sortOrder: 8 },
+            ],
+          },
           { name: "ریچ‌تراک",    nameEn: "Reach Truck",   slug: "reach-truck",   layer: "CATALOG", sortOrder: 2, appIndustries: ["FACTORY"] },
           { name: "پالت‌تراک",   nameEn: "Pallet Truck",  slug: "pallet-truck",  layer: "CATALOG", sortOrder: 3, appIndustries: ["FACTORY"] },
           { name: "استکر",       nameEn: "Stacker",       slug: "stacker",       layer: "CATALOG", sortOrder: 4, appIndustries: ["FACTORY"] },
@@ -408,7 +461,21 @@ const TREE: CatSeed[] = [
       { name: "کمپرسور",         nameEn: "Compressor",         slug: "compressor",         layer: "CATALOG", domain: "INDUSTRIAL_EQUIPMENT", sortOrder: 2, appIndustries: ["FACTORY", "MINING"] },
       { name: "سکوی بلندبر",     nameEn: "Aerial Platform",    slug: "aerial-platform",    layer: "CATALOG", domain: "INDUSTRIAL_EQUIPMENT", sortOrder: 3, appIndustries: ["CONSTRUCTION", "FACTORY"] },
       { name: "تجهیزات معدنی",   nameEn: "Mining Equipment",   slug: "mining-equipment",   layer: "CATALOG", domain: "INDUSTRIAL_EQUIPMENT", sortOrder: 4, appIndustries: ["MINING"] },
-      { name: "پمپ‌های صنعتی",   nameEn: "Industrial Pumps",   slug: "industrial-pumps",   layer: "CATALOG", domain: "INDUSTRIAL_EQUIPMENT", sortOrder: 5, appIndustries: ["OIL_GAS", "PETROCHEMICAL", "POWER"] },
+      { name: "پمپ‌های صنعتی", nameEn: "Industrial Pumps", slug: "industrial-pumps", layer: "CATALOG", domain: "INDUSTRIAL_EQUIPMENT", sortOrder: 5, appIndustries: ["OIL_GAS", "PETROCHEMICAL", "POWER"] },
+      {
+        name: "تجهیزات جایگاه سوخت", nameEn: "Fuel Station Equipment", slug: "fuel-station-equipment",
+        layer: "CATALOG", domain: "INDUSTRIAL_EQUIPMENT", sortOrder: 6,
+        appIndustries: ["OIL_GAS", "PETROCHEMICAL", "TRANSPORT"],
+        children: [
+          { name: "دیسپنسر سوخت", nameEn: "Fuel Dispenser", slug: "fuel-dispenser", layer: "CATALOG", sortOrder: 1 },
+          { name: "مخزن ذخیره سوخت", nameEn: "Fuel Storage Tank", slug: "fuel-storage-tank", layer: "CATALOG", sortOrder: 2 },
+          { name: "پمپ مستغرق سوخت", nameEn: "Submersible Fuel Pump", slug: "submersible-fuel-pump", layer: "CATALOG", sortOrder: 3 },
+          { name: "سامانه پایش مخزن و نشتی", nameEn: "Tank Monitoring & Leak Detection", slug: "tank-monitoring-system", layer: "CATALOG", sortOrder: 4 },
+          { name: "فیلتراسیون سوخت", nameEn: "Fuel Filtration", slug: "fuel-filtration", layer: "CATALOG", sortOrder: 5 },
+          { name: "شلنگ و نازل سوخت", nameEn: "Fuel Hose & Nozzle", slug: "fuel-hose-nozzle", layer: "CATALOG", sortOrder: 6 },
+          { name: "بازیابی بخارات سوخت", nameEn: "Vapour Recovery Equipment", slug: "vapour-recovery-equipment", layer: "CATALOG", sortOrder: 7 },
+        ],
+      },
       { name: "فن‌های صنعتی",    nameEn: "Industrial Fans",    slug: "industrial-fans",    layer: "CATALOG", domain: "INDUSTRIAL_EQUIPMENT", sortOrder: 6, appIndustries: ["FACTORY", "POWER"] },
       { name: "دیگ‌های بخار",    nameEn: "Boilers",            slug: "boilers",            layer: "CATALOG", domain: "INDUSTRIAL_EQUIPMENT", sortOrder: 7, appIndustries: ["POWER", "PETROCHEMICAL"] },
       { name: "تجهیزات تهویه",   nameEn: "HVAC Equipment",     slug: "hvac-equipment",     layer: "CATALOG", domain: "INDUSTRIAL_EQUIPMENT", sortOrder: 8, appIndustries: ["FACTORY"] },
@@ -505,41 +572,118 @@ const TREE: CatSeed[] = [
 // ════════════════════════════════════════════════════════════
 // 5. LOCATIONS — Iran: 1 country + 31 provinces + cities
 // ════════════════════════════════════════════════════════════
-type ProvinceSeed = { name: string; cities: string[] };
+const LEGACY_ROOT_REPARENT_SLUGS = [
+  "excavator", "loader", "bulldozer", "grader", "dump-truck",
+  "crane", "road-roller", "forklift", "generator", "compressor",
+  "concrete-machinery", "agricultural", "spare-parts", "mining-equipment",
+  "aerial-platform", "forestry",
+] as const;
 
-const IRAN_PROVINCES: ProvinceSeed[] = [
-  { name: "تهران",                    cities: ["تهران", "اسلامشهر", "شهریار", "ورامین", "پاکدشت", "ری", "رباط‌کریم"] },
-  { name: "اصفهان",                   cities: ["اصفهان", "کاشان", "نجف‌آباد", "خمینی‌شهر", "فولادشهر", "زرین‌شهر"] },
-  { name: "فارس",                     cities: ["شیراز", "مرودشت", "جهرم", "کازرون", "فسا", "استهبان"] },
-  { name: "خراسان رضوی",              cities: ["مشهد", "نیشابور", "سبزوار", "تربت حیدریه", "قوچان", "کاشمر"] },
-  { name: "آذربایجان شرقی",           cities: ["تبریز", "مراغه", "میانه", "اهر", "مرند", "بناب"] },
-  { name: "آذربایجان غربی",           cities: ["ارومیه", "خوی", "مهاباد", "مراغه", "بوکان", "سلماس"] },
-  { name: "گیلان",                    cities: ["رشت", "بندر انزلی", "لاهیجان", "آستارا", "صومعه‌سرا", "تالش"] },
-  { name: "مازندران",                 cities: ["ساری", "بابل", "آمل", "قائم‌شهر", "نوشهر", "تنکابن"] },
-  { name: "گلستان",                   cities: ["گرگان", "گنبد کاووس", "علی‌آباد کتول", "بندر ترکمن", "آق‌قلا"] },
-  { name: "کرمان",                    cities: ["کرمان", "سیرجان", "رفسنجان", "جیرفت", "بم", "زرند"] },
-  { name: "یزد",                      cities: ["یزد", "میبد", "اردکان", "بافق", "مهریز", "تفت"] },
-  { name: "سمنان",                    cities: ["سمنان", "شاهرود", "دامغان", "گرمسار", "مهدی‌شهر"] },
-  { name: "قزوین",                    cities: ["قزوین", "تاکستان", "آبیک", "بوئین‌زهرا", "البرز"] },
-  { name: "قم",                       cities: ["قم", "قنوات", "کهک", "جعفریه", "سلفچگان"] },
-  { name: "مرکزی",                    cities: ["اراک", "ساوه", "خمین", "محلات", "دلیجان", "تفرش"] },
-  { name: "زنجان",                    cities: ["زنجان", "ابهر", "خرمدره", "قیدار", "ماه‌نشان"] },
-  { name: "اردبیل",                   cities: ["اردبیل", "پارس‌آباد", "مشگین‌شهر", "خلخال", "گرمی"] },
-  { name: "کردستان",                  cities: ["سنندج", "سقز", "مریوان", "بانه", "قروه", "بیجار"] },
-  { name: "همدان",                    cities: ["همدان", "ملایر", "نهاوند", "تویسرکان", "اسدآباد", "کبودرآهنگ"] },
-  { name: "کرمانشاه",                 cities: ["کرمانشاه", "اسلام‌آباد غرب", "هرسین", "صحنه", "کنگاور", "قصر شیرین"] },
-  { name: "ایلام",                    cities: ["ایلام", "دهلران", "آبدانان", "مهران", "ایوان"] },
-  { name: "لرستان",                   cities: ["خرم‌آباد", "بروجرد", "دورود", "الیگودرز", "کوهدشت", "ازنا"] },
-  { name: "خوزستان",                  cities: ["اهواز", "آبادان", "خرمشهر", "دزفول", "ماهشهر", "بهبهان", "اندیمشک"] },
-  { name: "بوشهر",                    cities: ["بوشهر", "برازجان", "گناوه", "خارک", "دیلم", "کنگان"] },
-  { name: "هرمزگان",                  cities: ["بندرعباس", "میناب", "قشم", "بندر لنگه", "کیش", "حاجی‌آباد"] },
-  { name: "سیستان و بلوچستان",        cities: ["زاهدان", "زابل", "چابهار", "ایرانشهر", "خاش", "سراوان"] },
-  { name: "خراسان شمالی",             cities: ["بجنورد", "اسفراین", "شیروان", "آشخانه", "جاجرم"] },
-  { name: "خراسان جنوبی",             cities: ["بیرجند", "قاین", "فردوس", "نهبندان", "طبس"] },
-  { name: "چاهارمحال و بختیاری",      cities: ["شهرکرد", "بروجن", "فارسان", "لردگان", "سامان", "اردل"] },
-  { name: "کهگیلویه و بویراحمد",      cities: ["یاسوج", "گچساران", "دهدشت", "سی‌سخت", "چرام", "باشت"] },
-  { name: "البرز",                    cities: ["کرج", "فردیس", "نظرآباد", "اشتهارد", "هشتگرد", "ماهدشت"] },
-];
+type PlannedTaxonomyCategory = {
+  slug: string;
+  parentSlug: string | null;
+  layer: CatSeed["layer"];
+  domain: string | null;
+  level: number;
+  taxPath: string;
+};
+
+function collectTaxonomyPlan(
+  nodes: CatSeed[],
+  parentSlug: string | null = null,
+  parentPath?: string,
+  level = 0,
+  out: PlannedTaxonomyCategory[] = [],
+): PlannedTaxonomyCategory[] {
+  for (const node of nodes) {
+    const taxPath = parentPath ? `${parentPath}.${node.slug}` : node.slug;
+    const domain = node.domain ?? (node.layer === "CATALOG" ? "MACHINE" : null);
+    out.push({ slug: node.slug, parentSlug, layer: node.layer, domain, level, taxPath });
+    if (node.children?.length) {
+      collectTaxonomyPlan(node.children, node.slug, taxPath, level + 1, out);
+    }
+  }
+  return out;
+}
+
+// Read-only hierarchy validation. It runs before the first upsert so unexpected
+// slug collisions or administrator-managed reparenting stop the entire seed.
+async function preflightTaxonomyHierarchy(): Promise<void> {
+  const plan = collectTaxonomyPlan(TREE);
+  const plannedBySlug = new Map(plan.map((item) => [item.slug, item]));
+  if (plannedBySlug.size !== plan.length) {
+    throw new Error("Duplicate category slug in V1.1 taxonomy plan; no writes were made");
+  }
+
+  const missingLegacyTargets = LEGACY_ROOT_REPARENT_SLUGS.filter((slug) => !plannedBySlug.has(slug));
+  if (missingLegacyTargets.length) {
+    throw new Error(`Legacy reparent allowlist is not represented in the taxonomy plan: ${missingLegacyTargets.join(", ")}; no writes were made`);
+  }
+
+  const missingParents = plan
+    .filter((item) => item.parentSlug !== null && !plannedBySlug.has(item.parentSlug))
+    .map((item) => `${item.slug}->${item.parentSlug}`);
+  if (missingParents.length) {
+    throw new Error(`Taxonomy plan contains missing parents: ${missingParents.join(", ")}; no writes were made`);
+  }
+
+  const existing = await db.category.findMany({
+    where: { slug: { in: plan.map((item) => item.slug) } },
+    select: { id: true, slug: true, parentId: true, level: true, layer: true, domain: true, taxPath: true },
+  });
+  const existingBySlug = new Map(existing.map((row) => [row.slug, row]));
+
+  for (const item of plan) {
+    const row = existingBySlug.get(item.slug);
+    if (!row) continue;
+
+    const expectedParent = item.parentSlug ? existingBySlug.get(item.parentSlug) : undefined;
+    const isLegacyRootAwaitingReviewedReparent =
+      LEGACY_ROOT_REPARENT_SLUGS.includes(item.slug as (typeof LEGACY_ROOT_REPARENT_SLUGS)[number]) &&
+      row.parentId === null &&
+      row.level === 0 &&
+      row.taxPath === item.slug;
+
+    if (row.layer !== item.layer || row.domain !== item.domain) {
+      throw new Error(`Category layer/domain collision for "${item.slug}" (expected ${item.layer}/${item.domain ?? "null"}); no writes were made`);
+    }
+
+    if (item.parentSlug !== null && !expectedParent) {
+      if (isLegacyRootAwaitingReviewedReparent) continue;
+      throw new Error(`Expected parent "${item.parentSlug}" is not present for existing category "${item.slug}"; no writes were made`);
+    }
+
+    const expectedParentId = expectedParent?.id ?? null;
+    const hierarchyMatches =
+      row.parentId === expectedParentId &&
+      row.level === item.level &&
+      row.taxPath === item.taxPath;
+
+    if (!hierarchyMatches && !isLegacyRootAwaitingReviewedReparent) {
+      throw new Error(`Category hierarchy collision for "${item.slug}" (expected parent "${item.parentSlug ?? "<root>"}", level ${item.level}, taxPath "${item.taxPath}"); no writes were made`);
+    }
+  }
+}
+
+import IRAN_LOCATION_DATA from "./data/iran-locations-1404.json";
+import IRAN_LOCATION_MANIFEST from "./data/iran-locations-1404.manifest.json";
+
+type ProvinceSeed = {
+  sourceCode: string;
+  name: string;
+  cities: Array<{ sourceCode: string; name: string; sortOrder: number }>;
+};
+
+// Canonical Country → Province → City catalog. County/district/village rows
+// are intentionally absent from the listing selector's normalized dataset.
+const IRAN_PROVINCES: ProvinceSeed[] = IRAN_LOCATION_DATA.provinces.map((province) => ({
+  sourceCode: province.sourceCode,
+  name: province.name,
+  cities: IRAN_LOCATION_DATA.cities
+    .filter((city) => city.provinceCode === province.sourceCode)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((city) => ({ sourceCode: city.sourceCode, name: city.name, sortOrder: city.sortOrder })),
+}));
 
 // ════════════════════════════════════════════════════════════
 // RECURSIVE UPSERT
@@ -567,17 +711,14 @@ async function upsertCat(c: CatSeed, parentId?: string, parentPath?: string, lev
       active: true,
       showOnHome: true,
     },
+    // Preserve curated labels, icon, ordering and featured state. Only apply
+    // the reviewed hierarchy/layer path needed by this taxonomy reconciliation.
     update: {
-      name: c.name,
-      nameEn: c.nameEn ?? null,
       layer: c.layer,
-      icon: c.icon ?? null,
       domain: domain ?? null,
       taxPath,
       parentId: parentId ?? null,
       level,
-      sortOrder: c.sortOrder ?? 0,
-      featured: c.featured ?? false,
     },
   });
 
@@ -614,7 +755,26 @@ async function upsertCat(c: CatSeed, parentId?: string, parentPath?: string, lev
 // MAIN
 // ════════════════════════════════════════════════════════════
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be preview. No writes performed.");
+  }
+  if (
+    IRAN_LOCATION_MANIFEST.rightsReviewStatus !== "APPROVED" ||
+    IRAN_LOCATION_MANIFEST.commercialUseAllowed !== true
+  ) {
+    throw new Error(
+      "Refusing to seed: Iran location dataset rights gate is not approved. " +
+      "No database writes performed; review prisma/data/iran-locations-1404.manifest.json first.",
+    );
+  }
   console.log("🌱 HEAVIX Taxonomy Seed V1.1 starting...\n");
+
+  console.log("Preflighting existing category hierarchy (read-only)...");
+  await preflightTaxonomyHierarchy();
 
   // 1. TransactionTypes
   console.log(`1/6 Seeding ${TRANSACTIONS.length} TransactionTypes (HBR §18)...`);
@@ -622,7 +782,7 @@ async function main() {
     await db.transactionType.upsert({
       where: { key: t.key },
       create: t,
-      update: { nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder, active: true },
+      update: {},
     });
   }
 
@@ -632,7 +792,7 @@ async function main() {
     await db.serviceType.upsert({
       where: { key: s.key },
       create: s,
-      update: { nameFa: s.nameFa, nameEn: s.nameEn, icon: s.icon, sortOrder: s.sortOrder, active: true },
+      update: {},
     });
   }
 
@@ -642,7 +802,7 @@ async function main() {
     await db.applicationIndustry.upsert({
       where: { key: i.key },
       create: i,
-      update: { nameFa: i.nameFa, nameEn: i.nameEn, icon: i.icon, sortOrder: i.sortOrder, active: true },
+      update: {},
     });
   }
 
@@ -654,30 +814,62 @@ async function main() {
     await upsertCat(root, undefined, undefined, 0);
   }
 
-  // 5. Locations (Iran)
-  console.log(`5/6 Seeding Locations (Iran + ${IRAN_PROVINCES.length} provinces)...`);
+  // 5. Locations (Iran): all 31 provinces and every distinct real-city
+  // name from the official-source-year-1404 dataset. Two same-name records
+  // occur in different counties of the same province; the current City model
+  // is province/name unique, so identical selectable names are deduplicated.
+  console.log(`5/6 Seeding Locations (Iran + ${IRAN_PROVINCES.length} provinces + ${IRAN_LOCATION_DATA.metadata.distinctCityCount} distinct city names)...`);
   const iran = await db.country.upsert({
     where: { name: "ایران" },
     create: { name: "ایران", nameEn: "Iran", code: "IR", phoneCode: "+98", sortOrder: 1 },
-    update: { nameEn: "Iran", code: "IR", phoneCode: "+98", sortOrder: 1 },
+    update: {},
   });
+
+  // Correct the historical seed spelling without replacing the province row
+  // or changing its ID/relations. If both spellings exist, stop for reviewed
+  // reconciliation rather than creating another ambiguous province.
+  const legacyChaharmahal = await db.province.findUnique({
+    where: { countryId_name: { countryId: iran.id, name: "چاهارمحال و بختیاری" } },
+    select: { id: true },
+  });
+  const canonicalChaharmahal = await db.province.findUnique({
+    where: { countryId_name: { countryId: iran.id, name: "چهارمحال و بختیاری" } },
+    select: { id: true },
+  });
+  if (legacyChaharmahal && canonicalChaharmahal) {
+    throw new Error("Both legacy and canonical Chaharmahal province rows exist; reviewed data reconciliation is required before seeding locations.");
+  }
+  if (legacyChaharmahal) {
+    await db.province.update({
+      where: { id: legacyChaharmahal.id },
+      data: { name: "چهارمحال و بختیاری" },
+    });
+  }
 
   let totalCities = 0;
   for (let p = 0; p < IRAN_PROVINCES.length; p++) {
     const pr = IRAN_PROVINCES[p];
     const prov = await db.province.upsert({
       where: { countryId_name: { countryId: iran.id, name: pr.name } },
-      create: { countryId: iran.id, name: pr.name, sortOrder: p + 1 },
-      update: { sortOrder: p + 1 },
+      create: { countryId: iran.id, name: pr.name, sourceCode: pr.sourceCode, sortOrder: p + 1 },
+      update: { sourceCode: pr.sourceCode },
     });
-    for (let c = 0; c < pr.cities.length; c++) {
+    for (const city of pr.cities) {
       await db.city.upsert({
-        where: { provinceId_name: { provinceId: prov.id, name: pr.cities[c] } },
-        create: { provinceId: prov.id, name: pr.cities[c], sortOrder: c + 1 },
-        update: { sortOrder: c + 1 },
+        where: { provinceId_name: { provinceId: prov.id, name: city.name } },
+        create: {
+          provinceId: prov.id,
+          name: city.name,
+          sourceCode: city.sourceCode,
+          sortOrder: city.sortOrder,
+        },
+        update: { sourceCode: city.sourceCode },
       });
       totalCities++;
     }
+  }
+  if (totalCities !== IRAN_LOCATION_DATA.metadata.distinctCityCount) {
+    throw new Error(`Location seed count mismatch: expected ${IRAN_LOCATION_DATA.metadata.distinctCityCount}, processed ${totalCities}`);
   }
 
   // 6. Final counts
@@ -704,12 +896,7 @@ async function main() {
   });
 
   // Verify reparenting: check that the 16 legacy root slugs are no longer at root level
-  const LEGACY_ROOT_SLUGS = [
-    "excavator", "loader", "bulldozer", "grader", "dump-truck",
-    "crane", "road-roller", "forklift", "generator", "compressor",
-    "concrete-machinery", "agricultural", "spare-parts", "mining-equipment",
-    "aerial-platform", "forestry",
-  ];
+  const LEGACY_ROOT_SLUGS = LEGACY_ROOT_REPARENT_SLUGS;
   const stillAtRoot: string[] = [];
   for (const slug of LEGACY_ROOT_SLUGS) {
     const cat = await db.category.findUnique({

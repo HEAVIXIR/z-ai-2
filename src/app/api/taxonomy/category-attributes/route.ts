@@ -100,7 +100,7 @@ export async function GET(req: Request) {
     ];
 
     // Format response
-    const attributes = allAttrs.map(ca => ({
+    const attributes = allAttrs.filter((ca) => ca.active !== false).map(ca => ({
       id: ca.attribute.id,
       key: ca.attribute.key,
       name: ca.attribute.name,
@@ -109,6 +109,7 @@ export async function GET(req: Request) {
       type: ca.attribute.type,
       unit: ca.attribute.unit,
       // Category-level overrides (fall back to definition defaults)
+      active: ca.active !== false,
       required: ca.required ?? ca.attribute.required,
       filterable: ca.filterable ?? ca.attribute.filterable,
       searchable: ca.searchable ?? ca.attribute.searchable,

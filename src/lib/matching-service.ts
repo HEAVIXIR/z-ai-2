@@ -40,6 +40,7 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { matchRequestToListings } from "@/lib/ai-matching";
+import { isBuyRequestMatchEligible } from "@/lib/wanted-eligibility";
 
 // ── Service error (maps to HTTP status in route handler) ──
 export class MatchingServiceError extends Error {
@@ -137,10 +138,13 @@ export async function matchBuyRequest(
   // Validate the BuyRequest exists.
   const req = await db.buyRequest.findUnique({
     where: { id: buyRequestId },
-    select: { id: true, title: true, status: true },
+    select: { id: true, title: true, status: true, publishedAt: true, expiresAt: true },
   });
   if (!req) {
     throw new MatchingServiceError(404, "درخواست خرید یافت نشد");
+  }
+  if (!isBuyRequestMatchEligible(req)) {
+    throw new MatchingServiceError(409, "این درخواست بسته، منقضی یا منتشرنشده است و امکان تطبیق ندارد.");
   }
 
   // Run the deterministic scoring rubric.

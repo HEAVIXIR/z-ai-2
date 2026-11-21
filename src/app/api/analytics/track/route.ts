@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
 import { trackEvent, ANALYTICS_EVENT_TYPES } from "@/lib/analytics";
+import { getCurrentUserId } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,12 +64,15 @@ export async function POST(req: Request) {
       );
     }
 
+    // Derive actor attribution only from the verified server session.
+    // The public request body is untrusted; its userId field is ignored.
+    const authenticatedUserId = await getCurrentUserId();
     const userAgent = req.headers.get("user-agent") ?? null;
 
     // Fire-and-forget persist. Never throws, never blocks.
     trackEvent({
       eventType,
-      userId: pickStr((body as any).userId),
+      userId: authenticatedUserId,
       listingId: pickStr((body as any).listingId),
       categoryId: pickStr((body as any).categoryId),
       brandId: pickStr((body as any).brandId),

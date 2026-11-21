@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { hashPassword } from "@/lib/password";
-import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +14,40 @@ export const dynamic = "force-dynamic";
    GET  (admin)  → list users with filters + counts
    POST (admin)  → create a new user (admin-created)
    ============================================================ */
+
+const MAX_ADMIN_USER_BODY_BYTES = 16 * 1024;
+
+async function readBoundedAdminUserBody(req: Request): Promise<Record<string, unknown> | null> {
+  const declaredLength = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_ADMIN_USER_BODY_BYTES) return null;
+  const reader = req.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_ADMIN_USER_BODY_BYTES) {
+      try { await reader.cancel(); } catch { /* request already closed */ }
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 function serialize(u: any) {
   return {
@@ -115,7 +149,8 @@ export async function GET(req: Request) {
       data: users.map(serialize),
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users] request failed:", err);
+    return NextResponse.json({ error: "Unable to process user request" }, { status: 500 });
   }
 }
 
@@ -132,15 +167,51 @@ export async function POST(req: Request) {
       { status: 403 },
     );
   }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+  const contentType = req.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+  if (contentType !== "application/json") {
+    return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 415 });
+  }
   try {
-    const body = await req.json().catch(() => ({}));
+    const body = await readBoundedAdminUserBody(req);
+    if (!body) return NextResponse.json({ error: "Invalid or oversized request body" }, { status: 400 });
+    const allowedFields = new Set([
+      "firstName", "lastName", "email", "mobile", "password", "role",
+      "userType", "status", "companyName", "emailVerified", "mobileVerified",
+    ]);
+    if (Object.keys(body).some((key) => !allowedFields.has(key))) {
+      return NextResponse.json({ error: "Unknown request field" }, { status: 400 });
+    }
+    if (["firstName", "lastName", "email", "mobile", "password"].some((key) => body[key] !== undefined && typeof body[key] !== "string")) {
+      return NextResponse.json({ error: "Invalid user fields" }, { status: 400 });
+    }
+    if (body.companyName !== undefined && body.companyName !== null && typeof body.companyName !== "string") {
+      return NextResponse.json({ error: "Invalid companyName" }, { status: 400 });
+    }
+    if (body.emailVerified !== undefined && typeof body.emailVerified !== "boolean") {
+      return NextResponse.json({ error: "Invalid emailVerified" }, { status: 400 });
+    }
+    if (body.mobileVerified !== undefined && typeof body.mobileVerified !== "boolean") {
+      return NextResponse.json({ error: "Invalid mobileVerified" }, { status: 400 });
+    }
+    if (body.role !== undefined && typeof body.role !== "string") {
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+    }
+    if (body.userType !== undefined && typeof body.userType !== "string") {
+      return NextResponse.json({ error: "Invalid userType" }, { status: 400 });
+    }
+    if (body.status !== undefined && typeof body.status !== "string") {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
     const firstName = String(body.firstName ?? "").trim();
     const lastName = String(body.lastName ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
     const mobile = String(body.mobile ?? "").trim();
     const password = String(body.password ?? "").trim();
 
-    if (!firstName || !lastName || !email || !mobile) {
+    if (!firstName || !lastName || !email || !mobile || firstName.length > 100 || lastName.length > 100 || email.length > 254 || mobile.length > 32 || password.length > 128) {
       return NextResponse.json(
         { error: "نام، نام خانوادگی، ایمیل و موبایل الزامی هستند" },
         { status: 400 },
@@ -172,9 +243,11 @@ export async function POST(req: Request) {
     // against the allowed enum; default to BUYER. Public registration does
     // NOT get this privilege.
     const allowedRoles = ["ADMIN", "SELLER", "BUYER"];
-    const role = allowedRoles.includes(String(body.role ?? "").toUpperCase())
-      ? String(body.role).toUpperCase()
-      : "BUYER";
+    const requestedRole = body.role === undefined ? "BUYER" : String(body.role).toUpperCase();
+    if (!allowedRoles.includes(requestedRole)) {
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+    }
+    const role = requestedRole;
 
     // ── STEP 15.40 Phase B (REVISION-1, W3): Transactional dual-write ──
     // Admin-created users MUST get a canonical UserRole row from day 1
@@ -222,23 +295,31 @@ export async function POST(req: Request) {
         update: {},
       });
 
+      await tx.auditLog.create({
+        data: {
+          actorId: sessionUser.id,
+          actorType: "ADMIN",
+          action: "admin.users.create",
+          entityType: "User",
+          entityId: u.id,
+          afterJson: JSON.stringify({
+            firstName: u.firstName,
+            lastName: u.lastName,
+            email: u.email,
+            mobile: u.mobile,
+            role: u.role,
+            status: u.status,
+            companyName: u.companyName,
+          }),
+          reason: "via admin API",
+        },
+      });
       return u;
-    });
-
-    await logAudit({
-      actorId: sessionUser.id,
-      actorType: "ADMIN",
-      action: "admin.users.create",
-      entityType: "User",
-      entityId: user.id,
-      after: { firstName: user.firstName, lastName: user.lastName, email: user.email, mobile: user.mobile, role: user.role, status: user.status, companyName: user.companyName },
-      reason: "via admin API",
-    }).catch(() => {
-      /* audit failure does not roll back the mutation */
     });
 
     return NextResponse.json({ success: true, data: serialize(user) });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    console.error("[admin/users POST] failed:", err);
+    return NextResponse.json({ error: "Unable to create user" }, { status: 500 });
   }
 }

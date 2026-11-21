@@ -13,6 +13,7 @@ import {
   Minus,
 } from "lucide-react";
 import { toFa, formatCompactPrice, formatFullPrice } from "@/lib/format";
+import PriceVerdictBadge from "@/components/listings/PriceVerdictBadge";
 
 /* ============================================================
    PriceEstimateCard — public-facing price estimate card.
@@ -222,6 +223,9 @@ export default function PriceEstimateCard({
                     </div>
                     <div className={`text-sm font-black ${healthCfg.color}`}>
                       {healthCfg.label}
+                    </div>
+                    <div className="mt-1">
+                      <PriceVerdictBadge status={health.status} />
                     </div>
                   </div>
                 </div>

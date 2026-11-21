@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import { uniqueSlug } from "@/lib/api-helpers";
 import { normalizeAliasValue } from "@/lib/brand-alias";
+import { checkCsrf } from "@/lib/csrf";
+import { readBoundedJson } from "@/lib/read-bounded-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +17,9 @@ interface Params {
 
 /* GET /api/taxonomy/brands/[id] — full detail. */
 export async function GET(_req: Request, { params }: Params) {
+  const __auth = await requireAdminPermission("taxonomy.read");
+  if (__auth.error) return __auth.error;
+
   try {
     const { id } = await params;
     const brand = await db.brand.findUnique({
@@ -69,9 +74,17 @@ export async function GET(_req: Request, { params }: Params) {
 /* PATCH /api/taxonomy/brands/[id] */
 export async function PATCH(req: Request, { params }: Params) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
+    const parsed = await readBoundedJson<unknown>(req, 128 * 1024);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+    }
+    if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const body = parsed.value as Record<string, any>;
     const existing = await db.brand.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -115,8 +128,7 @@ export async function PATCH(req: Request, { params }: Params) {
         accentColor?: string | null;
         displayOrder?: number;
       };
-      try {
-        await db.brandDisplay.upsert({
+      await db.brandDisplay.upsert({
           where: { brandId: id },
           create: {
             brandId: id,
@@ -138,9 +150,27 @@ export async function PATCH(req: Request, { params }: Params) {
                 : undefined,
           },
         });
-      } catch {
-        // BrandDisplay upsert is best-effort — don't fail the whole PATCH.
-      }
+    }
+
+    // SEO — persist the editor payload into the canonical BrandSEO relation.
+    if (body.seo && typeof body.seo === "object") {
+      const seo = body.seo as {
+        metaTitle?: string | null;
+        metaDescription?: string | null;
+        keywords?: string | null;
+        ogImage?: string | null;
+      };
+      const seoData = {
+        metaTitle: seo.metaTitle?.trim() || null,
+        metaDescription: seo.metaDescription?.trim() || null,
+        keywords: seo.keywords?.trim() || null,
+        ogImage: seo.ogImage?.trim() || null,
+      };
+      await db.brandSEO.upsert({
+        where: { brandId: id },
+        create: { brandId: id, ...seoData },
+        update: seoData,
+      });
     }
 
     // Domain links — replace strategy
@@ -153,8 +183,8 @@ export async function PATCH(req: Request, { params }: Params) {
             await db.brandDomain.create({
               data: { brandId: id, domain: d },
             });
-          } catch {
-            // ignore duplicates
+          } catch (error: any) {
+            if (error?.code !== "P2002") throw error;
           }
         }
       }
@@ -193,8 +223,8 @@ export async function PATCH(req: Request, { params }: Params) {
               confidence: Number(a.confidence) || 80,
             },
           });
-        } catch {
-          // ignore individual alias upsert failures
+        } catch (error: any) {
+          if (error?.code !== "P2002") throw error;
         }
       }
       // Delete aliases whose normalized value isn't in payload
@@ -233,8 +263,8 @@ export async function PATCH(req: Request, { params }: Params) {
           await db.brandIndustry.create({
             data: { brandId: id, industry: key },
           });
-        } catch {
-          // ignore duplicates
+        } catch (error: any) {
+          if (error?.code !== "P2002") throw error;
         }
       }
     }
@@ -252,8 +282,9 @@ export async function PATCH(req: Request, { params }: Params) {
 }
 
 /* DELETE /api/taxonomy/brands/[id] */
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     await db.brand.delete({ where: { id } });

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { toFa } from "@/lib/format";
 import {
@@ -48,25 +49,29 @@ export default async function TaxonomyBrandsPage({
   const verificationFilter = sp.verification || "";
   const industryFilter = sp.industry || "";
   const q = sp.q || "";
+  const pageSize = 50;
+  const requestedPage = Number.parseInt(sp.page || "1", 10);
+  const page = Number.isFinite(requestedPage) ? Math.max(1, requestedPage) : 1;
+  const where = {
+    ...(statusFilter ? { status: statusFilter } : {}),
+    ...(typeFilter ? { type: typeFilter } : {}),
+    ...(verificationFilter ? { verification: verificationFilter } : {}),
+    ...(industryFilter ? { industries: { some: { industry: industryFilter } } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q } },
+            { nameEn: { contains: q } },
+            { shortName: { contains: q } },
+          ],
+        }
+      : {}),
+  } satisfies Prisma.BrandWhereInput;
 
-  // Parallel fetch brands + industries
-  const [brands, industries, categoriesCount] = await Promise.all([
+  // Load one bounded page; the count keeps the full 600+ brand catalog navigable.
+  const [brands, totalBrands, industries, categoriesCount] = await Promise.all([
     db.brand.findMany({
-      where: {
-        ...(statusFilter ? { status: statusFilter } : {}),
-        ...(typeFilter ? { type: typeFilter } : {}),
-        ...(verificationFilter ? { verification: verificationFilter } : {}),
-        ...(industryFilter ? { industries: { some: { industry: industryFilter } } } : {}),
-        ...(q
-          ? {
-              OR: [
-                { name: { contains: q } },
-                { nameEn: { contains: q } },
-                { shortName: { contains: q } },
-              ],
-            }
-          : {}),
-      },
+      where,
       orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
       include: {
         domains: { select: { domain: true } },
@@ -80,14 +85,28 @@ export default async function TaxonomyBrandsPage({
           },
         },
       },
-      take: 200,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     }),
+    db.brand.count({ where }),
     db.industry.findMany({
       orderBy: { sortOrder: "asc" },
       select: { key: true, nameFa: true, nameEn: true },
     }),
     db.category.count(),
   ]);
+  const totalPages = Math.max(1, Math.ceil(totalBrands / pageSize));
+  const pageUrl = (targetPage: number) => {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    if (typeFilter) params.set("type", typeFilter);
+    if (verificationFilter) params.set("verification", verificationFilter);
+    if (industryFilter) params.set("industry", industryFilter);
+    if (q) params.set("q", q);
+    if (targetPage > 1) params.set("page", String(targetPage));
+    const query = params.toString();
+    return "/admin/taxonomy/brands" + (query ? "?" + query : "");
+  };
 
   // Status badge — color-coded
   const statusBadge = (status: string) => {
@@ -170,7 +189,7 @@ export default async function TaxonomyBrandsPage({
         <div>
           <h1 className="text-2xl font-black text-zinc-900">برندها</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            {toFa(brands.length)} برند · {toFa(categoriesCount)} دسته‌بندی
+            {toFa(totalBrands)} برند · {toFa(categoriesCount)} دسته‌بندی · صفحه {toFa(page)} از {toFa(totalPages)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -318,6 +337,34 @@ export default async function TaxonomyBrandsPage({
           </table>
         </div>
       </div>
+
+      {totalPages > 1 && (
+        <nav aria-label="صفحه‌بندی برندها" className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3">
+          <span className="text-xs text-zinc-500">
+            نمایش {toFa((page - 1) * pageSize + 1)} تا {toFa(Math.min(page * pageSize, totalBrands))} از {toFa(totalBrands)} برند
+          </span>
+          <div className="flex items-center gap-2">
+            {page > 1 ? (
+              <Link href={pageUrl(page - 1)} className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-50">
+                قبلی
+              </Link>
+            ) : (
+              <span aria-disabled="true" className="rounded-lg border border-zinc-100 px-3 py-2 text-xs text-zinc-300">
+                قبلی
+              </span>
+            )}
+            {page < totalPages ? (
+              <Link href={pageUrl(page + 1)} className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-50">
+                بعدی
+              </Link>
+            ) : (
+              <span aria-disabled="true" className="rounded-lg border border-zinc-100 px-3 py-2 text-xs text-zinc-300">
+                بعدی
+              </span>
+            )}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

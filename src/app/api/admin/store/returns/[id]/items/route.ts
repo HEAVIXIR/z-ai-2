@@ -92,14 +92,14 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (!checkCsrf(req)) {
+    return NextResponse.json(
+      { error: "CSRF check failed" },
+      { status: 403 },
+    );
+  }
   try {
     await requirePermission(user.id, 'returns.manage');
-    if (!checkCsrf(req)) {
-      return NextResponse.json(
-        { error: "CSRF check failed" },
-        { status: 403 },
-      );
-    }
   } catch {
     return NextResponse.json(
       { error: "Forbidden: requires returns.manage" },

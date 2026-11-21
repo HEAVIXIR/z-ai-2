@@ -2,15 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import MobileNav from "@/components/layout/MobileNav";
-import { SITE_BASE_URL } from "@/lib/site-config";
-
-const VAZIRMATN_URL =
-  "https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css";
+import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL } from "@/lib/site-config";
 
 export const metadata: Metadata = {
-  // STEP 13.00: SITE_BASE_URL is the single source of truth for the
-  // canonical domain. Previously this used a local fallback string;
-  // now it consumes @/lib/site-config so all URL-emitting code agrees.
+  // SITE_BASE_URL is the single source of truth for canonical URLs.
   metadataBase: new URL(SITE_BASE_URL),
   title: {
     default: "هویکس | بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران",
@@ -33,7 +28,9 @@ export const metadata: Metadata = {
     "HEAVIX",
   ],
   authors: [{ name: "آریا ماشین جم" }],
-  alternates: { canonical: "/" },
+  // A noindex Preview must not advertise the production canonical URL.
+  // Omit canonical entirely in Preview; production keeps the root canonical.
+  ...(!IS_PREVIEW_DEPLOYMENT ? { alternates: { canonical: "/" } } : {}),
   openGraph: {
     title: "هویکس | مارکت‌پلیس ماشین‌آلات سنگین ایران",
     description: "بزرگ‌ترین مارکت‌پلیس ماشین‌آلات سنگین ایران.",
@@ -41,7 +38,11 @@ export const metadata: Metadata = {
     locale: "fa_IR",
     siteName: "هویکس",
   },
-  robots: { index: true, follow: true },
+  // Preview pages must remain crawlable so crawlers can see this directive,
+  // but must never be indexed. Production keeps the normal index policy.
+  robots: IS_PREVIEW_DEPLOYMENT
+    ? { index: false, follow: false, noarchive: true }
+    : { index: true, follow: true },
 };
 
 export default function RootLayout({
@@ -51,9 +52,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fa" dir="rtl" suppressHydrationWarning>
-      <head>
-        <link href={VAZIRMATN_URL} rel="stylesheet" type="text/css" />
-      </head>
       <body className="min-h-screen bg-[#0b0b0b] pb-16 text-white antialiased lg:pb-0">
         {children}
         <MobileNav />

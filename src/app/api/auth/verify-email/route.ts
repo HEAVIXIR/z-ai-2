@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { verifyPassword } from "@/lib/password";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { VERIFY } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
@@ -8,25 +10,15 @@ import { checkCsrf } from "@/lib/csrf";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/* POST /api/auth/verify-email  (FIX 7)
-   Body: { userId, code }
-   - Verifies the latest EMAIL-type VerificationCode for the user
-   - On success: marks code used and sets emailVerified = true.
-   - If this is the FIRST verification and mobile is already
-     verified (or the user passes the legacy mobile code path),
-     also activate the account (status ACTIVE).
-   - Mobile verification is handled separately (existing flow);
-     this route is scoped to EMAIL codes only.
-
-   Rate-limited: VERIFY preset (10 / hour / IP) per HEAVIX-SECURITY-BASELINE-V1 §6.
+/* POST /api/auth/verify-email
+   Accepts { userId, code } for the original registration flow or
+   { email, code } for the persistent recovery flow.
 */
 export async function POST(req: Request) {
-  // F-006: CSRF defense — fail-closed Origin/Referer verification.
   if (!checkCsrf(req)) {
     return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
   try {
-    // ── Rate limit (P0-6) ──
     const ip = getClientIp(req);
     const rl = rateLimit({
       key: rateLimitKey(ip, VERIFY.label),
@@ -48,15 +40,19 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const userId = String(body.userId ?? "").trim();
+    const email = String(body.email ?? "").trim().toLowerCase();
     const code = String(body.code ?? "").trim();
 
-    if (!userId || !code) {
-      return NextResponse.json({ error: "userId و code الزامی است" }, { status: 400 });
+    if ((!userId && !email) || !code) {
+      return NextResponse.json({ error: "ایمیل و کد تأیید الزامی است" }, { status: 400 });
     }
 
-    const user = await db.user.findUnique({ where: { id: userId } });
+    const user = userId
+      ? await db.user.findUnique({ where: { id: userId } })
+      : await db.user.findUnique({ where: { email } });
+
     if (!user) {
-      return NextResponse.json({ error: "کاربر یافت نشد" }, { status: 404 });
+      return NextResponse.json({ error: "حسابی با این ایمیل پیدا نشد" }, { status: 404 });
     }
 
     if (user.emailVerified) {
@@ -64,40 +60,58 @@ export async function POST(req: Request) {
     }
 
     const rec = await db.verificationCode.findFirst({
-      where: { userId: user.id, code, type: "EMAIL" },
+      where: {
+        userId: user.id,
+        type: "EMAIL",
+        used: false,
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { createdAt: "desc" },
     });
-    if (!rec) {
-      return NextResponse.json({ error: "کد تأیید نامعتبر است" }, { status: 400 });
-    }
-    if (rec.used) {
-      return NextResponse.json({ error: "کد تأیید قبلاً استفاده شده است" }, { status: 400 });
-    }
-    if (rec.expiresAt.getTime() < Date.now()) {
-      return NextResponse.json({ error: "کد منقضی شده است" }, { status: 400 });
+    if (!rec || rec.used || rec.expiresAt <= new Date()) {
+      return NextResponse.json({ error: "کد تأیید نامعتبر، منقضی یا استفاده شده است" }, { status: 400 });
     }
 
-    // Activate account fully only when both verifications are done.
-    // If mobileVerified is already true, flip status → ACTIVE.
-    // Otherwise keep PENDING until mobile is verified too.
-    const nowActive = user.mobileVerified;
-    await db.$transaction([
-      db.verificationCode.update({ where: { id: rec.id }, data: { used: true } }),
-      db.user.update({
-        where: { id: user.id },
-        data: {
-          emailVerified: true,
-          status: nowActive ? "ACTIVE" : user.status,
+    // New records contain bcrypt hashes. Accept only still-unexpired legacy
+    // plaintext rows during their short remaining lifetime for rollout safety.
+    const matches = rec.code.startsWith("$2")
+      ? await verifyPassword(code, rec.code)
+      : rec.code === code || rec.code === createHash("sha256").update(code).digest("hex");
+    if (!matches) {
+      return NextResponse.json({ error: "کد تأیید نامعتبر، منقضی یا استفاده شده است" }, { status: 400 });
+    }
+
+    // Conditional UPDATE is the single-use gate: concurrent requests race
+    // on used=false and only one transaction can consume the challenge.
+    const activated = await db.$transaction(async (tx) => {
+      const consumed = await tx.verificationCode.updateMany({
+        where: {
+          id: rec.id,
+          used: false,
+          expiresAt: { gt: new Date() },
         },
-      }),
-    ]);
+        data: { used: true },
+      });
+      if (consumed.count !== 1) return false;
+
+      await tx.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true, status: "ACTIVE" },
+      });
+      return true;
+    });
+
+    if (!activated) {
+      return NextResponse.json(
+        { error: "کد تأیید قبلاً استفاده شده یا منقضی شده است" },
+        { status: 409 },
+      );
+    }
 
     return NextResponse.json({
       ok: true,
-      message: nowActive
-        ? "ایمیل تأیید شد و حساب فعال شد"
-        : "ایمیل تأیید شد. لطفاً موبایل خود را نیز تأیید کنید.",
-      activated: nowActive,
+      message: "ایمیل تأیید شد و حساب شما فعال شد.",
+      activated: true,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });

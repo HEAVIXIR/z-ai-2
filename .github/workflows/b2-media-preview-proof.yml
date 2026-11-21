@@ -1,0 +1,75 @@
+name: HEAVIX Preview B2 media adapter proof
+
+on:
+  push:
+    branches:
+      - recovery/heavix-full-product-integration-2026-11-11
+    paths:
+      - .github/workflows/b2-media-preview-proof.yml
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Dedicated Preview media bucket only
+        required: true
+        type: choice
+        options: [PREVIEW_ONLY]
+      confirm:
+        description: Type B2_MEDIA_PREVIEW_ONLY
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-preview-b2-media-proof
+  cancel-in-progress: false
+
+jobs:
+  b2-media-proof:
+    if: github.ref == 'refs/heads/recovery/heavix-full-product-integration-2026-11-11'
+    environment: preview-backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Enforce exact Preview branch and explicit confirmation
+        shell: bash
+        env:
+          DISPATCH_TARGET: ${{ github.event_name == 'push' && 'PREVIEW_ONLY' || inputs.target }}
+          DISPATCH_CONFIRM: ${{ github.event_name == 'push' && 'B2_MEDIA_PREVIEW_ONLY' || inputs.confirm }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/recovery/heavix-full-product-integration-2026-11-11"
+          test "$DISPATCH_TARGET" = "PREVIEW_ONLY"
+          test "$DISPATCH_CONFIRM" = "B2_MEDIA_PREVIEW_ONLY"
+          echo "Preview-only media proof gates passed."
+
+      - name: Verify isolated media credentials are present
+        shell: bash
+        env:
+          B2_MEDIA_KEY_ID: ${{ secrets.B2_MEDIA_KEY_ID }}
+          B2_MEDIA_APPLICATION_KEY: ${{ secrets.B2_MEDIA_APPLICATION_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$B2_MEDIA_KEY_ID"
+          test -n "$B2_MEDIA_APPLICATION_KEY"
+          test "${#B2_MEDIA_KEY_ID}" -ge 20
+          test "${#B2_MEDIA_APPLICATION_KEY}" -ge 20
+          echo "Dedicated B2 media credentials are present; values remain redacted."
+
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Exercise the actual HEAVIX B2 adapter end-to-end
+        shell: bash
+        env:
+          B2_KEY_ID: ${{ secrets.B2_MEDIA_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_MEDIA_APPLICATION_KEY }}
+          B2_BUCKET_NAME: heavix-dev-assets
+          B2_MEDIA_PREFIX: heavix-media/
+          B2_REGION: us-east-005
+          B2_S3_ENDPOINT: https://s3.us-east-005.backblazeb2.com
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: bun scripts/prove-b2-media-adapter.ts

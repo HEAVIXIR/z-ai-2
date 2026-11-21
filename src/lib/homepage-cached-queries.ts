@@ -66,11 +66,11 @@ export const getCachedHotSearches = unstable_cache(
   { revalidate: 3600, tags: [HOMEPAGE_CACHE_TAGS.hotSearches] },
 );
 
-// Q16: homePageSection.findMany({ where: { active: true }, orderBy: order ASC })
+// Q16: homePageSection.findMany({ orderBy: order ASC })
+// Keep inactive rows: mergeHomepageSections needs them to preserve admin-disabled sections.
 export const getCachedHomePageSections = unstable_cache(
   async () => {
     return db.homePageSection.findMany({
-      where: { active: true },
       orderBy: { order: 'asc' },
     });
   },

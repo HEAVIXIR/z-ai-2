@@ -11,6 +11,7 @@ import {
   X,
   Save,
   Target,
+  Rocket,
 } from "lucide-react";
 import { toFa, formatCompactPrice, faDate } from "@/lib/format";
 
@@ -62,7 +63,12 @@ export default function RequestsClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ids: [id] }),
       });
-      if (!res.ok) throw new Error("عملیات ناموفق بود.");
+      // E.1.2: show the real server error message (e.g. 409 terminal state,
+      // 403 forbidden) rather than a generic "عملیات ناموفق بود".
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "عملیات ناموفق بود.");
+      }
       setList(
         list.map((r) => {
           if (r.id !== id) return r;
@@ -70,6 +76,7 @@ export default function RequestsClient({
           if (action === "unverify") return { ...r, verified: false };
           if (action === "close") return { ...r, status: "CLOSED" };
           if (action === "fulfill") return { ...r, status: "FULFILLED" };
+          if (action === "approve") return { ...r, status: "ACTIVE" };
           return r;
         }),
       );
@@ -98,12 +105,20 @@ export default function RequestsClient({
           city: r.city,
           province: r.province,
           deadline: r.deadline,
-          status: r.status,
+          // P0 audit (B4): status is intentionally NOT sent in the PATCH
+          // payload — transitions happen only via the action buttons
+          // (approve/close/fulfill), which go through the canonical
+          // wanted-service state machine. The server strips status from
+          // the generic PATCH allowed list (P0-2), so sending it is a
+          // no-op; we omit it here too for clarity + defense-in-depth.
           verified: r.verified,
           adminNotes: r.adminNotes,
         }),
       });
-      if (!res.ok) throw new Error("ذخیره ناموفق بود.");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "ذخیره ناموفق بود.");
+      }
       setList(list.map((x) => (x.id === r.id ? r : x)));
       setEditing(null);
     } catch (e: any) {
@@ -115,11 +130,36 @@ export default function RequestsClient({
 
   const remove = async (id: string) => {
     if (!confirm("آیا از حذف این درخواست مطمئن هستید؟")) return;
+    setLoading(true);
+    setError(null);
     try {
-      await fetch(`/api/admin/requests/${id}`, { method: "DELETE" });
-      setList(list.filter((x) => x.id !== id));
-    } catch {
-      setError("حذف ناموفق بود.");
+      // E.1.2: check response.ok — the DELETE endpoint now soft-closes
+      // via closeWantedByAdmin (state machine + CAS). A 409 means the
+      // request was in a terminal state (FULFILLED) and cannot be closed;
+      // a 404 means it was already gone. In BOTH cases the row must NOT
+      // be removed from the local list — the server rejected the action.
+      const res = await fetch(`/api/admin/requests/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setError(err?.error ?? "حذف ناموفق بود. درخواست ممکن است در وضعیت نهایی باشد.");
+        // Do NOT remove the row — refresh to show the real server state.
+        // The server may have partially transitioned or rejected entirely.
+        // Reload the list from the server so the UI matches reality.
+        try {
+          const refresh = await fetch("/api/admin/requests");
+          const json = await refresh.json();
+          if (json.success) setList(json.data ?? []);
+        } catch {}
+        return;
+      }
+      // Success: the row was soft-closed (status → CLOSED). Update the
+      // local list to reflect the new status rather than removing the row,
+      // so the admin sees the transition + can audit it.
+      setList(list.map((x) => (x.id === id ? { ...x, status: "CLOSED" } : x)));
+    } catch (e: any) {
+      setError(e?.message ?? "حذف ناموفق بود. خطای شبکه.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -206,12 +246,14 @@ export default function RequestsClient({
                         className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                           r.status === "ACTIVE"
                             ? "bg-emerald-100 text-emerald-700"
-                            : r.status === "CLOSED"
-                              ? "bg-zinc-100 text-zinc-600"
-                              : "bg-blue-100 text-blue-700"
+                            : r.status === "PENDING"
+                              ? "bg-amber-100 text-amber-700"
+                              : r.status === "CLOSED"
+                                ? "bg-zinc-100 text-zinc-600"
+                                : "bg-blue-100 text-blue-700"
                         }`}
                       >
-                        {r.status === "ACTIVE" ? "فعال" : r.status === "CLOSED" ? "بسته" : r.status}
+                        {r.status === "ACTIVE" ? "فعال" : r.status === "PENDING" ? "در انتظار بررسی" : r.status === "CLOSED" ? "بسته" : r.status}
                       </span>
                       {r.verified && (
                         <span className="rounded-full bg-[#F58220]/10 px-2 py-0.5 text-[10px] font-bold text-[#F58220]">
@@ -223,6 +265,17 @@ export default function RequestsClient({
                   <td className="px-4 py-3 text-xs text-zinc-400">{faDate(r.createdAt)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1">
+                      {r.status === "PENDING" && (
+                        <button
+                          type="button"
+                          onClick={() => updateStatus(r.id, "approve")}
+                          disabled={loading}
+                          title="تأیید و انتشار"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 text-sky-600 transition hover:bg-sky-50"
+                        >
+                          <Rocket className="h-4 w-4" />
+                        </button>
+                      )}
                       {!r.verified ? (
                         <button
                           type="button"
@@ -425,16 +478,22 @@ function RequestModal({
           </div>
 
           <div className="flex items-center gap-3">
-            <label className="text-xs font-bold text-zinc-700">وضعیت:</label>
-            <select
-              value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value })}
-              className="h-10 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-xs text-zinc-900 outline-none focus:border-[#F58220]"
-            >
-              <option value="ACTIVE">فعال</option>
-              <option value="CLOSED">بسته</option>
-              <option value="FULFILLED">تأمین‌شده</option>
-            </select>
+            <label className="text-xs font-bold text-zinc-700">وضعیت (تنها از طریق دکمه‌های عملیات):</label>
+            {/* P0 audit (B4): status is read-only in the edit modal.
+                Transitions happen only via the action buttons (approve/
+                close/fulfill) which go through the canonical state machine. */}
+            <div className={`flex h-10 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 px-4 text-xs font-bold ${
+              form.status === "ACTIVE" ? "text-emerald-600"
+              : form.status === "PENDING" ? "text-amber-600"
+              : form.status === "CLOSED" ? "text-zinc-500"
+              : "text-blue-600"
+            }`}>
+              {form.status === "ACTIVE" ? "فعال"
+              : form.status === "PENDING" ? "در انتظار بررسی"
+              : form.status === "CLOSED" ? "بسته"
+              : form.status === "FULFILLED" ? "تأمین‌شده"
+              : form.status}
+            </div>
             <label className="mr-auto inline-flex items-center gap-2 text-xs font-bold text-zinc-700">
               <input
                 type="checkbox"

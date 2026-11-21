@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkCsrf } from "@/lib/csrf";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
@@ -7,9 +8,26 @@ import { slugify } from "@/lib/api-helpers";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import { db } from "@/lib/db";
 import ZAI from "z-ai-web-dev-sdk";
+import { fetchAllowedSourcePage, isAllowedSourceUrl } from "@/lib/server/safe-source-fetch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Store provider discovery is opt-in and accepts only an explicitly configured source-host allowlist.
+
+const STORE_SOURCE_DNS_ALLOWLIST_ENV = "HEAVIX_STORE_SCRAPER_ALLOWED_HOSTS";
+
+function getStoreSourceAllowedHosts(): string[] {
+  return (process.env[STORE_SOURCE_DNS_ALLOWLIST_ENV] ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isAllowedStoreSourceUrl(url: string): boolean {
+  const hosts = getStoreSourceAllowedHosts();
+  return hosts.length > 0 && isAllowedSourceUrl(url, hosts);
+}
 
 /* ============================================================
    /api/admin/store/ai-scraper
@@ -81,7 +99,7 @@ function extractImagesFromHtml(html: string, baseUrl: string): string[] {
           /* skip */
         }
       }
-      if (!seen.has(url)) {
+      if (!seen.has(url) && isAllowedStoreSourceUrl(url)) {
         seen.add(url);
         out.push(url);
       }
@@ -109,6 +127,7 @@ async function llmExtractPart(
   pageText: string,
   url: string,
   fallbackTitle?: string,
+  signal?: AbortSignal,
 ): Promise<PartsScrapeSuggestion | null> {
   const sys = `تو دستیار هوش مصنوعی فروشگاه قطعات هویکس هستی.
 محتوای یک صفحهٔ وب از سایت‌های ایرانی فروش قطعات خودرو یا ماشین‌آلات را دریافت می‌کنی.
@@ -186,6 +205,11 @@ async function llmExtractPart(
       contactForPrice,
     };
   } catch (err) {
+    if (signal?.aborted) {
+      const abortError = new Error("استخراج هوشمند قطعه لغو شد.");
+      abortError.name = "AbortError";
+      throw abortError;
+    }
     console.error("[store/ai-scraper] llmExtractPart error:", err);
     return null;
   }
@@ -215,7 +239,7 @@ async function searchIranianPartsSites(
           : [];
       for (const item of list) {
         const url: string | undefined = item.url || item.link;
-        if (!url || seen.has(url)) continue;
+        if (!url || seen.has(url) || !isAllowedStoreSourceUrl(url)) continue;
         seen.add(url);
         all.push({ url, title: item.title, snippet: item.snippet });
       }
@@ -231,17 +255,19 @@ async function searchIranianPartsSites(
 async function scrapePartFromUrl(
   zai: any,
   hit: WebSearchHit,
+  signal?: AbortSignal,
 ): Promise<PartsScrapeSuggestion | null> {
   const url = hit.url!;
+  if (!isAllowedStoreSourceUrl(url)) return null;
   try {
-    const result = await zai.functions.invoke("page_reader", { url });
-    const data = result?.data || result || {};
+    const allowedHosts = getStoreSourceAllowedHosts();
+    const data = await fetchAllowedSourcePage(url, signal, undefined, allowedHosts);
     const html: string = data.html || "";
     const title: string = data.title || "";
     const text = (html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ") || title).trim();
 
     // If LLM extract fails, try to use the raw page title + first image.
-    let suggestion = await llmExtractPart(zai, text || html, url, title);
+    let suggestion = await llmExtractPart(zai, text || html, url, title, signal);
 
     if (!suggestion) {
       const imgs = extractImagesFromHtml(html, url);
@@ -267,9 +293,17 @@ async function scrapePartFromUrl(
       if (imgs[0]) suggestion.imageUrl = imgs[0];
     }
 
+    if (suggestion.imageUrl && !isAllowedStoreSourceUrl(suggestion.imageUrl)) {
+      suggestion.imageUrl = null;
+    }
     return suggestion;
   } catch (err) {
-    console.error("[store/ai-scraper] page_reader error for", url, err);
+    if (signal?.aborted) {
+      const abortError = new Error("درخواست دریافت صفحه قطعه لغو شد.");
+      abortError.name = "AbortError";
+      throw abortError;
+    }
+    console.error("[store/ai-scraper] safe page fetch error for", url, err);
     return null;
   }
 }
@@ -467,7 +501,7 @@ async function _doPost(
       const suggestions: PartsScrapeSuggestion[] = [];
       for (const hit of hits) {
         if (suggestions.length >= limit) break;
-        const s = await scrapePartFromUrl(zai, hit);
+        const s = await scrapePartFromUrl(zai, hit, controller.signal);
         if (s) suggestions.push(s);
       }
 
@@ -603,8 +637,28 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
 
+  // Validate CSRF before quota/budget preflight; rejected requests must not reserve AI budget.
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
+  }
+
   // ── Parse body once (used for both preflight inputLength + downstream) ──
   const body = await req.json().catch(() => ({}));
+  const isManualImport = body.action === "import" || body.action === "bulk-import";
+
+  // Discovery requires an explicit host allowlist; no global activation flag is used.
+  // Manual imports remain available, while discovery fails closed before AI budget preflight
+  // if no source hosts are configured. Every result/page is still checked by the safe transport.
+  if (!isManualImport && getStoreSourceAllowedHosts().length === 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "STORE_SCRAPER_SOURCE_ALLOWLIST_NOT_CONFIGURED",
+        error: "برای جستجوی قطعات، ابتدا دامنه‌های مجاز منابع را در HEAVIX_STORE_SCRAPER_ALLOWED_HOSTS تنظیم کنید.",
+      },
+      { status: 503 },
+    );
+  }
 
   // ── STEP 11.43 GATEWAY PHASE 2: pre-flight check ──
   const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
@@ -653,7 +707,7 @@ export async function POST(req: Request) {
     clearTimeout(timeoutTimer);
     const latencyMs = Date.now() - startTime;
     const success = response.status >= 200 && response.status < 300;
-    if (success) {
+    if (success && !isManualImport) {
       try {
         await recordAICost("SCRAPER", policy.costCeilingUsd, user.id);
       } catch { /* best-effort */ }
@@ -666,7 +720,7 @@ export async function POST(req: Request) {
           input: JSON.stringify(body).substring(0, 500),
           output: __resultSummary ? JSON.stringify(__resultSummary).substring(0, 500) : null,
           latencyMs,
-          cost: success ? policy.costCeilingUsd : 0,
+          cost: success && !isManualImport ? policy.costCeilingUsd : 0,
           success,
           error: success ? null : (__errorMsg ?? `HTTP ${response.status}`),
           userId: user.id,
