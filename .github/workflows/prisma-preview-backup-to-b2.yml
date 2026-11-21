@@ -37,7 +37,7 @@ concurrency:
 
 jobs:
   paired-backup:
-    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.event.head_commit.message == 'chore(preview): request isolated App Preview transaction type seed'))
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
     environment: preview-backup
     runs-on: ubuntu-latest
     timeout-minutes: 60
