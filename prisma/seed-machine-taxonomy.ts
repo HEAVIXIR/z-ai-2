@@ -633,17 +633,40 @@ async function main() {
   const oldL1ListingCounts = await Promise.all(oldL1Categories.map(async (category) => {
     const descendants = await collectDescendantCategoryIds(category.id);
     const categoryIds = [category.id, ...descendants];
+    const [branchCategories, branchListings] = await Promise.all([
+      db.category.findMany({
+        where: { id: { in: categoryIds } },
+        select: { id: true, slug: true },
+      }),
+      db.listing.findMany({
+        where: { categoryId: { in: categoryIds } },
+        select: { id: true, categoryId: true },
+      }),
+    ]);
+    const slugById = new Map(branchCategories.map((row) => [row.id, row.slug]));
+    const directCount = branchListings.filter((listing) => listing.categoryId === category.id).length;
+    const unmappedCategorySlugs = [...new Set(
+      branchListings
+        .map((listing) => slugById.get(listing.categoryId))
+        .filter((slug): slug is string => Boolean(slug) && !treeSlugs.has(slug!)),
+    )];
     return {
       slug: category.slug,
-      count: await db.listing.count({ where: { categoryId: { in: categoryIds } } }),
+      count: branchListings.length,
+      directCount,
+      unmappedCategorySlugs,
     };
   }));
-  const unsafeOldL1 = oldL1ListingCounts.filter((item) => item.count > 0);
+  // Listings on legacy parents or categories absent from the target tree cannot
+  // be safely preserved. Mapped child categories keep their IDs and can move.
+  const unsafeOldL1 = oldL1ListingCounts.filter(
+    (item) => item.directCount > 0 || item.unmappedCategorySlugs.length > 0,
+  );
 
   console.log(`📋 Listings attached anywhere under machinery (BEFORE): ${listingsBefore.length}`);
   console.log(`📦 Current machinery descendant categories: ${beforeCategoryIds.length}`);
   console.log(`🧭 Target definitive tree slugs: ${treeSlugs.size}`);
-  console.log(`⚠ Legacy L1 branches containing listings: ${unsafeOldL1.map((x) => `${x.slug}=${x.count}`).join(", ") || "none"}`);
+  console.log(`⚠ Legacy L1 branches with unmappable listings: ${unsafeOldL1.map((x) => `${x.slug}(direct=${x.directCount}, unmapped=${x.unmappedCategorySlugs.join("|") || "none"})`).join(", ") || "none"}`);
 
   if (!apply) {
     console.log("\nDRY RUN ONLY — no database rows were changed.");
