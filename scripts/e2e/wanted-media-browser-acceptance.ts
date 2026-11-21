@@ -254,7 +254,19 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       await waitFor(() => { const next = button("مرحله بعد"); return !!next && !next.disabled; }, "terminal service category selection");
       return { ok: true, detail: "WANTED buy → marketplace category → back → service intent → service taxonomy → terminal category" };
     } catch (error) {
-      return { ok: false, detail: error && error.message ? error.message : String(error) };
+      const uiState = {
+        body: (document.body.innerText || "").slice(-5000),
+        buttons: Array.from(document.querySelectorAll("button")).map(item => ({
+          text: (item.textContent || "").trim(),
+          disabled: item.disabled,
+          visible: !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length),
+        })).slice(-80),
+        url: location.pathname,
+      };
+      return {
+        ok: false,
+        detail: (error && error.message ? error.message : String(error)) + " | UI_STATE=" + JSON.stringify(uiState),
+      };
     }
   })()`;
   return page.evaluate<null, { ok: boolean; detail: string }>(browserScript, null);
