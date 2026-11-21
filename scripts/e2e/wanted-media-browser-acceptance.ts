@@ -258,6 +258,19 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
 
 async function main(): Promise<void> {
   assertIsolatedEnvironment();
+  // This isolated DB intentionally does not run the broad production taxonomy seed.
+  // Provision only the public WANTED transaction option required by the real wizard.
+  await prisma.transactionType.upsert({
+    where: { key: "WANTED" },
+    update: { active: true },
+    create: {
+      key: "WANTED",
+      nameFa: "درخواست خرید",
+      nameEn: "Wanted",
+      active: true,
+      sortOrder: 3,
+    },
+  });
   const requireFromPlaywright = createRequire(path.join(playwrightRoot, "package.json"));
   const chromium = requireFromPlaywright("playwright").chromium as ChromiumLike;
 
