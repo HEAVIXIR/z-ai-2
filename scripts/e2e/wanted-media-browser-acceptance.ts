@@ -214,7 +214,7 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       }
       throw new Error("Timed out waiting for " + label);
     };
-    const button = label => Array.from(document.querySelectorAll("button")).find(item => (item.textContent || "").replace(/\\s+/g, " ").trim().includes(label));
+    const button = label => Array.from(document.querySelectorAll("button")).find(item => (item.textContent || "").replace(/\s+/g, " ").trim().includes(label));
     const click = async label => {
       await waitFor(() => { const candidate = button(label); return !!candidate && !candidate.disabled; }, "enabled button: " + label);
       button(label).click();
