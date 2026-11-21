@@ -293,7 +293,7 @@ const TREE: CatSeed[] = [
 
   // ─── 02 خودرو و ناوگان صنعتی (vehicles) — CATALOG — §4 ─────
   {
-    name: "۰۲ خودرو و ناوگان صنعتی", nameEn: "Vehicles & Industrial Fleet",
+    name: "۰۲ خودروها و ناوگان صنعتی", nameEn: "Vehicles & Industrial Fleet",
     slug: "vehicles", layer: "CATALOG", icon: "🚛", domain: "VEHICLE", featured: true, sortOrder: 2,
     children: [
       { name: "کامیون",            nameEn: "Truck",              slug: "truck",              layer: "CATALOG", domain: "VEHICLE", sortOrder: 1, appIndustries: ["TRANSPORT", "CONSTRUCTION"] },
@@ -358,7 +358,7 @@ const TREE: CatSeed[] = [
 
   // ─── 05 اجاره (rent) — MARKETPLACE vertical — §7 (placeholder nav) ─────
   {
-    name: "۰۵ اجاره", nameEn: "Rent", slug: "rent", layer: "MARKETPLACE",
+    name: "۰۵ اجاره ماشین‌آلات و تجهیزات", nameEn: "Machinery & Equipment Rental", slug: "rent", layer: "MARKETPLACE",
     icon: "🔑", domain: "RENTAL", featured: true, sortOrder: 5,
   },
 
@@ -642,9 +642,11 @@ async function preflightTaxonomyHierarchy(): Promise<void> {
       LEGACY_ROOT_REPARENT_SLUGS.includes(item.slug as (typeof LEGACY_ROOT_REPARENT_SLUGS)[number]) &&
       row.parentId === null &&
       row.level === 0 &&
-      row.taxPath === item.slug;
+      (row.taxPath === null || row.taxPath === item.slug) &&
+      row.layer === item.layer &&
+      (row.domain === null || row.domain === item.domain);
 
-    if (row.layer !== item.layer || row.domain !== item.domain) {
+    if (!isLegacyRootAwaitingReviewedReparent && (row.layer !== item.layer || row.domain !== item.domain)) {
       throw new Error(`Category layer/domain collision for "${item.slug}" (expected ${item.layer}/${item.domain ?? "null"}); no writes were made`);
     }
 
@@ -714,11 +716,18 @@ async function upsertCat(c: CatSeed, parentId?: string, parentPath?: string, lev
     // Preserve curated labels, icon, ordering and featured state. Only apply
     // the reviewed hierarchy/layer path needed by this taxonomy reconciliation.
     update: {
+      // The reviewed V1.1 tree is canonical for category labels and hierarchy.
+      // Preserve media/descriptions and curated fields not explicitly in this seed.
+      name: c.name,
+      nameEn: c.nameEn ?? null,
       layer: c.layer,
       domain: domain ?? null,
       taxPath,
       parentId: parentId ?? null,
       level,
+      sortOrder: c.sortOrder ?? 0,
+      active: true,
+      ...(c.icon ? { icon: c.icon } : {}),
     },
   });
 
@@ -775,6 +784,51 @@ async function main() {
 
   console.log("Preflighting existing category hierarchy (read-only)...");
   await preflightTaxonomyHierarchy();
+
+  // Category-only mode is isolated from TransactionTypes, ServiceTypes,
+  // ApplicationIndustries and Location seeds.
+  if (process.argv.includes("--categories-only")) {
+    console.log(`Applying canonical HEAVIX category hierarchy (${TREE.length} roots)...`);
+    for (let i = 0; i < TREE.length; i++) {
+      const root = TREE[i];
+      if (root.sortOrder === undefined) root.sortOrder = i + 1;
+      await upsertCat(root, undefined, undefined, 0);
+    }
+
+    const plan = collectTaxonomyPlan(TREE);
+    const rows = await db.category.findMany({
+      where: { active: true },
+      select: { id: true, slug: true, parentId: true, level: true, taxPath: true },
+    });
+    const bySlug = new Map(rows.map((row) => [row.slug, row]));
+    const mismatches = plan.filter((item) => {
+      const row = bySlug.get(item.slug);
+      const parent = item.parentSlug ? bySlug.get(item.parentSlug) : undefined;
+      return !row ||
+        row.parentId !== (parent?.id ?? null) ||
+        row.level !== item.level ||
+        row.taxPath !== item.taxPath;
+    }).map((item) => item.slug);
+    const expectedRoots = TREE.map((root) => root.slug).sort();
+    const actualRoots = rows.filter((row) => row.parentId === null).map((row) => row.slug).sort();
+    const unexpectedCategories = rows.filter((row) => !plan.some((item) => item.slug === row.slug)).map((row) => row.slug);
+    if (mismatches.length || unexpectedCategories.length ||
+        JSON.stringify(expectedRoots) !== JSON.stringify(actualRoots)) {
+      throw new Error("Category hierarchy verification failed: " + JSON.stringify({
+        mismatches, unexpectedCategories, expectedRoots, actualRoots,
+      }));
+    }
+    console.log("CATEGORY HIERARCHY VERIFIED");
+    console.log(JSON.stringify({
+      activeCategories: rows.length,
+      plannedCategories: plan.length,
+      rootCount: actualRoots.length,
+      roots: expectedRoots,
+      parentChildEdges: plan.filter((item) => item.parentSlug !== null).length,
+      maxDepth: Math.max(...plan.map((item) => item.level)),
+    }, null, 2));
+    return;
+  }
 
   // 1. TransactionTypes
   console.log(`1/6 Seeding ${TRANSACTIONS.length} TransactionTypes (HBR §18)...`);
