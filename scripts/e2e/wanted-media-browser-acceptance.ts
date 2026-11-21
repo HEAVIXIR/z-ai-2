@@ -3,8 +3,8 @@
  *
  * This is a real Chromium browser journey against a local Next.js server and
  * disposable PostgreSQL database. It exercises the same-origin HTTP APIs and
- * actual <img> rendering; it does not claim to automate the disabled WANTED
- * wizard image control. No production/Preview endpoint is used.
+ * actual <img> rendering and the WANTED wizard's real file input/upload path.
+ * No production/Preview endpoint is used.
  *
  * Authentication fixtures are canonical hashed Session rows in the disposable
  * test database. No test-only auth bypass route is added to the application.
@@ -20,6 +20,7 @@ import { deleteAsset, getAsset } from "../../src/lib/media-service";
 type PageLike = {
   goto(url: string, options?: { waitUntil?: string }): Promise<{ status(): number } | null>;
   evaluate<Arg, Result>(fn: ((arg: Arg) => Result | Promise<Result>) | string, arg: Arg): Promise<Awaited<Result>>;
+  setInputFiles(selector: string, files: Array<{ name: string; mimeType: string; buffer: Buffer }>): Promise<void>;
 };
 type APIResponseLike = {
   status(): number;
@@ -253,8 +254,7 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       await waitFor(() => document.body.innerText.includes("اطلاعات پایه"), "base information step");
 
       // Complete only the minimum disposable wizard fields needed to reach
-      // the WANTED details step and prove that buyer image selection remains
-      // gated until the final product/security review is complete.
+      // the WANTED details step and exercise its real private image uploader.
       const setInput = (placeholder, value) => {
         const input = Array.from(document.querySelectorAll("input")).find(item => item.placeholder === placeholder);
         if (!input) throw new Error("Missing wizard input: " + placeholder);
@@ -287,12 +287,24 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       provinceSelect.dispatchEvent(new Event("change", { bubbles: true }));
       await click("مرحله بعد");
       await waitFor(() => document.body.innerText.includes("جزئیات آگهی"), "WANTED details step");
-      if (!document.querySelector('[data-testid="wanted-media-disabled"]')) {
-        throw new Error("WANTED media gate is not rendered in the demand wizard");
-      }
-      if (document.querySelector('input[type="file"]')) {
-        throw new Error("WANTED image file input must remain unavailable before final review");
-      }
+      await waitFor(() => {
+        const input = document.querySelector('input[type="file"]');
+        return !!input && !input.disabled;
+      }, "enabled WANTED private image file input");
+      await page.setInputFiles('input[type="file"]', [{
+        name: "wanted-wizard-browser-e2e.png",
+        mimeType: "image/png",
+        buffer: createPngFixture(),
+      }]);
+      await page.evaluate(async () => {
+        for (let attempt = 0; attempt < 150; attempt++) {
+          if (document.querySelector('img[alt="تصویر 1"]')) return;
+          const error = document.querySelector('[role="alert"]');
+          if (error?.textContent?.trim()) throw new Error("WANTED wizard upload failed: " + error.textContent.trim());
+          await new Promise(resolve => window.setTimeout(resolve, 100));
+        }
+        throw new Error("WANTED wizard upload did not render its staged image preview");
+      }, null);
 
       // Return to step 1, then verify switching to service intent loads only
       // the service taxonomy as a separate wizard path.
@@ -591,7 +603,7 @@ async function main(): Promise<void> {
       database: "disposable PostgreSQL *_test",
       storage: "isolated Backblaze B2 bucket/prefix",
       checks: [
-        "real Chromium WANTED wizard: buy → marketplace taxonomy → service intent switch → service taxonomy",
+        "real Chromium WANTED wizard: buy → marketplace taxonomy → private image file selection/upload → service intent switch → service taxonomy",
         "authenticated private staging upload",
         "BuyRequest + relational image manifest persistence",
         "B2 sidecar attachment and owner-private rendering",

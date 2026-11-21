@@ -1646,23 +1646,20 @@ export default function NewListingPage() {
 
                       {/* Media */}
                       <>
-                        {transactionType === "WANTED" && (
-                          <div data-testid="wanted-media-disabled" role="status" className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-4">
-                            <p className="text-xs leading-6 text-amber-200">افزودن تصویر به درخواست خرید تا تکمیل بازبینی نهایی این قابلیت موقتاً غیرفعال است. پس از فعال‌سازی، تصاویر به‌صورت خصوصی ذخیره می‌شوند و فقط بعد از تأیید کارشناسان برای عموم قابل مشاهده خواهند بود.</p>
-                          </div>
+                        {(transactionType === "WANTED" || isServiceRequest) && (
+                          <p className="text-xs leading-6 text-white/55">
+                            تصاویر درخواست ابتدا به‌صورت خصوصی بارگذاری می‌شوند و فقط پس از تأیید کارشناسان و انتشار درخواست برای عموم قابل مشاهده خواهند بود.
+                          </p>
                         )}
-                        {isServiceRequest && <p className="text-xs leading-6 text-white/45">تصاویر درخواست خدمات ابتدا به‌صورت خصوصی بارگذاری می‌شوند و فقط پس از تأیید کارشناسان برای عموم قابل مشاهده خواهند بود.</p>}
                         {isRequestFlow && transactionType !== "WANTED" && <p className="text-xs leading-6 text-white/45">برای استعلام قیمت، افزودن تصویر اختیاری است.</p>}
-                        {transactionType !== "WANTED" && (
-                          <ListingImageUploader
-                            images={images}
-                            onChange={handleImagesChange}
-                            onAssetsChange={handleStagedAssetsChange}
-                            onUploadingChange={setImagesUploading}
-                            entityType={isServiceRequest ? "BuyRequest" : "Listing"}
-                            required={!isRequestFlow && !isServiceFlow}
-                          />
-                        )}
+                        <ListingImageUploader
+                          images={images}
+                          onChange={handleImagesChange}
+                          onAssetsChange={handleStagedAssetsChange}
+                          onUploadingChange={setImagesUploading}
+                          entityType={isServiceRequest || transactionType === "WANTED" ? "BuyRequest" : "Listing"}
+                          required={!isRequestFlow && !isServiceFlow}
+                        />
                       </>
                     </div>
                   </div>
