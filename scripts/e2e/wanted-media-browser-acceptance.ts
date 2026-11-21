@@ -149,22 +149,14 @@ type FetchResult = {
   location: string | null;
 };
 
-async function browserFetch(
-  page: PageLike,
-  input: {
-    path: string;
-    method?: string;
-    body?: Record<string, unknown>;
-    fileBase64?: string;
-    redirect?: "follow" | "manual";
-  },
-): Promise<FetchResult> {
-  return page.evaluate(async (request) => {
+async function browserFetch(page: PageLike, input: { path: string; method?: string; body?: Record<string, unknown>; fileBase64?: string; redirect?: "follow" | "manual" }): Promise<FetchResult> {
+  const browserScript = `(async () => {
+    const request = ${JSON.stringify(input)};
     const headers = new Headers();
-    let body: BodyInit | undefined;
+    let body;
     if (request.fileBase64) {
       const binary = atob(request.fileBase64);
-      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
       const form = new FormData();
       form.append("file", new Blob([bytes], { type: "image/png" }), "wanted-media-browser-e2e.png");
       form.append("entityType", "BuyRequest");
@@ -173,27 +165,13 @@ async function browserFetch(
       headers.set("Content-Type", "application/json");
       body = JSON.stringify(request.body);
     }
-    if (request.path === "/api/wanted" && request.method === "POST") {
-      headers.set("Idempotency-Key", String(request.body?.__idempotencyKey ?? ""));
-    }
-    const response = await fetch(request.path, {
-      method: request.method ?? "GET",
-      headers,
-      body,
-      cache: "no-store",
-      redirect: request.redirect ?? "follow",
-    });
-    let payload: Record<string, unknown> | null = null;
-    if ((response.headers.get("content-type") ?? "").includes("application/json")) {
-      payload = await response.json() as Record<string, unknown>;
-    }
-    return {
-      status: response.status,
-      body: payload,
-      cacheControl: response.headers.get("cache-control"),
-      location: response.headers.get("location"),
-    };
-  }, input);
+    if (request.path === "/api/wanted" && request.method === "POST") headers.set("Idempotency-Key", String(request.body?.__idempotencyKey ?? ""));
+    const response = await fetch(request.path, { method: request.method ?? "GET", headers, body, cache: "no-store", redirect: request.redirect ?? "follow" });
+    let payload = null;
+    if ((response.headers.get("content-type") ?? "").includes("application/json")) payload = await response.json();
+    return { status: response.status, body: payload, cacheControl: response.headers.get("cache-control"), location: response.headers.get("location") };
+  })()`;
+  return page.evaluate<null, FetchResult>(browserScript, null);
 }
 
 async function browserRedirectFetch(context: ContextLike, mediaPath: string): Promise<FetchResult> {
@@ -211,16 +189,20 @@ async function browserRedirectFetch(context: ContextLike, mediaPath: string): Pr
 }
 
 async function loadImage(page: PageLike, mediaUrl: string): Promise<{ width: number; height: number }> {
-  return page.evaluate(async (src) => {
+  const browserScript = `(async () => {
     const image = new Image();
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("image load timed out")), 20000);
-      image.onload = () => { clearTimeout(timeout); resolve(); };
-      image.onerror = () => { clearTimeout(timeout); reject(new Error("browser could not render the media URL")); };
-      image.src = src;
+    await new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("image load timed out")), 20000);
+      image.onload = () => { window.clearTimeout(timeout); resolve(); };
+      image.onerror = () => { window.clearTimeout(timeout); reject(new Error("browser could not render the media URL")); };
+      image.src = ${JSON.stringify(mediaUrl)};
     });
     return { width: image.naturalWidth, height: image.naturalHeight };
-  }, med// WANTED_MEDIA_BROWSER_E2E: exercise the real seven-step wizard's demand taxonomy entry path.
+  })()`;
+  return page.evaluate<null, { width: number; height: number }>(browserScript, null);
+}
+
+// WANTED_MEDIA_BROWSER_E2E: exercise the real seven-step wizard's demand taxonomy entry path.
 async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; detail: string }> {
   await page.goto(`${baseUrl}/listings/new`, { waitUntil: "domcontentloaded" });
   const browserScript = `(async () => {
