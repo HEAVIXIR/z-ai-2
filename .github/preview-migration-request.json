@@ -1,6 +1,6 @@
 {
   "target": "APP_PREVIEW_ONLY",
-  "migration": "NONE",
-  "confirm": "NONE",
-  "request_id": "parser-check-2"
+  "migration": "GEO_FOUNDATION",
+  "confirm": "APPLY_APP_PREVIEW_20261119190000",
+  "request_id": "20261119190000-geospatial-foundation"
 }
