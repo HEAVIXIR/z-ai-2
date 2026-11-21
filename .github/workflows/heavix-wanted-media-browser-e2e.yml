@@ -154,3 +154,4 @@ jobs:
 # The owner-authorized WANTED_MEDIA_BROWSER_E2E token triggers this isolated
 # acceptance job. It never targets Preview/Production or a persistent database.
 # WANTED_MEDIA_BROWSER_E2E — explicit owner-authorized execution marker.
+# Triggered from Integration with a marker-only workflow comment change; isolated disposable DB only.
