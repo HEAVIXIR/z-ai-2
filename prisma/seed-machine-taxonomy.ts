@@ -648,7 +648,7 @@ async function main() {
     const unmappedCategorySlugs = [...new Set(
       branchListings
         .map((listing) => listing.categoryId ? slugById.get(listing.categoryId) : undefined)
-        .filter((slug): slug is string => Boolean(slug) && !treeSlugs.has(slug)),
+        .filter((slug): slug is string => typeof slug === "string" && !treeSlugs.has(slug)),
     )];
     return {
       slug: category.slug,
