@@ -251,8 +251,52 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       await click(marketplaceRoot.name);
       await click("مرحله بعد");
       await waitFor(() => document.body.innerText.includes("اطلاعات پایه"), "base information step");
-      await click("مرحله قبل");
-      await click("مرحله قبل");
+
+      // Complete only the minimum disposable wizard fields needed to reach
+      // the WANTED details step and prove that buyer image selection remains
+      // gated until the final product/security review is complete.
+      const setInput = (placeholder, value) => {
+        const input = Array.from(document.querySelectorAll("input")).find(item => item.placeholder === placeholder);
+        if (!input) throw new Error("Missing wizard input: " + placeholder);
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+        setter.call(input, value);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      setInput("مثلاً: بیل مکانیکی کوماتسو PC220 کارکرده", "درخواست خرید تست مرورگر");
+      setInput("یک جمله خلاصه وضعیت دستگاه", "درخواست آزمایشی برای بررسی گیت رسانه");
+      await click("مرحله بعد");
+      await waitFor(() => document.body.innerText.includes("مشخصات تخصصی موضوع آگهی"), "technical attributes step");
+      await waitFor(() => {
+        const next = button("مرحله بعد");
+        return !!next && !next.disabled;
+      }, "technical attributes loaded");
+      await click("مرحله بعد");
+      await waitFor(() => document.body.innerText.includes("موقعیت کالا، خدمت یا پروژه"), "location step");
+      await waitFor(() => Array.from(document.querySelectorAll("select")).some(select =>
+        select.value === "" && !select.disabled && select.options.length > 1
+      ), "available province selector");
+      const provinceSelect = Array.from(document.querySelectorAll("select")).find(select =>
+        select.value === "" && !select.disabled && select.options.length > 1
+      );
+      if (!provinceSelect) throw new Error("Province selector is not available in the isolated fixture");
+      const provinceOption = Array.from(provinceSelect.options).find(option => option.value);
+      if (!provinceOption) throw new Error("No active province option is available");
+      provinceSelect.value = provinceOption.value;
+      provinceSelect.dispatchEvent(new Event("input", { bubbles: true }));
+      provinceSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      await click("مرحله بعد");
+      await waitFor(() => document.body.innerText.includes("جزئیات آگهی"), "WANTED details step");
+      if (!document.querySelector('[data-testid="wanted-media-disabled"]')) {
+        throw new Error("WANTED media gate is not rendered in the demand wizard");
+      }
+      if (document.querySelector('input[type="file"]')) {
+        throw new Error("WANTED image file input must remain unavailable before final review");
+      }
+
+      // Return to step 1, then verify switching to service intent loads only
+      // the service taxonomy as a separate wizard path.
+      for (let index = 0; index < 5; index++) await click("مرحله قبل");
       await click("خدمات");
       await click("مرحله بعد");
       await waitFor(() => document.body.innerText.includes("دسته‌بندی خدمات"), "service category step");
