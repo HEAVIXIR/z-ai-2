@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  resolve-request:
+  resolve_request:
     runs-on: ubuntu-latest
     outputs:
       apply: ${{ steps.resolve.outputs.apply }}
@@ -64,8 +64,8 @@ jobs:
           echo "PASS: one-time typed migration request and pinned source SHA validated."
 
   backup-restore-and-migrate:
-    needs: resolve-request
-    if: needs.resolve-request.outputs.apply == 'true' && github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    needs: resolve_request
+    if: needs.resolve_request.outputs.apply == 'true' && github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
     environment: preview-backup
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -85,16 +85,16 @@ jobs:
       - name: Checkout pinned source containing exactly one pending migration
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: ${{ needs.resolve-request.outputs.source_sha }}
+          ref: ${{ needs.resolve_request.outputs.source_sha }}
           persist-credentials: false
 
       - name: Resolve and enforce exact migration target, source SHA and typed approval
         shell: bash
         env:
           TARGET: ${{ APP_PREVIEW_ONLY }}
-          MIGRATION: ${{ needs.resolve-request.outputs.migration }}
-          CONFIRM: ${{ needs.resolve-request.outputs.confirm }}
-          SOURCE_SHA_INPUT: ${{ needs.resolve-request.outputs.source_sha }}
+          MIGRATION: ${{ needs.resolve_request.outputs.migration }}
+          CONFIRM: ${{ needs.resolve_request.outputs.confirm }}
+          SOURCE_SHA_INPUT: ${{ needs.resolve_request.outputs.source_sha }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
@@ -179,7 +179,7 @@ jobs:
           DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
           EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
           EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
-          MIGRATION: ${{ needs.resolve-request.outputs.migration }}
+          MIGRATION: ${{ needs.resolve_request.outputs.migration }}
           PGSSLMODE: verify-full
         run: |
           set -euo pipefail
@@ -314,7 +314,7 @@ jobs:
         shell: bash
         env:
           DATABASE_URL: "postgresql://restore:local-restore-only@127.0.0.1:5432/app_preview_restore?schema=public&sslmode=disable"
-          MIGRATION: ${{ needs.resolve-request.outputs.migration }}
+          MIGRATION: ${{ needs.resolve_request.outputs.migration }}
         run: |
           set -euo pipefail
           case "$MIGRATION" in
@@ -359,7 +359,7 @@ jobs:
           EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
           EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
           PGSSLMODE: verify-full
-          MIGRATION: ${{ needs.resolve-request.outputs.migration }}
+          MIGRATION: ${{ needs.resolve_request.outputs.migration }}
         run: |
           set -euo pipefail
           identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
