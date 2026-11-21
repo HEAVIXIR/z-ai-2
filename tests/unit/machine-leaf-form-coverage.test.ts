@@ -25,7 +25,7 @@ describe("definitive machine terminal form coverage", () => {
     const formBlock = formSeed.slice(templateStart, templateEnd);
     // The machine TREE is emitted as JSON-compatible TypeScript. Parse the
     // actual hierarchy instead of inferring terminal nodes from indentation.
-    const arrayStart = treeBlock.indexOf("[");
+    const arrayStart = treeBlock.indexOf("= [") + 2;
     const arrayEnd = treeBlock.lastIndexOf("]");
     const machineTree = JSON.parse(
       treeBlock.slice(arrayStart, arrayEnd + 1).replace(/^\s*\/\/.*$/gm, ""),
@@ -33,6 +33,10 @@ describe("definitive machine terminal form coverage", () => {
     const terminalSlugs = machineTree.flatMap((group) =>
       group.l2.flatMap((family) => family.l3?.length ? family.l3.map((variant) => variant.slug) : [family.slug]),
     );
+    const allMachineSlugs = machineTree.flatMap((group) => [
+      group.slug,
+      ...group.l2.flatMap((family) => [family.slug, ...(family.l3 ?? []).map((variant) => variant.slug)]),
+    ]);
 
     const literalTemplateSlugs = [...formBlock.matchAll(/slug:\s*"([^"]+)"/g)].map((match) => match[1]);
     const generatedTemplateSlugs = [...formBlock.matchAll(/leafForm\("([^"]+)"/g)].map((match) => match[1]);
@@ -41,7 +45,17 @@ describe("definitive machine terminal form coverage", () => {
     const missing = terminalSlugs.filter((slug) => !templateSet.has(slug));
     const duplicates = templateSlugs.filter((slug, index, all) => all.indexOf(slug) !== index);
 
+    expect(machineTree).toHaveLength(16);
+    expect(machineTree.reduce((count, group) => count + group.l2.length, 0)).toBe(168);
+    expect(machineTree.reduce((count, group) => count + group.l2.reduce((sum, family) => sum + (family.l3?.length ?? 0), 0), 0)).toBe(88);
     expect(terminalSlugs).toHaveLength(243);
+    expect(allMachineSlugs).toContain("dump-truck");
+    expect(allMachineSlugs).not.toContain("mining-dump-truck");
+    expect(allMachineSlugs).not.toContain("mining-excavator-machine");
+    expect(allMachineSlugs).not.toContain("mining-loader-machine");
+    for (const externalSlug of ["aerial-platform", "generator", "compressor", "industrial-pumps", "industrial-fans", "boilers", "hvac-equipment", "cutting-equipment", "transformers", "switchgears", "fuel-station-equipment", "heavy-haulage"]) {
+      expect(allMachineSlugs).not.toContain(externalSlug);
+    }
     expect(templateSet.size).toBe(templateSlugs.length);
     expect(duplicates).toEqual([]);
     expect(missing).toEqual([]);
