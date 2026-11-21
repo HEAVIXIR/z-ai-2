@@ -15,18 +15,21 @@ import {
 describe("HEAVIX V1.1 transaction routing", () => {
   it.each([
     ["SALE", "CATALOG"],
-    ["RENT", "MARKETPLACE"],
-    ["WANTED", "MARKETPLACE"],
-    ["QUOTE", "MARKETPLACE"],
-    ["AUCTION", "MARKETPLACE"],
+    ["RENT", "CATALOG"],
+    ["WANTED", "CATALOG"],
+    ["QUOTE", "CATALOG"],
+    ["AUCTION", "CATALOG"],
     ["SERVICE_REQUEST", "SERVICE"],
     ["SERVICE_OFFER", "SERVICE"],
   ] as const)("routes %s to %s", (key, layer) => {
     expect(categoryLayerForTransactionType(key)).toBe(layer);
   });
 
-  it("routes marketplace and service flows from the same canonical mapping", () => {
+  it("keeps transaction intent separate from the underlying category layer", () => {
     expect(isMarketplaceTransactionType("WANTED")).toBe(true);
+    expect(isMarketplaceTransactionType("RENT")).toBe(true);
+    expect(isMarketplaceTransactionType("AUCTION")).toBe(true);
+    expect(isMarketplaceTransactionType("QUOTE")).toBe(true);
     expect(isMarketplaceTransactionType("SALE")).toBe(false);
     expect(isServiceTransactionType("SERVICE_REQUEST")).toBe(true);
     expect(isRequestTransactionType("QUOTE")).toBe(true);
