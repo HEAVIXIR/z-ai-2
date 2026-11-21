@@ -1,6 +1,11 @@
 name: HEAVIX Preview paired encrypted B2 backup
 
 on:
+  push:
+    branches:
+      - integration/preview-readiness-workerd-2026-11-15
+    paths:
+      - .github/seed-app-preview-transaction-types.trigger
   workflow_dispatch:
     inputs:
       target:
@@ -32,7 +37,7 @@ concurrency:
 
 jobs:
   paired-backup:
-    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15' && (github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.added, '.github/seed-app-preview-transaction-types.trigger') || contains(github.event.head_commit.modified, '.github/seed-app-preview-transaction-types.trigger'))
     environment: preview-backup
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -64,14 +69,21 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$DISPATCH_TARGET" = "PREVIEW_ONLY"
-          test "$DISPATCH_CONFIRM" = "BACKUP_PREVIEW_ONLY"
-          case "$DISPATCH_RBAC_SEED" in
-            SKIP) test -z "$DISPATCH_RBAC_CONFIRM" ;;
-            RUN_PREVIEW_RBAC_SEED) test "$DISPATCH_RBAC_CONFIRM" = "SEED_RBAC_PREVIEW_ONLY" ;;
-            *) echo "Unknown RBAC seed selection."; exit 1 ;;
-          esac
-          echo "Preview-only dispatch gates passed; RBAC seed selection validated."
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            test "$DISPATCH_TARGET" = "PREVIEW_ONLY"
+            test "$DISPATCH_CONFIRM" = "BACKUP_PREVIEW_ONLY"
+            case "$DISPATCH_RBAC_SEED" in
+              SKIP) test -z "$DISPATCH_RBAC_CONFIRM" ;;
+              RUN_PREVIEW_RBAC_SEED) test "$DISPATCH_RBAC_CONFIRM" = "SEED_RBAC_PREVIEW_ONLY" ;;
+              *) echo "Unknown RBAC seed selection."; exit 1 ;;
+            esac
+          else
+            test -f .github/seed-app-preview-transaction-types.trigger
+            test "$(cat .github/seed-app-preview-transaction-types.trigger)" = "SEED_APP_PREVIEW_TRANSACTION_TYPES_V1"
+            test -z "$DISPATCH_RBAC_SEED"
+            test -z "$DISPATCH_RBAC_CONFIRM"
+          fi
+          echo "Preview-only backup gates passed; requested operation validated."
 
       - name: Install age and AWS CLI
         run: |
@@ -371,6 +383,59 @@ jobs:
           path: ${{ runner.temp }}/heavix-preview-backup-evidence/backup-evidence.txt
           if-no-files-found: error
           retention-days: 3
+
+      - name: Set up Bun for Preview TransactionType seed
+        if: github.event_name == 'push'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Verify Preview Worker identity and seed only canonical TransactionTypes
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          PREVIEW_URL: https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(cat .github/seed-app-preview-transaction-types.trigger)" = "SEED_APP_PREVIEW_TRANSACTION_TYPES_V1"
+          test -s "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_run_id=$GITHUB_RUN_ID" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          curl --retry 5 --retry-delay 2 --retry-connrefused --max-time 20 -fsS "$PREVIEW_URL/api/health" -o "$RUNNER_TEMP/preview-health.json"
+          node -e '
+            const fs = require("node:fs");
+            const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (h.status !== "ok" || h.checks?.db !== "up") throw new Error("Preview Worker DB health check failed.");
+            process.stdout.write("PASS: Integration Preview Worker DB is healthy.\\n");
+          ' "$RUNNER_TEMP/preview-health.json"
+          [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
+          observed="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
+          expected="7701427422680793119|$HEAVIX_APP_PREVIEW_DATABASE_OID"
+          test "$observed" = "$expected"
+          echo "PASS: direct seed connection matches pinned App Preview cluster and database OID."
+          bun --version
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+          DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-transaction-types.ts --dry-run
+          DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-transaction-types.ts --apply
+          keys="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT string_agg(key, ',' ORDER BY sortOrder) FROM public.\\\"TransactionType\\\" WHERE key IN ('SALE','RENT','WANTED','QUOTE','AUCTION','SERVICE_REQUEST') AND active=true")"
+          test "$keys" = "SALE,RENT,WANTED,QUOTE,AUCTION,SERVICE_REQUEST"
+          count="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\\\"TransactionType\\\" WHERE key IN ('SALE','RENT','WANTED','QUOTE','AUCTION','SERVICE_REQUEST') AND active=true")"
+          test "$count" = "6"
+          {
+            echo "## App Preview TransactionType seed"
+            echo
+            echo "- Exact commit: $GITHUB_SHA"
+            echo "- Paired encrypted Preview backup and disposable restore: passed"
+            echo "- Worker health and pinned database identity: passed"
+            echo "- Seeded and verified six canonical TransactionTypes only"
+            echo "- Category, Brand, Model, ServiceType, Location and Production data: untouched"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up Bun for Preview RBAC seed
         if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED'
