@@ -48,7 +48,10 @@ describe("WANTED journey source-contract (NOT behavioral E2E)", () => {
   it("keeps BuyRequest image selection gated and retries media through the entity-specific endpoint", () => {
     const page = read("src/app/listings/new/page.tsx");
     expect(page).toContain("<ListingImageUploader");
-    expect(page).toContain('entityType={transactionType === "WANTED" || isServiceRequest ? "BuyRequest" : "Listing"}');
+    expect(page).toContain('transactionType === "WANTED" && (');
+    expect(page).toContain('data-testid="wanted-media-disabled"');
+    expect(page).toContain('{transactionType !== "WANTED" && (');
+    expect(page).toContain('entityType={isServiceRequest ? "BuyRequest" : "Listing"}');
     expect(page).toContain("onAssetsChange={handleStagedAssetsChange}");
     expect(page).toContain("body.assetIds = stagedMediaAssets.map((asset) => asset.assetId)");
     expect(page).toContain("images: transactionType === \"WANTED\" || transactionType === \"SERVICE_REQUEST\" ? undefined : images.map((url) => ({ url }))");
