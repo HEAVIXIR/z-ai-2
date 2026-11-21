@@ -1,6 +1,6 @@
 {
   "target": "APP_PREVIEW_ONLY",
-  "migration": "GEO_FOUNDATION",
-  "confirm": "APPLY_APP_PREVIEW_20261119190000",
-  "request_id": "20261121171000-geo-foundation-boolean-text-fix"
+  "migration": "LOCATION_SOURCE_CODES",
+  "confirm": "APPLY_APP_PREVIEW_20261120113000",
+  "request_id": "20261121173000-location-source-codes-after-geo"
 }
