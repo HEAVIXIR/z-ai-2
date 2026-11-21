@@ -2,5 +2,5 @@
   "target": "APP_PREVIEW_ONLY",
   "migration": "WANTED_STRUCTURAL",
   "confirm": "APPLY_APP_PREVIEW_20261119160000",
-  "request_id": "20261121133000-wanted-structural"
+  "request_id": "20261119160000-wanted-structural-inplace-readback"
 }
