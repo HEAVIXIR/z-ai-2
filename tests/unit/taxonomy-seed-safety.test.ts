@@ -38,6 +38,22 @@ describe("Preview taxonomy seed safety contracts", () => {
     expect(categoryPreflight).toBeGreaterThan(serviceWrite);
   });
 
+  it("supports an isolated ApplicationIndustry seed and category-link pass", () => {
+    const source = readSeed("seed-taxonomy-v11.ts");
+    expect(source).toContain('process.argv.includes("--application-industries-only")');
+    expect(source).toContain("if (applicationIndustriesOnly)");
+    expect(source).toContain("ApplicationIndustry preflight failed; no links written");
+    expect(source).toContain("APPLICATION INDUSTRIES VERIFIED");
+    const mode = source.indexOf("if (applicationIndustriesOnly)");
+    const categoryRead = source.indexOf("await db.category.findMany", mode);
+    const firstIndustryWrite = source.indexOf("await db.applicationIndustry.upsert", mode);
+    const firstCategoryWrite = source.indexOf("await db.category.upsert", mode);
+    expect(mode).toBeGreaterThan(-1);
+    expect(categoryRead).toBeGreaterThan(mode);
+    expect(firstIndustryWrite).toBeGreaterThan(categoryRead);
+    expect(firstCategoryWrite).toBe(-1);
+  });
+
   it("does not reactivate disabled transaction, service, or industry records", () => {
     const source = readSeed("seed-taxonomy-v11.ts");
     expect(source).not.toMatch(/update:\s*\{[^}]*active:\s*true/);
