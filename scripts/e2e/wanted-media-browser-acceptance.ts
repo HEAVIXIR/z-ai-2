@@ -351,7 +351,7 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       }
       throw new Error("WANTED wizard upload did not render its staged image preview");
     })()', null);
-    const assetId = previewUrl.match(/\\/api\\/media\\/([a-f0-9]{24})/)?.[1];
+    const assetId = previewUrl.match(/\/api\/media\/([a-f0-9]{24})/)?.[1];
     if (!assetId) throw new Error("WANTED wizard preview did not expose a canonical media asset URL: " + previewUrl);
     return { ...uiResult, detail: uiResult.detail + " → real file selected and private staged preview rendered", uploadedAssetId: assetId };
   } catch (error) {
