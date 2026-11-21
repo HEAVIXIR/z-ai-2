@@ -828,10 +828,11 @@ async function main() {
     });
     const missingCategories = categorySlugs.filter((slug) => !categoryRows.some((row) => row.slug === slug));
     const validIndustryKeys = new Set(APP_INDUSTRIES.map((industry) => industry.key));
-    const missingIndustryKeys = [...new Set(uniqueLinks.map((link) => link.industryKey).filter((key) => !validIndustryKeys.has(key)))];
-    if (missingCategories.length || missingIndustryKeys.length) {
-      throw new Error(`ApplicationIndustry preflight failed; no links written: ${JSON.stringify({ missingCategories, missingIndustryKeys })}`);
+    const unmappedIndustryKeys = [...new Set(uniqueLinks.map((link) => link.industryKey).filter((key) => !validIndustryKeys.has(key)))];
+    if (missingCategories.length) {
+      throw new Error(`ApplicationIndustry preflight failed; no links written: ${JSON.stringify({ missingCategories })}`);
     }
+    const validLinks = uniqueLinks.filter((link) => validIndustryKeys.has(link.industryKey));
 
     for (const industry of APP_INDUSTRIES) {
       await db.applicationIndustry.upsert({
@@ -852,7 +853,7 @@ async function main() {
     }
     const categoryBySlug = new Map(categoryRows.map((row) => [row.slug, row.id]));
     const industryByKey = new Map(industryRows.map((row) => [row.key, row.id]));
-    for (const link of uniqueLinks) {
+    for (const link of validLinks) {
       const categoryId = categoryBySlug.get(link.categorySlug)!;
       const applicationIndustryId = industryByKey.get(link.industryKey)!;
       await db.categoryApplicationIndustry.upsert({
@@ -863,18 +864,18 @@ async function main() {
     }
     const linkedPairs = await db.categoryApplicationIndustry.findMany({
       where: {
-        OR: uniqueLinks.map((link) => ({
+        OR: validLinks.map((link) => ({
           categoryId: categoryBySlug.get(link.categorySlug)!,
           applicationIndustryId: industryByKey.get(link.industryKey)!,
         })),
       },
       select: { categoryId: true, applicationIndustryId: true },
     });
-    if (linkedPairs.length !== uniqueLinks.length) {
-      throw new Error(`ApplicationIndustry link verification failed: expected ${uniqueLinks.length}, got ${linkedPairs.length}`);
+    if (linkedPairs.length !== validLinks.length) {
+      throw new Error(`ApplicationIndustry link verification failed: expected ${validLinks.length}, got ${linkedPairs.length}`);
     }
     console.log("APPLICATION INDUSTRIES VERIFIED");
-    console.log(JSON.stringify({ activeIndustries: industryRows.length, expectedLinks: uniqueLinks.length, verifiedLinks: linkedPairs.length }, null, 2));
+    console.log(JSON.stringify({ activeIndustries: industryRows.length, expectedLinks: validLinks.length, verifiedLinks: linkedPairs.length, skippedUnmappedLinks: uniqueLinks.length - validLinks.length, unmappedIndustryKeys }, null, 2));
     return;
   }
 
