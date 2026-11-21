@@ -22,6 +22,12 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(route).toContain("merged.set(key");
   });
 
+  it("accepts canonical CATALOG categories for WANTED product requests while preserving legacy MARKETPLACE compatibility", () => {
+    const route = read("src/app/api/wanted/route.ts");
+    expect(route).toContain('intentStr === "SERVICE_REQUEST" ? ["SERVICE"] : ["CATALOG", "MARKETPLACE"]');
+    expect(route).toContain("!allowedLayers.includes(categoryRow.layer)");
+  });
+
   it("keeps service offers and requests in the SERVICE taxonomy layer", () => {
     const route = read("src/app/api/listings/route.ts");
     expect(route).toContain("categoryLayerForTransactionType(transactionType.key)");
