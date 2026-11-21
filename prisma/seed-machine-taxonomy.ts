@@ -647,8 +647,8 @@ async function main() {
     const directCount = branchListings.filter((listing) => listing.categoryId === category.id).length;
     const unmappedCategorySlugs = [...new Set(
       branchListings
-        .map((listing) => slugById.get(listing.categoryId))
-        .filter((slug): slug is string => Boolean(slug) && !treeSlugs.has(slug!)),
+        .map((listing) => listing.categoryId ? slugById.get(listing.categoryId) : undefined)
+        .filter((slug): slug is string => Boolean(slug) && !treeSlugs.has(slug)),
     )];
     return {
       slug: category.slug,
