@@ -1,5 +1,5 @@
 {
-  "target": "APP_PREVIEW_ONLY",
   "migration": "NONE",
+  "target": "APP_PREVIEW_ONLY",
   "confirm": "NONE"
 }
