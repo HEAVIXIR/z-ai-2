@@ -184,6 +184,24 @@ jobs:
             process.exit(1);
           }
           NODE
+          detail_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-excavator-category.json" -w '%{http_code}' "$PREVIEW_URL/api/taxonomy/categories/cat-excavator" || true)"
+          echo "HEAVIX_PREVIEW_EXCAVATOR_DETAIL_HTTP=$detail_code"
+          if [ "$detail_code" != "200" ]; then
+            echo "::error::Excavator category detail API must return HTTP 200 (received ${detail_code:-000})."
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/heavix-excavator-category.json", "utf8"));
+          const children = payload.category?.children ?? [];
+          console.log(JSON.stringify({ excavatorChildren: children.map((child) => child.slug) }, null, 2));
+          if (children.length < 3) {
+            console.error("Excavator detail must expose at least three L3 configurations.");
+            process.exit(1);
+          }
+          NODE
+          echo "PASS: Excavator detail API exposes L3 configurations."
+          echo "HEAVIX_PREVIEW_EXCAVATOR_DETAIL_HTTP=$detail_code" >> "$GITHUB_STEP_SUMMARY"
           echo "PASS: Integration Preview exposes the 14-root taxonomy, 6 transaction types, 9 service types, 16 application industries, and nested machinery categories."
           {
             echo "- Taxonomy API HTTP: ${taxonomy_code:-000}"
