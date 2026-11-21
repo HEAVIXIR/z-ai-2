@@ -629,8 +629,10 @@ export default function NewListingPage() {
         sellerPhone: form.sellerPhone || undefined,
         serviceTypeId: isServiceFlow ? serviceTypeId : undefined,
         attributeValues: attributePayload,
-        images: images.map((url) => ({ url })),
+        // Demand media is canonicalized by staged asset IDs, not client-provided URLs.
+        images: transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? undefined : images.map((url) => ({ url })),
       };
+
 
       const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST";
       if (isDemandSubmission) {

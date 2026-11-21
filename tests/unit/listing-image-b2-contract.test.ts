@@ -30,6 +30,13 @@ describe("seller B2 media staging contract", () => {
     expect(uploader).toContain("return;");
   });
 
+  it("sends only canonical staged asset IDs for demand media and never client image URLs", () => {
+    const page = read("src/app/listings/new/page.tsx");
+    expect(page).toContain('images: transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? undefined : images.map((url) => ({ url }))');
+    expect(page).toContain("body.assetIds = stagedMediaAssets.map((asset) => asset.assetId)");
+    expect(page).toContain('entityType={transactionType === "WANTED" || isServiceRequest ? "BuyRequest" : "Listing"}');
+  });
+
   it("rejects oversized and unowned staged media before creating ListingImage rows", () => {
     const route = read("src/app/api/listings/route.ts");
     expect(route).toContain("rawImages.length > imagePolicy.maxImages");
