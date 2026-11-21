@@ -152,10 +152,25 @@ jobs:
           fi
           echo "PASS: Integration Preview root returned HTTP 200."
           if [ "$health_code" != "200" ]; then
-            echo "::warning::Preview root is healthy but the separate database health route returned ${health_code:-000}."
-          else
-            echo "PASS: Integration Preview health route returned HTTP 200."
+            echo "::error::Integration Preview health route must return HTTP 200 (received ${health_code:-000})."
+            exit 1
           fi
+          node <<'NODE'
+          const fs = require("node:fs");
+          const health = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/heavix-preview-health.json", "utf8"));
+          const db = health.db?.status ?? "missing";
+          const storeDb = health.storeDb?.status ?? "missing";
+          console.log(JSON.stringify({ status: health.status, db, storeDb }, null, 2));
+          if (health.status !== "ok" || db !== "up" || storeDb !== "up") {
+            console.error("Preview health contract failed: both App DB and Store DB must be up.");
+            process.exit(1);
+          }
+          NODE
+          echo "PASS: Integration Preview App DB and Store DB both report up."
+          {
+            echo "- App DB: up"
+            echo "- Store DB: up"
+          } >> "$GITHUB_STEP_SUMMARY"
 
           taxonomy_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-taxonomy.json" -w '%{http_code}' "$PREVIEW_URL/api/taxonomy" || true)"
           echo "HEAVIX_PREVIEW_TAXONOMY_HTTP=$taxonomy_code"
