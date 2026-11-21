@@ -713,8 +713,7 @@ async function upsertCat(c: CatSeed, parentId?: string, parentPath?: string, lev
       active: true,
       showOnHome: true,
     },
-    // Preserve curated labels, icon, ordering and featured state. Only apply
-    // the reviewed hierarchy/layer path needed by this taxonomy reconciliation.
+    // Canonical labels, ordering and hierarchy come from the reviewed V1.1 tree.
     update: {
       // The reviewed V1.1 tree is canonical for category labels and hierarchy.
       // Preserve media/descriptions and curated fields not explicitly in this seed.
@@ -726,7 +725,6 @@ async function upsertCat(c: CatSeed, parentId?: string, parentPath?: string, lev
       parentId: parentId ?? null,
       level,
       sortOrder: c.sortOrder ?? 0,
-      active: true,
       ...(c.icon ? { icon: c.icon } : {}),
     },
   });
