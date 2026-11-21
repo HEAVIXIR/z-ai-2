@@ -341,16 +341,16 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       mimeType: "image/png",
       buffer: createPngFixture(),
     }]);
-    const previewUrl = await page.evaluate<null, string>('(async () => {
+    const previewUrl = await page.evaluate<null, string>(`(async () => {
       for (let attempt = 0; attempt < 150; attempt++) {
-        const image = document.querySelector(\'img[alt="تصویر 1"]\');
+        const image = document.querySelector('img[alt="تصویر 1"]');
         if (image) return image.getAttribute("src") || "";
-        const error = document.querySelector(\'[role="alert"]\');
+        const error = document.querySelector('[role="alert"]');
         if (error?.textContent?.trim()) throw new Error("WANTED wizard upload failed: " + error.textContent.trim());
         await new Promise(resolve => window.setTimeout(resolve, 100));
       }
       throw new Error("WANTED wizard upload did not render its staged image preview");
-    })()', null);
+    })()`, null);
     const assetId = previewUrl.match(/\/api\/media\/([a-f0-9]{24})/)?.[1];
     if (!assetId) throw new Error("WANTED wizard preview did not expose a canonical media asset URL: " + previewUrl);
     return { ...uiResult, detail: uiResult.detail + " → real file selected and private staged preview rendered", uploadedAssetId: assetId };
