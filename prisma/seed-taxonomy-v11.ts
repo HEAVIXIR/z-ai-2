@@ -616,13 +616,17 @@ function collectTaxonomyPlan(
 // Read-only hierarchy validation. It runs before the first upsert so unexpected
 // slug collisions or administrator-managed reparenting stop the entire seed.
 async function preflightTaxonomyHierarchy(): Promise<void> {
-  const plan = collectTaxonomyPlan(TREE);
+  const plan = collectTaxonomyPlan(CATEGORY_SEED_TREE);
   const plannedBySlug = new Map(plan.map((item) => [item.slug, item]));
+  const machineRoot = TREE.find((root) => root.slug === "machinery");
+  const machineSlugs = new Set(machineRoot ? collectTaxonomyPlan([machineRoot]).map((item) => item.slug) : []);
   if (plannedBySlug.size !== plan.length) {
     throw new Error("Duplicate category slug in V1.1 taxonomy plan; no writes were made");
   }
 
-  const missingLegacyTargets = LEGACY_ROOT_REPARENT_SLUGS.filter((slug) => !plannedBySlug.has(slug));
+  const missingLegacyTargets = LEGACY_ROOT_REPARENT_SLUGS.filter((slug) =>
+    !plannedBySlug.has(slug) && !machineSlugs.has(slug),
+  );
   if (missingLegacyTargets.length) {
     throw new Error(`Legacy reparent allowlist is not represented in the taxonomy plan: ${missingLegacyTargets.join(", ")}; no writes were made`);
   }
