@@ -43,6 +43,8 @@ describe("Preview taxonomy seed safety contracts", () => {
     expect(source).toContain('process.argv.includes("--application-industries-only")');
     expect(source).toContain("if (applicationIndustriesOnly)");
     expect(source).toContain("ApplicationIndustry preflight failed; no links written");
+    expect(source).toContain("unmappedIndustryKeys");
+    expect(source).toContain("skippedUnmappedLinks");
     expect(source).toContain("APPLICATION INDUSTRIES VERIFIED");
     const mode = source.indexOf("if (applicationIndustriesOnly)");
     const categoryRead = source.indexOf("await db.category.findMany", mode);
