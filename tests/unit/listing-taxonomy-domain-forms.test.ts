@@ -115,4 +115,18 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(preflight).toBeGreaterThan(-1);
     expect(firstWrite).toBeGreaterThan(preflight);
   });
+
+  it("keeps the public transaction-type endpoint active-only, deterministic, and uncached", () => {
+    const route = read("src/app/api/transaction-types/route.ts");
+    expect(route).toContain('where: { active: true }');
+    expect(route).toContain('orderBy: [{ sortOrder: "asc" }, { nameFa: "asc" }]');
+    expect(route).toContain('return NextResponse.json({ types });');
+    expect(route).toContain('export const dynamic = "force-dynamic"');
+    const picker = read("src/components/listings/TransactionTypePicker.tsx");
+    expect(picker).toContain('fetch("/api/transaction-types", { cache: "no-store" })');
+    expect(picker).toContain("setLoading(true);");
+    expect(picker).toContain("setTypes([]);");
+    expect(picker).toContain("setRetryKey((current) => current + 1)");
+  });
+
 });
