@@ -622,6 +622,15 @@ async function main() {
   }
 
   const beforeCategoryIds = [root.id, ...(await collectDescendantCategoryIds(root.id))];
+  // A matching slug outside the machinery subtree belongs to another one of
+  // the 14 canonical business parents (for example industrial equipment or
+  // transport/logistics). Upserting it here would silently steal that
+  // category from its canonical parent. Refuse the whole apply until an
+  // explicit cross-root identity mapping is reviewed.
+  const externalSlugCollisions = await db.category.findMany({
+    where: { slug: { in: [...treeSlugs] }, id: { notIn: beforeCategoryIds } },
+    select: { id: true, slug: true, parentId: true, layer: true, domain: true },
+  });
   const listingsBefore = await db.listing.findMany({
     where: { categoryId: { in: beforeCategoryIds } },
     select: { id: true, title: true, categoryId: true, category: { select: { slug: true, name: true } } },
@@ -667,11 +676,17 @@ async function main() {
   console.log(`📦 Current machinery descendant categories: ${beforeCategoryIds.length}`);
   console.log(`🧭 Target definitive tree slugs: ${treeSlugs.size}`);
   console.log(`⚠ Legacy L1 branches with unmappable listings: ${unsafeOldL1.map((x) => `${x.slug}(direct=${x.directCount}, unmapped=${x.unmappedCategorySlugs.join("|") || "none"})`).join(", ") || "none"}`);
+  console.log(`⚠ Target slugs already owned outside machinery: ${externalSlugCollisions.map((x) => `${x.slug}(parentId=${x.parentId ?? "root"}, layer=${x.layer}, domain=${x.domain ?? "null"})`).join(", ") || "none"}`);
 
   if (!apply) {
     console.log("\nDRY RUN ONLY — no database rows were changed.");
     console.log("Review the counts and any legacy L1 listings. Re-run with --apply only after explicit approval.");
     return;
+  }
+  if (externalSlugCollisions.length > 0) {
+    throw new Error(
+      `Refusing taxonomy rewrite: ${externalSlugCollisions.length} target slugs already belong to another parent taxonomy. Resolve the cross-root identity mapping before --apply.`,
+    );
   }
   if (unsafeOldL1.length > 0) {
     throw new Error(
