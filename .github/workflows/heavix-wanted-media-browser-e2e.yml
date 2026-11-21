@@ -10,6 +10,10 @@ on:
       - scripts/e2e/initialize-image-wasm.mjs
       - src/app/listings/new/page.tsx
       - src/components/listings/ListingImageUploader.tsx
+      - tests/contract/wanted-journey-contract.test.ts
+      - tests/unit/listing-image-b2-contract.test.ts
+      - tests/unit/listing-image-uploader-contract.test.ts
+      - tests/unit/listing-wizard-flow-contract.test.ts
 
 permissions:
   contents: read
