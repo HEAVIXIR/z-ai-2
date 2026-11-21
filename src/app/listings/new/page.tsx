@@ -16,7 +16,7 @@ import AttributeFields, {
   getCachedAttributes,
 } from "@/components/listings/AttributeFields";
 import { toFa } from "@/lib/format";
-import { isMarketplaceTransactionType, isRequestTransactionType } from "@/lib/transaction-type-routing";
+import { isRequestTransactionType } from "@/lib/transaction-type-routing";
 import {
   ArrowRight,
   ArrowLeft,
@@ -204,7 +204,6 @@ export default function NewListingPage() {
 
   // Catalog root/child/grandchild state
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
-  const [marketplaceRoots, setMarketplaceRoots] = useState<TaxRoot[]>([]);
   const [serviceRoots, setServiceRoots] = useState<TaxRoot[]>([]);
   const [taxonomyLoading, setTaxonomyLoading] = useState(true);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
@@ -240,13 +239,11 @@ export default function NewListingPage() {
         if (!res.ok) throw new Error("taxonomy unavailable");
         const data = (await res.json()) as {
           catalogRoots?: TaxRoot[];
-          marketplaceRoots?: TaxRoot[];
           serviceRoots?: TaxRoot[];
           serviceTypes?: ServiceTypeOption[];
         };
         if (alive) {
           setCatalogRoots(data.catalogRoots ?? []);
-          setMarketplaceRoots(data.marketplaceRoots ?? []);
           setServiceRoots(data.serviceRoots ?? []);
           setServiceTypes(data.serviceTypes ?? []);
         }
@@ -377,12 +374,13 @@ export default function NewListingPage() {
   // roots that the WANTED listing-type label would otherwise select.
   const isWantedServiceRequest = transactionType === "WANTED" && wanted.intent === "SERVICE_REQUEST";
   const isServiceFlow = isServiceRequest || isServiceOffer || isWantedServiceRequest;
-  const isMarketplaceFlow = isMarketplaceTransactionType(transactionType);
   const isRequestFlow = isRequestTransactionType(transactionType);
-  const categoryRoots = isServiceFlow ? serviceRoots : isMarketplaceFlow ? marketplaceRoots : catalogRoots;
+  // Category identifies the underlying asset/service; SALE, RENT, AUCTION and WANTED are transaction intents.
+  // Therefore every non-service flow selects from the canonical CATALOG tree, never the empty/vertical RENT root.
+  const categoryRoots = isServiceFlow ? serviceRoots : catalogRoots;
 
   // P0 #1: when the WANTED intent changes, the category taxonomy may
-  // change (e.g. intent=SERVICE_REQUEST → serviceRoots vs marketplaceRoots).
+  // change (SERVICE_REQUEST → serviceRoots; buy/rent intent → catalogRoots).
   // If the user already picked a category at Step 2 with a different
   // intent, the category is now mismatched. Clear categoryId + related
   // state so the user re-selects with the correct taxonomy roots.
