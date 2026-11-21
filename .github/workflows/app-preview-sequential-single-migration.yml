@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: heavix-app-preview-sequential-single-migration
@@ -229,18 +230,36 @@ jobs:
           rm -f "$WORK/app-preview.dump" "$WORK/manifest.txt" "$WORK/SHA256SUMS"
           echo "PASS: consistent App Preview dump encrypted and checksummed."
 
-      - name: Verify encrypted backup read-back (in-place copy + checksum)
+      - name: Upload encrypted App Preview backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-preview-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/heavix-app-preview-backup/app-preview.dump.age
+            ${{ runner.temp }}/heavix-app-preview-backup/manifest.txt.age
+            ${{ runner.temp }}/heavix-app-preview-backup/ENCRYPTED_SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Download encrypted backup and verify independent artifact read-back
+        uses: actions/download-artifact@v4
+        with:
+          name: app-preview-backup-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/heavix-app-preview-backup/readback
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify downloaded encrypted backup read-back checksum
         shell: bash
         run: |
           set -euo pipefail
           WORK="$RUNNER_TEMP/heavix-app-preview-backup"
-          # Copy the encrypted files to a read-back directory and verify
-          # the checksums. This proves the backup is intact and readable
-          # without relying on artifact upload/download round-trip timing.
-          mkdir -p "$WORK/readback"
-          cp "$WORK/app-preview.dump.age" "$WORK/manifest.txt.age" "$WORK/ENCRYPTED_SHA256SUMS" "$WORK/readback/"
+          test -s "$WORK/readback/app-preview.dump.age"
+          test -s "$WORK/readback/manifest.txt.age"
+          test -s "$WORK/readback/ENCRYPTED_SHA256SUMS"
           (cd "$WORK/readback" && sha256sum -c ENCRYPTED_SHA256SUMS)
-          echo "PASS: encrypted App Preview backup verified via read-back copy and checksum."
+          echo "PASS: encrypted backup independently downloaded from GitHub artifact storage and checksum verified."
 
       - name: Restore backup into disposable PostgreSQL 17
         shell: bash
