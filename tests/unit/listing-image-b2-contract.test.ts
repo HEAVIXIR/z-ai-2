@@ -36,7 +36,9 @@ describe("seller B2 media staging contract", () => {
     const page = read("src/app/listings/new/page.tsx");
     expect(page).toContain('images: transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? undefined : images.map((url) => ({ url }))');
     expect(page).toContain("body.assetIds = stagedMediaAssets.map((asset) => asset.assetId)");
-    expect(page).toContain('entityType={transactionType === "WANTED" || isServiceRequest ? "BuyRequest" : "Listing"}');
+    expect(page).toContain('data-testid="wanted-media-disabled"');
+    expect(page).toContain('{transactionType !== "WANTED" && (');
+    expect(page).toContain('entityType={isServiceRequest ? "BuyRequest" : "Listing"}');
   });
 
   it("rejects oversized and unowned staged media before creating ListingImage rows", () => {
