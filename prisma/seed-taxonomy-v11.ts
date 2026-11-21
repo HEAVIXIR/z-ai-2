@@ -769,13 +769,17 @@ async function main() {
   if (process.env.HEAVIX_ENV !== "preview") {
     throw new Error("Refusing to seed: HEAVIX_ENV must be preview. No writes performed.");
   }
-  if (
+  // Category-only mode does not read or seed the Iran location dataset.
+  // Keep the location-rights gate strict for the full seed, but do not let
+  // an unrelated location licensing review block the isolated taxonomy reset.
+  const categoriesOnly = process.argv.includes("--categories-only");
+  if (!categoriesOnly && (
     IRAN_LOCATION_MANIFEST.rightsReviewStatus !== "APPROVED" ||
     IRAN_LOCATION_MANIFEST.commercialUseAllowed !== true
-  ) {
+  )) {
     throw new Error(
-      "Refusing to seed: Iran location dataset rights gate is not approved. " +
-      "No database writes performed; review prisma/data/iran-locations-1404.manifest.json first.",
+      "Refusing to seed locations: Iran location dataset rights gate is not approved. " +
+      "No location writes performed; review prisma/data/iran-locations-1404.manifest.json first.",
     );
   }
   console.log("🌱 HEAVIX Taxonomy Seed V1.1 starting...\n");
