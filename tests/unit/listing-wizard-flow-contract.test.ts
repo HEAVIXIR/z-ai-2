@@ -32,7 +32,8 @@ describe("HEAVIX listing wizard end-to-end source contract", () => {
     const page = read("src/app/listings/new/page.tsx");
     expect(page).toContain('const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings"');
     expect(page).toContain("attributeValues: attributePayload");
-    expect(page).toContain("images: images.map((url) => ({ url }))");
+    expect(page).toContain('images: transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? undefined : images.map((url) => ({ url }))');
+    expect(page).toContain("body.assetIds = stagedMediaAssets.map((asset) => asset.assetId)");
     expect(page).toContain('"Idempotency-Key": idempotencyKeyRef.current');
     expect(page).toContain("setSubmitted(true)");
     expect(page).toContain('label="دسته‌بندی"');
