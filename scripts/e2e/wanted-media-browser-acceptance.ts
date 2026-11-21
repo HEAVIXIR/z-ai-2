@@ -223,6 +223,67 @@ async function loadImage(page: PageLike, mediaUrl: string): Promise<{ width: num
   }, mediaUrl);
 }
 
+async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; detail: string }> {
+  await page.goto(`${baseUrl}/listings/new`, { waitUntil: "domcontentloaded" });
+  return page.evaluate(async () => {
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 80));
+    const waitFor = async (predicate: () => boolean, label: string) => {
+      for (let attempt = 0; attempt < 50; attempt++) {
+        if (predicate()) return;
+        await pause();
+      }
+      throw new Error(`Timed out waiting for ${label}`);
+    };
+    const button = (label: string) =>
+      [...document.querySelectorAll("button")].find((item) => item.textContent?.trim() === label);
+    const click = async (label: string) => {
+      await waitFor(() => !!button(label) && !button(label)!.disabled, `enabled button: ${label}`);
+      button(label)!.click();
+      await pause();
+    };
+    try {
+      const typeResponse = await fetch("/api/transaction-types", { cache: "no-store" });
+      if (!typeResponse.ok) throw new Error("transaction types API failed");
+      const typePayload = await typeResponse.json() as { types?: Array<{ key: string; nameFa: string }> };
+      const wantedType = typePayload.types?.find((item) => item.key === "WANTED");
+      if (!wantedType) throw new Error("WANTED transaction type is not configured");
+      await waitFor(() => !!button(wantedType.nameFa), "WANTED transaction card");
+      await click(wantedType.nameFa);
+      await click("خرید");
+      await click("مرحله بعد");
+      await waitFor(() => document.body.innerText.includes("دسته‌بندی موضوع آگهی"), "marketplace category step");
+      const taxonomyResponse = await fetch("/api/taxonomy", { cache: "no-store" });
+      if (!taxonomyResponse.ok) throw new Error("taxonomy API failed");
+      const taxonomy = await taxonomyResponse.json() as {
+        marketplaceRoots?: Array<{ name: string }>;
+        serviceRoots?: Array<{ name: string }>;
+      };
+      const marketplaceRoot = taxonomy.marketplaceRoots?.find((item) => item.name === "HEAVIX Browser E2E Machine");
+      const serviceRoot = taxonomy.serviceRoots?.find((item) => item.name === "HEAVIX Browser E2E Service");
+      if (!marketplaceRoot || !serviceRoot) throw new Error("isolated marketplace/service taxonomy fixtures are missing");
+      await click(marketplaceRoot.name);
+      await click("مرحله بعد");
+      await waitFor(() => document.body.innerText.includes("اطلاعات پایه"), "base information step");
+      await click("مرحله قبل");
+      await click("مرحله قبل");
+      await click("خدمات");
+      await click("مرحله بعد");
+      await waitFor(() => document.body.innerText.includes("دسته‌بندی خدمات"), "service category step");
+      if (document.body.innerText.includes(marketplaceRoot.name)) {
+        throw new Error("marketplace category leaked into service taxonomy after intent switch");
+      }
+      await click(serviceRoot.name);
+      await waitFor(() => {
+        const next = button("مرحله بعد");
+        return !!next && !next.disabled;
+      }, "terminal service category selection");
+      return { ok: true, detail: "WANTED buy → marketplace category → back → service intent → service taxonomy → terminal category" };
+    } catch (error) {
+      return { ok: false, detail: error instanceof Error ? error.message : String(error) };
+    }
+  }, null);
+}
+
 async function main(): Promise<void> {
   assertIsolatedEnvironment();
   const requireFromPlaywright = createRequire(path.join(playwrightRoot, "package.json"));
@@ -278,6 +339,18 @@ async function main(): Promise<void> {
       active: true,
     },
   });
+  await prisma.category.upsert({
+    where: { slug: "heavix-browser-e2e-service" },
+    update: { active: true, layer: "SERVICE", domain: "MACHINE" },
+    create: {
+      name: "HEAVIX Browser E2E Service",
+      nameEn: "HEAVIX Browser E2E Service",
+      slug: "heavix-browser-e2e-service",
+      layer: "SERVICE",
+      domain: "MACHINE",
+      active: true,
+    },
+  });
   const buyerToken = await createSession(buyer.id);
   const reviewerToken = await createSession(reviewer.id);
 
@@ -292,6 +365,9 @@ async function main(): Promise<void> {
     contexts.push(reviewerBrowser.context);
     const publicBrowser = await browserContext(browser);
     contexts.push(publicBrowser.context);
+
+    const wizardUi = await runWantedWizardUiSmoke(buyerBrowser.page);
+    assert.equal(wizardUi.ok, true, `WANTED wizard UI flow failed: ${wizardUi.detail}`);
 
     const policy = await browserFetch(buyerBrowser.page, { path: "/api/media/staging" });
     assert.equal(policy.status, 200, "authenticated staging policy must be available");
@@ -433,6 +509,7 @@ async function main(): Promise<void> {
       database: "disposable PostgreSQL *_test",
       storage: "isolated Backblaze B2 bucket/prefix",
       checks: [
+        "real Chromium WANTED wizard: buy → marketplace taxonomy → service intent switch → service taxonomy",
         "authenticated private staging upload",
         "BuyRequest + relational image manifest persistence",
         "B2 sidecar attachment and owner-private rendering",
