@@ -834,13 +834,27 @@ async function main() {
     afterByCatSlug.set(s, (afterByCatSlug.get(s) ?? 0) + 1);
   }
   for (const [slug, n] of afterByCatSlug) console.log(`   ${slug}: ${n}`);
-  if (listingsAfter.length !== listingsBefore.length) {
-    console.warn(
-      `⚠ WARNING: listing count changed (${listingsBefore.length} → ${listingsAfter.length})!`
+  const beforeListingCategoryById = new Map(
+    listingsBefore.map((listing) => [listing.id, listing.categoryId]),
+  );
+  const afterListingCategoryById = new Map(
+    listingsAfter.map((listing) => [listing.id, listing.categoryId]),
+  );
+  const missingListingIds = [...beforeListingCategoryById.keys()].filter(
+    (id) => !afterListingCategoryById.has(id),
+  );
+  const movedListingIds = [...beforeListingCategoryById.entries()].filter(
+    ([id, categoryId]) => afterListingCategoryById.get(id) !== categoryId,
+  );
+  const unexpectedListingIds = [...afterListingCategoryById.keys()].filter(
+    (id) => !beforeListingCategoryById.has(id),
+  );
+  if (missingListingIds.length || movedListingIds.length || unexpectedListingIds.length) {
+    throw new Error(
+      `Listing preservation failed: missing=${missingListingIds.length}, categoryIdChanged=${movedListingIds.length}, unexpected=${unexpectedListingIds.length}`,
     );
-  } else {
-    console.log(`✓ All ${listingsAfter.length} listings preserved.\n`);
   }
+  console.log(`✓ All ${listingsAfter.length} listing IDs and category IDs preserved.\n`);
 
   // 6. Final counts
   const l1Count = await db.category.count({
