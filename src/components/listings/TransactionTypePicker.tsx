@@ -42,6 +42,8 @@ export default function TransactionTypePicker({
   useEffect(() => {
     let alive = true;
     setError(false);
+    setLoading(true);
+    setTypes([]);
     (async () => {
       try {
         const res = await fetch("/api/transaction-types", { cache: "no-store" });
