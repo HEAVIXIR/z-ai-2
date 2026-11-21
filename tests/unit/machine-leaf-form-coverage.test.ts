@@ -12,7 +12,7 @@ const findJsonArrayEnd = (source: string, start: number) => {
     const char = source[index];
     if (inString) {
       if (escaped) escaped = false;
-      else if (char === "\\\\") escaped = true;
+      else if (char === "\\") escaped = true;
       else if (char === '"') inString = false;
       continue;
     }
