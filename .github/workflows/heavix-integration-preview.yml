@@ -171,3 +171,5 @@ jobs:
             echo "- Production deploy: not invoked"
             echo "- Database migrations/seeds: not invoked"
           } >> "$GITHUB_STEP_SUMMARY"
+
+# Manual-dispatch fallback: this Integration-only workflow can also be triggered by a push to this file.
