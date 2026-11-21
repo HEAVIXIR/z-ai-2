@@ -47,11 +47,13 @@ describe("Preview taxonomy seed safety contracts", () => {
     const mode = source.indexOf("if (applicationIndustriesOnly)");
     const categoryRead = source.indexOf("await db.category.findMany", mode);
     const firstIndustryWrite = source.indexOf("await db.applicationIndustry.upsert", mode);
-    const firstCategoryWrite = source.indexOf("await db.category.upsert", mode);
+    const modeEnd = source.indexOf('console.log("Preflighting existing category hierarchy (read-only)...")', mode);
+    const modeBlock = source.slice(mode, modeEnd);
     expect(mode).toBeGreaterThan(-1);
     expect(categoryRead).toBeGreaterThan(mode);
     expect(firstIndustryWrite).toBeGreaterThan(categoryRead);
-    expect(firstCategoryWrite).toBe(-1);
+    expect(modeBlock).not.toContain("db.category.upsert(");
+    expect(modeBlock).not.toContain("db.category.update(");
   });
 
   it("does not reactivate disabled transaction, service, or industry records", () => {
