@@ -223,6 +223,7 @@ async function loadImage(page: PageLike, mediaUrl: string): Promise<{ width: num
   }, mediaUrl);
 }
 
+// WANTED_MEDIA_BROWSER_E2E: exercise the real seven-step wizard's demand taxonomy entry path.
 async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; detail: string }> {
   await page.goto(`${baseUrl}/listings/new`, { waitUntil: "domcontentloaded" });
   return page.evaluate(async () => {
