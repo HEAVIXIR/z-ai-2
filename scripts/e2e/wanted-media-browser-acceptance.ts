@@ -214,7 +214,12 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       }
       throw new Error("Timed out waiting for " + label);
     };
-    const button = label => Array.from(document.querySelectorAll("button")).find(item => (item.textContent || "").replace(/\s+/g, " ").trim().includes(label));
+    const button = label => {
+      const norm = item => (item.textContent || "").replace(/\s+/g, " ").trim();
+      const exact = Array.from(document.querySelectorAll("button")).find(item => norm(item) === label);
+      if (exact) return exact;
+      return Array.from(document.querySelectorAll("button")).find(item => norm(item).includes(label));
+    };
     const click = async label => {
       await waitFor(() => { const candidate = button(label); return !!candidate && !candidate.disabled; }, "enabled button: " + label);
       button(label).click();
@@ -254,14 +259,38 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       await waitFor(() => { const next = button("مرحله بعد"); return !!next && !next.disabled; }, "terminal service category selection");
       return { ok: true, detail: "WANTED buy → marketplace category → back → service intent → service taxonomy → terminal category" };
     } catch (error) {
+      // WANTED_MEDIA_BROWSER_E2E: capture the taxonomy API response + resolved
+      // root names alongside the DOM state so a timeout on the waitFor is
+      // diagnosable without guessing.
+      let taxonomyProbe = null;
+      try {
+        const probeResponse = await fetch("/api/taxonomy", { cache: "no-store" });
+        taxonomyProbe = {
+          status: probeResponse.status,
+          marketplaceRootsCount: 0,
+          serviceRootsCount: 0,
+          marketplaceRootNames: [] as string[],
+          serviceRootNames: [] as string[],
+        };
+        if (probeResponse.ok) {
+          const probePayload = await probeResponse.json();
+          taxonomyProbe.marketplaceRootsCount = (probePayload.marketplaceRoots || []).length;
+          taxonomyProbe.serviceRootsCount = (probePayload.serviceRoots || []).length;
+          taxonomyProbe.marketplaceRootNames = (probePayload.marketplaceRoots || []).map(r => r.name);
+          taxonomyProbe.serviceRootNames = (probePayload.serviceRoots || []).map(r => r.name);
+        }
+      } catch (probeError) {
+        taxonomyProbe = { error: probeError instanceof Error ? probeError.message : String(probeError) };
+      }
       const uiState = {
         body: (document.body.innerText || "").slice(-5000),
         buttons: Array.from(document.querySelectorAll("button")).map(item => ({
-          text: (item.textContent || "").trim(),
+          text: (item.textContent || "").replace(/\s+/g, " ").trim(),
           disabled: item.disabled,
           visible: !!(item.offsetWidth || item.offsetHeight || item.getClientRects().length),
         })).slice(-80),
         url: location.pathname,
+        taxonomyProbe,
       };
       return {
         ok: false,
