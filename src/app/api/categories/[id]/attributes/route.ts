@@ -116,6 +116,7 @@ export async function GET(
       labelEn: string | null;
       type: string;
       unit: string | null;
+      active: boolean;
       required: boolean;
       filterable: boolean;
       searchable: boolean;
@@ -142,6 +143,7 @@ export async function GET(
         labelEn: attribute.labelEn ?? attribute.nameEn ?? null,
         type: attribute.type,
         unit: attribute.unit,
+        active: link.active,
         required: link.required,
         filterable: link.filterable,
         searchable: link.searchable,
@@ -180,7 +182,10 @@ export async function GET(
         const attribute = link.attribute;
         const key = attribute.key ?? attribute.id;
         if (key === "brand" || key === "model") continue;
+        // An explicit category-level disable wins over model-specific flags.
+        if (merged.get(key)?.active === false) continue;
         merged.set(key, {
+          active: true,
           id: attribute.id,
           key: attribute.key,
           labelFa: attribute.labelFa ?? attribute.name,
@@ -207,6 +212,7 @@ export async function GET(
     }
 
     const attributes = [...merged.values()]
+      .filter((attribute) => attribute.active)
       .sort((a, b) =>
         a.sourceDepth - b.sourceDepth ||
         a.displayOrder - b.displayOrder ||

@@ -10,7 +10,7 @@ describe("Listing image upload contract", () => {
     const source = read("src/components/listings/ListingImageUploader.tsx");
     expect(source).toContain('fetch("/api/media/staging"');
     expect(source).toContain('body.append("file", prepared.file)');
-    expect(source).toContain("prepareImageForUpload(source)");
+    expect(source).toContain("prepareImageForUpload(source, policy.maxImageBytes)");
     expect(source).toContain("result?.url");
     expect(source).not.toContain("placeholder-");
     expect(source).toContain('accept="image/jpeg,image/png,image/webp"');
@@ -21,12 +21,25 @@ describe("Listing image upload contract", () => {
     const source = read("src/components/listings/ListingImageUploader.tsx");
     expect(source).toContain("<img");
     expect(source).toContain("onChange(images.filter");
-    expect(source).toContain("maxImages = 10");
+    expect(source).toContain("FREE_LISTING_IMAGE_POLICY");
+    expect(source).toContain("policyReady");
+    expect(source).toContain("const maxImages = policy.maxImages");
+    expect(source).toContain('next.tier === "PREMIUM"');
+    expect(source).toContain("required = false");
+    expect(source).toContain("افزودن تصویر اختیاری است");
+    expect(source).toContain("prepareImageForUpload(source, policy.maxImageBytes)");
+    expect(source).toContain('fetch("/api/media/staging"');
   });
 
   it("uses the real uploader in the listing wizard instead of placeholder URLs", () => {
     const source = read("src/app/listings/new/page.tsx");
-    expect(source).toContain("ListingImageUploader images={images} onChange={setImages}");
+    expect(source).toContain("<ListingImageUploader");
+    expect(source).toContain("images={images}");
+    expect(source).toContain("onChange={handleImagesChange}");
+    expect(source).toContain("onAssetsChange={handleStagedAssetsChange}");
+    expect(source).toContain("<ListingImageUploader");
+    expect(source).not.toContain('{transactionType !== "WANTED" && (');
+    expect(source).toContain('entityType={isServiceRequest || transactionType === "WANTED" ? "BuyRequest" : "Listing"}');
     expect(source).not.toContain("placeholder-${Date.now()}");
   });
 });

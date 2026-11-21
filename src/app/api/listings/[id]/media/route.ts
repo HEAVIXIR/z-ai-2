@@ -97,7 +97,10 @@ export async function POST(req: Request, { params }: Args) {
         pendingCount,
         mediaStatus: pendingCount === 0 ? "ATTACHED" : "PENDING",
       },
-      { status: pendingCount === 0 ? 200 : 202 },
+      {
+        status: pendingCount === 0 ? 200 : 202,
+        headers: { "Cache-Control": "private, no-store" },
+      },
     );
   } catch (error) {
     console.error("[listing-media-retry] failed", {

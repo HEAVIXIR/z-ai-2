@@ -213,12 +213,16 @@ export async function createWanted(params: {
   transactionType?: string | null;
   province?: string | null;
   city?: string | null;
+  countryId?: string | null;
+  provinceId?: string | null;
+  cityId?: string | null;
   deadline?: string | null;
   requesterName?: string | null;
   requesterPhone?: string | null;
   modelId?: string | null;
   serviceTypeId?: string | null;
   attributeValues?: unknown[] | null;
+  images?: Array<{ assetId: string; url: string; alt?: string | null }>;
   userId: string;
   /**
    * Optional stable delivery key. It is written to BuyRequest's owner-scoped
@@ -242,12 +246,16 @@ export async function createWanted(params: {
     transactionType = null,
     province = null,
     city = null,
+    countryId = null,
+    provinceId = null,
+    cityId = null,
     deadline = null,
     requesterName = null,
     requesterPhone = null,
     modelId = null,
     serviceTypeId = null,
     attributeValues = null,
+    images = [],
     userId,
     idempotencyKey = null,
   } = params;
@@ -368,6 +376,9 @@ export async function createWanted(params: {
           budgetMax: toBigInt(budgetMax),
           city: city ? String(city).slice(0, 120) : null,
           province: province ? String(province).slice(0, 120) : null,
+          countryId: countryId ?? null,
+          provinceId: provinceId ?? null,
+          cityId: cityId ?? null,
           deadline: deadline ? String(deadline).slice(0, 120) : null,
           publishedAt,
           expiresAt,
@@ -385,6 +396,19 @@ export async function createWanted(params: {
           intent: resolvedIntent,
           idempotencyKey: idempotencyKey ?? null,
           // ── H.3 attribute parent/child rows (nested create, same transaction) ──
+          ...(images.length
+            ? {
+                images: {
+                  create: images.map((image, index) => ({
+                    assetId: image.assetId,
+                    url: image.url,
+                    alt: image.alt ?? null,
+                    isPrimary: index === 0,
+                    sortOrder: index,
+                  })),
+                },
+              }
+            : {}),
           ...(validatedAttributes.length
             ? {
                 attributeValues: {
@@ -483,6 +507,9 @@ export async function createWanted(params: {
       transactionType: resolvedIntent,
       province: province ?? null,
       city: city ?? null,
+      countryId: countryId ?? null,
+      provinceId: provinceId ?? null,
+      cityId: cityId ?? null,
       // Lifecycle timestamps — recorded so the audit trail proves
       // expiration was wired (expiresAt derived from deadline). For a
       // PENDING request publishedAt is null until admin approval.
@@ -608,6 +635,7 @@ export async function listWanted(params: {
         brandRef: { select: { name: true } },
         modelRef: { select: { name: true } },
         serviceTypeRef: { select: { nameFa: true } },
+        images: { orderBy: { sortOrder: "asc" }, select: { id: true, url: true, alt: true, isPrimary: true, sortOrder: true } },
       },
     }),
     db.buyRequest.count({ where }),
@@ -639,6 +667,7 @@ export async function listWanted(params: {
       brandName: r.brandRef?.name ?? null,
       modelName: r.modelRef?.name ?? null,
       serviceTypeName: r.serviceTypeRef?.nameFa ?? null,
+      images: r.images,
     })),
     total,
   };
@@ -682,6 +711,7 @@ export async function getWanted(id: string): Promise<{
   brandName: string | null;
   modelName: string | null;
   serviceTypeName: string | null;
+  images: Array<{ id: string; url: string; alt: string | null; isPrimary: boolean; sortOrder: number }>;
   // H.3 typed attribute values (parent + child MULTI_SELECT options).
   attributeValues: Array<{
     id: string;
@@ -733,6 +763,7 @@ export async function getWanted(id: string): Promise<{
       brandRef: { select: { name: true } },
       modelRef: { select: { name: true } },
       serviceTypeRef: { select: { nameFa: true } },
+      images: { orderBy: { sortOrder: "asc" }, select: { id: true, url: true, alt: true, isPrimary: true, sortOrder: true } },
       // H.3 typed attribute values (parent rows + child MULTI_SELECT options).
       attributeValues: {
         select: {
@@ -795,6 +826,7 @@ export async function getWanted(id: string): Promise<{
     brandName: request.brandRef?.name ?? null,
     modelName: request.modelRef?.name ?? null,
     serviceTypeName: request.serviceTypeRef?.nameFa ?? null,
+    images: request.images,
     attributeValues: request.attributeValues.map((av) => ({
       id: av.id,
       attributeId: av.attributeId,

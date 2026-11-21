@@ -1,9 +1,10 @@
 import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { checkCsrf } from "@/lib/csrf";
-import { logAudit } from "@/lib/audit";
+import { logAudit, logAuditStrict } from "@/lib/audit";
 import { categoryLayerForTransactionType, isRequestTransactionType, requiresListingImage, requiresListingPrice, SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import { getCurrentUser } from "@/lib/auth";
 import { toPublicListingDTO } from "@/lib/public-listing-dto";
@@ -24,6 +25,8 @@ import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { rateLimitKey } from "@/lib/request-context";
 import { LISTING_CREATE } from "@/lib/rate-limit-presets";
 import { extractIdempotencyKey, findIdempotentResult } from "@/lib/idempotency";
+import { createHash } from "node:crypto";
+import { getListingImagePolicy } from "@/lib/listing-image-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -328,6 +331,9 @@ export async function GET(req: Request) {
    from the authenticated session — never from the request body. Anonymous
    listing creation is rejected with 401. */
 export async function POST(req: Request) {
+  let durableIdempotencyKey: string | null = null;
+  let listingCreateActorId: string | null = null;
+  let duplicateReviewRequired = false;
   try {
     // W-03 FIX: Authenticate FIRST, before any data processing.
     const user = await getCurrentUser();
@@ -337,6 +343,7 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
+    listingCreateActorId = user.id;
 
     if (!checkCsrf(req)) {
       return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
@@ -374,14 +381,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "بدنه درخواست معتبر نیست." }, { status: 400 });
     }
 
+    // Reject malformed technical-attribute payloads instead of silently
+    // coercing objects/strings to an empty list. Otherwise optional values
+    // could be discarded without the seller noticing.
+    if (
+      body.attributeValues !== undefined &&
+      body.attributeValues !== null &&
+      !Array.isArray(body.attributeValues)
+    ) {
+      return NextResponse.json(
+        { error: "ساختار مشخصات فنی معتبر نیست؛ لطفاً فرم را دوباره بررسی کنید." },
+        { status: 400 },
+      );
+    }
+
     // H.2.4e: idempotency. If the client sent an Idempotency-Key header,
     // resolve to the prior listing result on retry instead of creating a
     // duplicate listing (which would mint a fresh slug). The check runs
     // before field validation so a retry short-circuits fast.
     const idempotencyKey = extractIdempotencyKey(req);
-    if (idempotencyKey) {
+    // AuditLog currently has a globally unique delivery key. Namespace the
+    // caller key by authenticated owner before storing/looking it up, so
+    // identical client keys from different sellers cannot collide.
+    durableIdempotencyKey = idempotencyKey
+      ? createHash("sha256").update(`${user.id}:${idempotencyKey}`).digest("hex")
+      : null;
+    if (durableIdempotencyKey) {
       const prior = await findIdempotentResult({
-        key: idempotencyKey,
+        key: durableIdempotencyKey,
         action: "marketplace.listing.create",
         actorId: user.id,
       });
@@ -526,12 +553,34 @@ export async function POST(req: Request) {
       }
     }
 
-    // Listing image contract: one shared maximum of 10. Never silently slice.
+    // Image entitlements are resolved from the authenticated subscription.
+    // Never trust client tier fields or silently truncate a submitted list.
+    const imagePolicy = await getListingImagePolicy(user.id);
+    // Active listings include moderation-pending, published, and scheduled supply posts.
+    // WANTED requests are stored separately and never consume this Listing quota.
+    const activeListingWhere = {
+      sellerId: user.id,
+      listingType: { in: [...SUPPLY_LISTING_TYPES] },
+      status: { in: ["PENDING", "PUBLISHED", "SCHEDULED"] },
+    };
+    if (imagePolicy.maxListings > 0) {
+      const activeListingCount = await db.listing.count({ where: activeListingWhere });
+      if (activeListingCount >= imagePolicy.maxListings) {
+        return NextResponse.json(
+          { error: `سقف ${imagePolicy.maxListings} آگهی فعال پلن شما تکمیل شده است. برای ثبت آگهی جدید، ابتدا یکی از آگهی‌های فعال را ببندید یا پلن خود را ارتقا دهید.`, code: "ACTIVE_LISTING_LIMIT_REACHED", limit: imagePolicy.maxListings, current: activeListingCount },
+          { status: 403 },
+        );
+      }
+    }
     const rawImages = Array.isArray(body.images) ? body.images : [];
     const rawAssetIds = Array.isArray(body.assetIds) ? body.assetIds : [];
-    if (rawImages.length > 10 || rawAssetIds.length > 10 || (rawImages.length > 0 && rawAssetIds.length > 0)) {
+    if (
+      rawImages.length > imagePolicy.maxImages ||
+      rawAssetIds.length > imagePolicy.maxImages ||
+      (rawImages.length > 0 && rawAssetIds.length > 0)
+    ) {
       return NextResponse.json(
-        { error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." },
+        { error: `حداکثر ${imagePolicy.maxImages} تصویر برای هر آگهی در پلن فعلی شما مجاز است.` },
         { status: 400 },
       );
     }
@@ -582,6 +631,12 @@ export async function POST(req: Request) {
           { status: 403 },
         );
       }
+      if (asset.size > imagePolicy.maxImageBytes) {
+        return NextResponse.json(
+          { error: `حجم یکی از تصاویر از سقف ${imagePolicy.maxImageBytes / (1024 * 1024)} مگابایت پلن فعلی بیشتر است؛ تصویر را دوباره بارگذاری کنید.` },
+          { status: 400 },
+        );
+      }
       stagedAssets.push(asset);
     }
 
@@ -616,6 +671,43 @@ export async function POST(req: Request) {
     }
     if (selectedCity && selectedProvince?.id !== selectedCity.province.id) {
       return NextResponse.json({ error: "شهر با استان انتخاب‌شده مطابقت ندارد." }, { status: 400 });
+    }
+    if (!selectedProvince) {
+      return NextResponse.json({ error: "انتخاب کشور و استان برای ثبت آگهی الزامی است." }, { status: 400 });
+    }
+
+    // Exact equipment coordinates are independent from city centroids.
+    // Accept only a complete numeric WGS84 pair, and require a canonical city
+    // selection so the exact point remains attached to the selected hierarchy.
+    const hasLocationLatitude =
+      body.locationLatitude !== undefined &&
+      body.locationLatitude !== null &&
+      body.locationLatitude !== "";
+    const hasLocationLongitude =
+      body.locationLongitude !== undefined &&
+      body.locationLongitude !== null &&
+      body.locationLongitude !== "";
+    if (hasLocationLatitude !== hasLocationLongitude) {
+      return NextResponse.json({ error: "برای ثبت موقعیت دقیق، عرض و طول جغرافیایی باید با هم ارسال شوند." }, { status: 400 });
+    }
+    let locationLatitude: number | null = null;
+    let locationLongitude: number | null = null;
+    if (hasLocationLatitude && hasLocationLongitude) {
+      if (
+        !selectedCity ||
+        typeof body.locationLatitude !== "number" ||
+        typeof body.locationLongitude !== "number" ||
+        !Number.isFinite(body.locationLatitude) ||
+        !Number.isFinite(body.locationLongitude) ||
+        body.locationLatitude < -90 ||
+        body.locationLatitude > 90 ||
+        body.locationLongitude < -180 ||
+        body.locationLongitude > 180
+      ) {
+        return NextResponse.json({ error: "مختصات باید عدد معتبر در محدودهٔ WGS84 و همراه با انتخاب شهر باشند." }, { status: 400 });
+      }
+      locationLatitude = body.locationLatitude;
+      locationLongitude = body.locationLongitude;
     }
 
     const resolvedCountryId = selectedProvince?.countryId ?? requestedCountryId;
@@ -810,6 +902,10 @@ export async function POST(req: Request) {
       countryId: resolvedCountryId,
       provinceId: selectedProvince?.id ?? null,
       cityId: selectedCity?.id ?? null,
+      locationLatitude,
+      locationLongitude,
+      locationAccuracyMeters: null,
+      locationUpdatedAt: locationLatitude !== null ? new Date() : null,
       year: body.year ? parseNumber(body.year) : null,
       workingHours: body.workingHours ? parseNumber(body.workingHours) : null,
       status: "PENDING",
@@ -886,7 +982,54 @@ export async function POST(req: Request) {
 
     // Listing, optional machine passport, and image rows commit together.
     // This prevents orphan listings when nested media-row creation fails.
-    const listing = await db.$transaction(async (tx) => {
+    const listingResult = await db.$transaction(async (tx) => {
+      // Re-read the current category/model policy inside the same serializable
+      // transaction as the listing write. The earlier validation provides a
+      // fast response, while this check closes the admin-policy update race:
+      // the listing cannot commit against a stale required/active snapshot.
+      const currentAttributeValidation = await validateListingAttributeValues(
+        tx,
+        {
+          categoryId: body.categoryId ? String(body.categoryId) : null,
+          modelId: body.modelId ? String(body.modelId) : null,
+        },
+        Array.isArray(body.attributeValues) ? body.attributeValues : [],
+        false,
+        true,
+      );
+      if (!currentAttributeValidation.ok) {
+        throw Object.assign(new Error(currentAttributeValidation.error), {
+          code: "LISTING_ATTRIBUTE_POLICY_INVALID",
+        });
+      }
+
+      // Recheck within the write transaction to reduce races between parallel creates.
+      if (imagePolicy.maxListings > 0) {
+        const currentActiveCount = await tx.listing.count({ where: activeListingWhere });
+        if (currentActiveCount >= imagePolicy.maxListings) return null;
+      }
+      // Deterministic duplicate signal: an exact machine serial match against
+      // an existing non-terminal listing is never auto-rejected or merged.
+      // It is recorded for human moderation so shared/fleet serial formats
+      // and legitimate relistings remain recoverable.
+      if (serialNumber) {
+        const serialMatches = await tx.machinePassport.findMany({
+          where: {
+            serialNumber: { equals: serialNumber, mode: "insensitive" },
+            listing: { status: { in: ["PENDING", "PUBLISHED", "ACTIVE"] } },
+          },
+          select: { listingId: true },
+          take: 5,
+        });
+        if (serialMatches.length > 0) {
+          duplicateReviewRequired = true;
+          data.adminNotes = [
+            "AUTO_DUPLICATE_REVIEW: exact machine serial match; human review required.",
+            `Candidate listing IDs: ${serialMatches.map((item: { listingId: string }) => item.listingId).join(", ")}`,
+          ].join("\\n");
+        }
+      }
+
       const created = await tx.listing.create({
         data: {
           ...data,
@@ -914,29 +1057,63 @@ export async function POST(req: Request) {
 
       // createMany uses scalar foreign keys and stays inside this same
       // transaction, so an attribute write failure rolls the listing back.
-      if (attributeValidation.values.length) {
+      if (currentAttributeValidation.values.length) {
         await tx.listingAttributeValue.createMany({
-          data: attributeValidation.values.map((value) => ({
+          data: currentAttributeValidation.values.map((value) => ({
             ...value,
             listingId: created.id,
           })),
         });
       }
-      return created;
-    });
 
-    // H.2.4e: audit the listing create itself. Previously only the nested
-    // RFQ/Auction children were audited, so a SALE/RENT/SERVICE listing
-    // left no `marketplace.listing.create` trail. The idempotencyKey is
-    // stamped so a retried submission resolves to this row on replay.
-    try {
+      // The idempotency receipt is part of the SAME transaction as the
+      // Listing, images, children and typed attributes. If this insert fails
+      // (including a concurrent replay hitting the unique key), the entire
+      // listing transaction rolls back instead of leaving an un-replayable
+      // committed listing behind.
+      if (durableIdempotencyKey) {
+        await logAuditStrict({
+          actorId: user.id,
+          actorType: "USER",
+          action: "marketplace.listing.create",
+          entityType: "Listing",
+          entityId: created.id,
+          idempotencyKey: durableIdempotencyKey,
+          after: {
+            id: created.id,
+            slug: created.slug,
+            title: created.title,
+            listingType: created.listingType,
+            status: created.status,
+            categoryId: created.categoryId ?? null,
+            brandId: created.brandId ?? null,
+            modelId: created.modelId ?? null,
+            serviceTypeId: created.serviceTypeId ?? null,
+          },
+          reason: `ثبت آگهی: ${created.title}`,
+        }, tx);
+      }
+      return created;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+    if (!listingResult) {
+      return NextResponse.json(
+        { error: `سقف ${imagePolicy.maxListings} آگهی فعال پلن شما تکمیل شده است.`, code: "ACTIVE_LISTING_LIMIT_REACHED", limit: imagePolicy.maxListings },
+        { status: 403 },
+      );
+    }
+    const listing = listingResult;
+
+    // For requests with an Idempotency-Key, the durable audit receipt was
+    // already committed atomically with the listing above. Keep legacy
+    // best-effort audit behavior only for clients that omit the header.
+    if (!durableIdempotencyKey) {
       await logAudit({
         actorId: user.id,
         actorType: "USER",
         action: "marketplace.listing.create",
         entityType: "Listing",
         entityId: listing.id,
-        idempotencyKey: idempotencyKey ?? null,
         after: {
           id: listing.id,
           slug: listing.slug,
@@ -950,8 +1127,6 @@ export async function POST(req: Request) {
         },
         reason: `ثبت آگهی: ${listing.title}`,
       });
-    } catch (auditError) {
-      console.error("[listings] listing create audit deferred", auditError instanceof Error ? auditError.message : "unknown");
     }
 
     if (listing.rfq) {
@@ -1025,10 +1200,48 @@ export async function POST(req: Request) {
       status: listing.status,
       mediaStatus: mediaPendingIds.length ? "PENDING" : "ATTACHED",
       mediaPendingCount: mediaPendingIds.length,
+      duplicateReviewRequired,
       auctionId: listing.auctions[0]?.id ?? null,
       rfqId: listing.rfq?.id ?? null,
     });
   } catch (err: any) {
+    if (err?.code === "LISTING_ATTRIBUTE_POLICY_INVALID") {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    if ((err?.code === "P2034" || err?.code === "P2002") && durableIdempotencyKey && listingCreateActorId) {
+      // A concurrent request may win the unique receipt race. Resolve the
+      // winner rather than surfacing a generic conflict to a valid replay.
+      try {
+        const prior = await findIdempotentResult({
+          key: durableIdempotencyKey,
+          action: "marketplace.listing.create",
+          actorId: listingCreateActorId,
+        });
+        if (prior) {
+          const cached = await db.listing.findUnique({
+            where: { id: prior.id },
+            select: { id: true, slug: true, status: true },
+          });
+          if (cached) {
+            return NextResponse.json({
+              ok: true,
+              id: cached.id,
+              slug: cached.slug,
+              status: cached.status,
+              idempotentReplay: true,
+            });
+          }
+        }
+      } catch {
+        // Preserve the original conflict response if replay resolution fails.
+      }
+    }
+    if (err?.code === "P2034") {
+      return NextResponse.json(
+        { error: "درخواست هم‌زمان دیگری در حال ثبت است؛ لطفاً دوباره تلاش کنید.", code: "LISTING_CREATE_CONFLICT" },
+        { status: 409 },
+      );
+    }
     trackError(err, { endpoint: "POST /api/listings" });
     return NextResponse.json(
       { error: err?.message ?? "Server error" },

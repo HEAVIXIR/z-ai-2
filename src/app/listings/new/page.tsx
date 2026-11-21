@@ -103,11 +103,23 @@ export default function NewListingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attributeWarning, setAttributeWarning] = useState<string | null>(null);
-  const [mediaRepairListingId, setMediaRepairListingId] = useState<string | null>(null);
+  const [mediaRepairEntityId, setMediaRepairEntityId] = useState<string | null>(null);
   const [mediaWarning, setMediaWarning] = useState<string | null>(null);
   const [mediaRepairing, setMediaRepairing] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  const [stagedMediaAssets, setStagedMediaAssets] = useState<Array<{ assetId: string; url: string }>>([]);
   const [imagesUploading, setImagesUploading] = useState(false);
+  const handleImagesChange = (nextImages: string[]) => {
+    setImages(nextImages);
+    setStagedMediaAssets((current) => current.filter((asset) => nextImages.includes(asset.url)));
+  };
+  const handleStagedAssetsChange = (assets: Array<{ assetId: string; url: string }>) => {
+    setStagedMediaAssets((current) => {
+      const merged = new Map(current.map((asset) => [asset.assetId, asset]));
+      for (const asset of assets) merged.set(asset.assetId, asset);
+      return Array.from(merged.values());
+    });
+  };
 
   // Form state — V1.1
   // The first step is valid only after an active transaction type is loaded and selected.
@@ -152,6 +164,15 @@ export default function NewListingPage() {
     provinceId: "",
     cityId: "",
   });
+  useEffect(() => {
+    if (!["SALE", "RENT", "AUCTION"].includes(transactionType)) {
+      setLocation((current) =>
+        current.latitude || current.longitude
+          ? { ...current, latitude: "", longitude: "" }
+          : current,
+      );
+    }
+  }, [transactionType]);
   const [form, setForm] = useState({
     brandLabel: "",
     title: "",
@@ -409,13 +430,14 @@ export default function NewListingPage() {
     // switches. Images, rental fields, form fields, and transient UI flags
     // must not persist when the user picks a different transaction type.
     setImages([]);
+    setStagedMediaAssets([]);
     setImagesUploading(false);
     setRental({ deposit: "", minimumRentalPeriod: "", operatorIncluded: false, fuelIncluded: false, transportIncluded: false, availabilityStart: "", availabilityEnd: "" });
     setForm({ brandLabel: "", title: "", shortDesc: "", description: "", condition: "USED", year: "", hours: "", price: "", priceType: "NEGOTIABLE", rentalPeriod: "", serialNumber: "", sellerName: "", sellerPhone: "" });
     setSubmitError(null);
     setAttributeWarning(null);
     setMediaWarning(null);
-    setMediaRepairListingId(null);
+    setMediaRepairEntityId(null);
     setSubmitting(false);
     setCreatedId(null);
     setCreatedSlug(null);
@@ -435,9 +457,29 @@ export default function NewListingPage() {
       // Category-specific attributes are loaded before the user can continue; brand/model are optional.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
       const errs = validateAttributeFields(attributeDefs, attributes);
+      // Fail closed: a selected category without a resolved technical form
+      // must never pass review as if its specifications were complete.
       return attributesLoaded && Object.keys(errs).length === 0;
     }
-    if (step === 5) return Boolean(location.provinceId);
+    if (step === 5) {
+      if (!location.provinceId) return false;
+      if (!["SALE", "RENT", "AUCTION"].includes(transactionType)) return true;
+      const hasLatitude = Boolean(location.latitude?.trim());
+      const hasLongitude = Boolean(location.longitude?.trim());
+      if (hasLatitude !== hasLongitude) return false;
+      if (!hasLatitude) return true;
+      const latitude = Number(location.latitude);
+      const longitude = Number(location.longitude);
+      return Boolean(
+        location.cityId &&
+        Number.isFinite(latitude) &&
+        latitude >= -90 &&
+        latitude <= 90 &&
+        Number.isFinite(longitude) &&
+        longitude >= -180 &&
+        longitude <= 180
+      );
+    }
     if (step === 6) {
       if (imagesUploading) return false;
       if (isServiceFlow) {
@@ -450,15 +492,21 @@ export default function NewListingPage() {
         // deadline. The server is the safety net, but the wizard must fail
         // closed at the step that collects those fields.
         if (!serviceTypeId) return false;
-        if (isWantedServiceRequest) {
+        if (isWantedServiceRequest || isServiceRequest) {
           const wq = Number(wanted.quantity);
           const wmin = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\d]/g, "")) : null;
           const wmax = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\d]/g, "")) : null;
+          const exactPrice = form.price.trim();
+          const hasExactPrice = exactPrice.length > 0;
+          const exactPriceValid = !hasExactPrice || /^\d+$/.test(exactPrice);
+          const exactPriceConflictsWithRange = hasExactPrice && (wmin !== null || wmax !== null);
           const wdeadline = wanted.deadline ? new Date(`${wanted.deadline}T23:59:00`) : null;
           return Number.isInteger(wq) && wq >= 1 && wq <= 10000 &&
             (wmin === null || wmin >= 0n) &&
             (wmax === null || wmax >= 0n) &&
             (wmin === null || wmax === null || wmin <= wmax) &&
+            exactPriceValid &&
+            !exactPriceConflictsWithRange &&
             (!wdeadline || (!Number.isNaN(wdeadline.getTime()) && wdeadline.getTime() > Date.now()));
         }
         return true;
@@ -476,11 +524,17 @@ export default function NewListingPage() {
         const quantity = Number(wanted.quantity);
         const min = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\d]/g, "")) : null;
         const max = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\d]/g, "")) : null;
+        const exactPrice = form.price.trim();
+        const hasExactPrice = exactPrice.length > 0;
+        const exactPriceValid = !hasExactPrice || /^\d+$/.test(exactPrice);
+        const exactPriceConflictsWithRange = hasExactPrice && (min !== null || max !== null);
         const deadline = wanted.deadline ? new Date(`${wanted.deadline}T23:59:00`) : null;
         return Number.isInteger(quantity) && quantity >= 1 && quantity <= 10000 &&
           (min === null || min >= 0n) &&
           (max === null || max >= 0n) &&
           (min === null || max === null || min <= max) &&
+          exactPriceValid &&
+          !exactPriceConflictsWithRange &&
           (!deadline || (!Number.isNaN(deadline.getTime()) && deadline.getTime() > Date.now()));
       }
       if (isRequestFlow) return true;
@@ -565,6 +619,8 @@ export default function NewListingPage() {
         countryId: location.countryId || undefined,
         provinceId: location.provinceId || undefined,
         cityId: location.cityId || undefined,
+        locationLatitude: ["SALE", "RENT", "AUCTION"].includes(transactionType) && location.latitude?.trim() ? Number(location.latitude) : undefined,
+        locationLongitude: ["SALE", "RENT", "AUCTION"].includes(transactionType) && location.longitude?.trim() ? Number(location.longitude) : undefined,
         brandId: brandId || undefined,
         categoryId: categoryId || undefined,
         modelId: modelId || undefined,
@@ -573,11 +629,21 @@ export default function NewListingPage() {
         sellerPhone: form.sellerPhone || undefined,
         serviceTypeId: isServiceFlow ? serviceTypeId : undefined,
         attributeValues: attributePayload,
-        images: images.map((url) => ({ url })),
+        // Demand media is canonicalized by staged asset IDs, not client-provided URLs; isolated acceptance runs are commit-marker gated.
+        images: transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? undefined : images.map((url) => ({ url })),
       };
 
-      if (transactionType === "WANTED") {
-        body.intent = wanted.intent;
+
+      const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST";
+      if (isDemandSubmission) {
+        // Demand media is persisted from the server-owned staging manifest;
+        // never send client URLs as the canonical BuyRequest image record.
+        body.assetIds = stagedMediaAssets.map((asset) => asset.assetId);
+        // BuyRequest has one canonical description field; preserve the wizard summary too.
+        body.description = [form.shortDesc.trim(), form.description.trim()].filter(Boolean).join("\n\n") || undefined;
+        body.listingType = "WANTED";
+        body.transactionType = "WANTED";
+        body.intent = transactionType === "SERVICE_REQUEST" ? "SERVICE_REQUEST" : wanted.intent;
         body.quantity = Number(wanted.quantity);
         body.budgetMin = wanted.budgetMin || undefined;
         body.budgetMax = wanted.budgetMax || undefined;
@@ -615,7 +681,7 @@ export default function NewListingPage() {
         body.availabilityEnd = rental.availabilityEnd || undefined;
       }
 
-      const endpoint = transactionType === "WANTED" ? "/api/wanted" : "/api/listings";
+      const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings";
       // Generate (or reuse) the idempotency key for this submission.
       if (!idempotencyKeyRef.current) {
         idempotencyKeyRef.current =
@@ -638,9 +704,10 @@ export default function NewListingPage() {
       }
 
       if (data.mediaStatus === "PENDING" && data.id) {
-        setMediaRepairListingId(String(data.id));
+        setMediaRepairEntityId(String(data.id));
+        const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی";
         setMediaWarning(
-          `${Number(data.mediaPendingCount) || 0} تصویر ثبت شده اما انتقال نهایی آن‌ها کامل نشده است. آگهی ذخیره شده؛ می‌توانید بازیابی تصاویر را دوباره امتحان کنید.`,
+          `${Number(data.mediaPendingCount) || 0} تصویر ثبت شده اما انتقال نهایی آن‌ها کامل نشده است. ${mediaEntityLabel} ذخیره شده است؛ می‌توانید بازیابی تصاویر را دوباره امتحان کنید.`,
         );
       }
       // P0-B: always capture the created id + slug for the success-screen link.
@@ -659,25 +726,28 @@ export default function NewListingPage() {
   };
 
   const retryMediaAttachment = async () => {
-    if (!mediaRepairListingId || mediaRepairing) return;
+    if (!mediaRepairEntityId || mediaRepairing) return;
     setMediaRepairing(true);
     setMediaWarning(null);
     try {
-      const response = await fetch(
-        `/api/listings/${encodeURIComponent(mediaRepairListingId)}/media`,
-        { method: "POST" },
-      );
+      const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST";
+      const mediaRetryPath = isDemandSubmission
+        ? `/api/wanted/${encodeURIComponent(mediaRepairEntityId)}/media`
+        : `/api/listings/${encodeURIComponent(mediaRepairEntityId)}/media`;
+      const response = await fetch(mediaRetryPath, { method: "POST" });
       const result = await response.json().catch(() => ({}));
       if (!response.ok && response.status !== 202) {
         throw new Error(result.error ?? "بازیابی تصاویر ناموفق بود.");
       }
       if (Number(result.pendingCount) > 0) {
+        const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی";
         setMediaWarning(
-          `${result.pendingCount} تصویر هنوز منتقل نشده است. بعداً دوباره تلاش کنید؛ آگهی شما ذخیره شده است.`,
+          `${result.pendingCount} تصویر هنوز منتقل نشده است. بعداً دوباره تلاش کنید؛ ${mediaEntityLabel} شما ذخیره شده است.`,
         );
       } else {
-        setMediaWarning("همه تصاویر با موفقیت به آگهی متصل شدند.");
-        setMediaRepairListingId(null);
+        const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی";
+        setMediaWarning(`همه تصاویر با موفقیت به ${mediaEntityLabel} متصل شدند.`);
+        setMediaRepairEntityId(null);
       }
     } catch (error) {
       setMediaWarning(
@@ -711,7 +781,7 @@ export default function NewListingPage() {
             <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/[0.06] p-10 text-center">
               <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-emerald-400" />
               <h1 className="text-2xl font-black text-white">
-                {transactionType === "WANTED" ? "درخواست خرید شما ثبت شد!" : "آگهی شما ثبت شد!"}
+                {transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? "درخواست شما ثبت شد!" : "آگهی شما ثبت شد!"}
               </h1>
               {/* H.1: show the created id + status so the user can verify */}
               {createdId && (
@@ -722,14 +792,14 @@ export default function NewListingPage() {
                 </p>
               )}
               <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-white/55">
-                {transactionType === "WANTED"
-                  ? "درخواست شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. پس از تأیید، در فهرست درخواست‌های خرید فعال نمایش داده می‌شود و برای تطبیق با آگهی‌های عرضه مناسب در دسترس قرار می‌گیرد."
+                {transactionType === "WANTED" || transactionType === "SERVICE_REQUEST"
+                  ? "درخواست شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. پس از تأیید، در فهرست درخواست‌های شما نمایش داده می‌شود و برای تطبیق با عرضه‌های مرتبط در دسترس قرار می‌گیرد."
                   : "آگهی شما پس از بررسی کارشناسان هویکس منتشر خواهد شد. در صورت تأیید، در صفحهٔ آگهی‌ها نمایش داده می‌شود و وارد کمپین «فروش در ۷ روز» می‌گردد."}
               </p>
               {mediaWarning && (
                 <div className="mx-auto mt-5 max-w-md rounded-2xl border border-amber-500/30 bg-amber-500/[0.07] p-4 text-right text-xs leading-6 text-amber-200">
                   <div>{mediaWarning}</div>
-                  {mediaRepairListingId && (
+                  {mediaRepairEntityId && (
                     <button
                       type="button"
                       onClick={retryMediaAttachment}
@@ -761,7 +831,7 @@ export default function NewListingPage() {
                     مشاهده آگهی ثبت‌شده
                   </Link>
                 )}
-                {createdId && transactionType === "WANTED" && (
+                {createdId && (transactionType === "WANTED" || transactionType === "SERVICE_REQUEST") && (
                   <Link
                     href="/dashboard/wanted"
                     className="rounded-xl bg-[#F58220] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
@@ -972,6 +1042,11 @@ export default function NewListingPage() {
                         onAttributesLoaded={(defs) => { setAttributeDefs(defs); setAttributesLoaded(true); }}
                       />
                     </div>
+                    {attributesLoaded && attributeDefs.length === 0 && (
+                      <div role="status" className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-white/55">
+                        برای این دسته‌بندی ویژگی فنی فعالی تعریف نشده است؛ می‌توانید بدون مشخصات فنی ادامه دهید. در صورت نیاز، مدیر سامانه می‌تواند بعداً ویژگی‌های این دسته‌بندی را تنظیم کند.
+                      </div>
+                    )}
                     <p className="mt-4 text-[11px] text-white/40">
                       ویژگی‌های دارای علامت * الزامی هستند. ویژگی‌های «فیلترپذیر» در صفحهٔ آگهی‌ها قابل
                       فیلتر کردن خواهند بود.
@@ -1216,7 +1291,11 @@ export default function NewListingPage() {
                       subtitle="کشور، استان و شهر مرتبط با عرضه یا درخواست را انتخاب کنید (پیش‌فرض: ایران)"
                     />
                     <div className="mt-6">
-                      <LocationPicker value={location} onChange={setLocation} />
+                      <LocationPicker
+                        value={location}
+                        onChange={setLocation}
+                        showExactPoint={["SALE", "RENT", "AUCTION"].includes(transactionType)}
+                      />
                     </div>
                     <p className="mt-4 text-[11px] text-white/40">
                       موقعیت به‌عنوان بعد مستقل در تاکسونومی V1.1 ذخیره می‌شود و در فیلتر آگهی‌ها
@@ -1269,9 +1348,9 @@ export default function NewListingPage() {
                         </div>
                       )}
 
-                      {transactionType === "WANTED" && (
+                      {(transactionType === "WANTED" || isServiceRequest) && (
                         <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
-                          <p className="mb-3 text-sm font-black text-amber-300">جزئیات درخواست خرید</p>
+                          <p className="mb-3 text-sm font-black text-amber-300">{isServiceRequest ? "جزئیات درخواست خدمات" : "جزئیات درخواست خرید"}</p>
                           <div className="grid gap-4 sm:grid-cols-2">
                             {/* P0-A: intent selector moved to Step 1. Here in Step 6
                                 we show a read-only badge of the selected intent so the
@@ -1280,7 +1359,7 @@ export default function NewListingPage() {
                             <div className="sm:col-span-2">
                               <label className={labelCls}>نوع تقاضا (انتخاب‌شده در مرحله ۱)</label>
                               <div className="flex h-10 items-center rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 text-sm font-bold text-amber-200">
-                                {wanted.intent === "SALE" ? "خرید"
+                                {isServiceRequest ? "خدمات" : wanted.intent === "SALE" ? "خرید"
                                   : wanted.intent === "RENT" ? "اجاره"
                                   : wanted.intent === "SALE_AND_RENT" ? "خرید/اجاره"
                                   : wanted.intent === "SERVICE_REQUEST" ? "خدمات"
@@ -1304,7 +1383,7 @@ export default function NewListingPage() {
                               <input value={wanted.budgetMax} onChange={(e) => setWanted((v) => ({ ...v, budgetMax: e.target.value.replace(/[^\d]/g, "") }))} inputMode="numeric" dir="ltr" className={inputCls} />
                             </div>
                           </div>
-                          <p className="mt-3 text-xs text-white/55">تعداد فعلاً در سابقه ممیزی نگهداری می‌شود؛ ذخیره ساختاریافته تعداد نیازمند تکمیل مدل داده است.</p>
+                          <p className="mt-3 text-xs text-white/55">تعداد، بودجه و مهلت در اطلاعات ساختاریافته درخواست ذخیره می‌شوند.</p>
                         </div>
                       )}
 
@@ -1385,31 +1464,33 @@ export default function NewListingPage() {
                           </div>
                           <div>
                             <label className={labelCls}>
-                              {isRequestFlow ? "بودجه یا قیمت پیشنهادی (اختیاری)" : isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
+                              {transactionType === "WANTED" ? "قیمت پیشنهادی دقیق (اختیاری؛ به‌جای بازه بودجه)" : isRequestFlow ? "بودجه یا قیمت پیشنهادی (اختیاری)" : isRent ? "قیمت اجاره (تومان)" : isAuction ? "قیمت پایه مزایده (تومان)" : "قیمت (تومان)"}{" "}
                               {!isRequestFlow && "*"}
                             </label>
                             <input
                               value={form.price}
-                              onChange={(e) => set("price", e.target.value)}
+                              onChange={(e) => set("price", isRequestFlow ? e.target.value.replace(/[^\d]/g, "") : e.target.value)}
                               placeholder="مثلاً: 8500000000"
                               dir="ltr"
                               className={inputCls}
                             />
                           </div>
-                          <div>
-                            <label className={labelCls}>نوع قیمت</label>
-                            <select
-                              value={isAuction ? "AUCTION" : form.priceType}
-                              onChange={(e) => set("priceType", e.target.value)}
-                              disabled={isAuction}
-                              className={inputCls}
-                            >
-                              <option value="NEGOTIABLE">توافقی</option>
-                              <option value="FIXED">مقطوع</option>
-                              <option value="CALL_FOR_PRICE">تماس بگیرید</option>
-                              <option value="AUCTION">مزایده</option>
-                            </select>
-                          </div>
+                          {!isRequestFlow && (
+                            <div>
+                              <label className={labelCls}>نوع قیمت</label>
+                              <select
+                                value={isAuction ? "AUCTION" : form.priceType}
+                                onChange={(e) => set("priceType", e.target.value)}
+                                disabled={isAuction}
+                                className={inputCls}
+                              >
+                                <option value="NEGOTIABLE">توافقی</option>
+                                <option value="FIXED">مقطوع</option>
+                                <option value="CALL_FOR_PRICE">تماس بگیرید</option>
+                                <option value="AUCTION">مزایده</option>
+                              </select>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -1564,14 +1645,22 @@ export default function NewListingPage() {
                       </div>
 
                       {/* Media */}
-                      {transactionType === "WANTED" ? (
-                        <p className="text-xs leading-6 text-white/45">پیوست تصویر برای درخواست خرید هنوز در مسیر کانونیکال ذخیره‌سازی نشده است؛ برای جلوگیری از بارگذاری بی‌اثر، فعلاً امکان افزودن تصویر در این نوع درخواست غیرفعال است.</p>
-                      ) : (
-                        <>
-                          {isRequestFlow && <p className="text-xs leading-6 text-white/45">برای استعلام قیمت، افزودن تصویر اختیاری است.</p>}
-                          <ListingImageUploader images={images} onChange={setImages} onUploadingChange={setImagesUploading} />
-                        </>
-                      )}
+                      <>
+                        {(transactionType === "WANTED" || isServiceRequest) && (
+                          <p className="text-xs leading-6 text-white/55">
+                            تصاویر درخواست ابتدا به‌صورت خصوصی بارگذاری می‌شوند و فقط پس از تأیید کارشناسان و انتشار درخواست برای عموم قابل مشاهده خواهند بود.
+                          </p>
+                        )}
+                        {isRequestFlow && transactionType !== "WANTED" && <p className="text-xs leading-6 text-white/45">برای استعلام قیمت، افزودن تصویر اختیاری است.</p>}
+                        <ListingImageUploader
+                          images={images}
+                          onChange={handleImagesChange}
+                          onAssetsChange={handleStagedAssetsChange}
+                          onUploadingChange={setImagesUploading}
+                          entityType={isServiceRequest || transactionType === "WANTED" ? "BuyRequest" : "Listing"}
+                          required={!isRequestFlow && !isServiceFlow}
+                        />
+                      </>
                     </div>
                   </div>
                 )}
@@ -1587,10 +1676,13 @@ export default function NewListingPage() {
                     <div className="mt-6 space-y-4">
                       <ReviewRow label="نوع معامله" value={transactionType} />
                       {isServiceFlow && <ReviewRow label="نوع خدمت" value={serviceTypes.find((item) => item.id === serviceTypeId)?.nameFa ?? "—"} />}
-                      {transactionType === "WANTED" && (
+                      {(transactionType === "WANTED" || isServiceRequest) && (
                         <>
                           <ReviewRow label="تعداد موردنیاز" value={wanted.quantity || "—"} />
-                          <ReviewRow label="بازه بودجه" value={[wanted.budgetMin, wanted.budgetMax].filter(Boolean).join(" تا ") || "توافقی"} />
+                          <ReviewRow
+                            label="بازه بودجه"
+                            value={[wanted.budgetMin, wanted.budgetMax].filter(Boolean).join(" تا ") || (form.price.trim() ? `${Number(form.price).toLocaleString("fa-IR")} تومان · قیمت دقیق` : "توافقی")}
+                          />
                           <ReviewRow label="مهلت درخواست" value={wanted.deadline || "—"} />
                         </>
                       )}
@@ -1619,7 +1711,7 @@ export default function NewListingPage() {
                       <ReviewRow label="وضعیت" value={{ NEW: "نو", USED: "کارکرده", REFURBISHED: "بازسازی‌شده", FOR_PARTS: "قطعات" }[form.condition] ?? "—"} />
                       <ReviewRow label="سال ساخت" value={form.year || "—"} />
                       <ReviewRow label="ساعت کارکرد" value={form.hours ? `${form.hours} ساعت` : "—"} />
-                      <ReviewRow label="قیمت" value={form.price ? `${Number(form.price).toLocaleString("fa-IR")} تومان` : "—"} />
+                      {!isRequestFlow && <ReviewRow label="قیمت" value={form.price ? `${Number(form.price).toLocaleString("fa-IR")} تومان` : "—"} />}
                       {isRent && (
                         <ReviewRow
                           label="دوره اجاره"
@@ -1656,6 +1748,12 @@ export default function NewListingPage() {
                             .join(" / ") || "—"
                         }
                       />
+                      {location.latitude?.trim() && location.longitude?.trim() && (
+                        <ReviewRow
+                          label="نقطهٔ دقیق دستگاه"
+                          value={`${location.latitude} ، ${location.longitude}`}
+                        />
+                      )}
                       {form.shortDesc && (
                         <ReviewRow label="خلاصه" value={form.shortDesc} />
                       )}
@@ -1677,11 +1775,11 @@ export default function NewListingPage() {
                       {transactionType === "QUOTE" && rfq.terms && (
                         <ReviewRow label="شرایط استعلام" value={rfq.terms.length > 100 ? rfq.terms.slice(0, 100) + "…" : rfq.terms} />
                       )}
-                      {transactionType === "WANTED" && wanted.intent && (
+                      {(transactionType === "WANTED" || isServiceRequest) && (wanted.intent || isServiceRequest) && (
                         <ReviewRow
                           label="نوع تقاضا"
                           value={
-                            wanted.intent === "SALE" ? "خرید"
+                            isServiceRequest ? "خدمات" : wanted.intent === "SALE" ? "خرید"
                             : wanted.intent === "RENT" ? "اجاره"
                             : wanted.intent === "SALE_AND_RENT" ? "خرید/اجاره"
                             : wanted.intent === "SERVICE_REQUEST" ? "خدمات"

@@ -527,4 +527,4 @@ section {
 .hp-section-frame[style*="--hp-card-gap"] .grid { gap: var(--hp-card-gap) !important; }
 .hp-section-frame[style*="--hp-card-columns"] .grid { grid-template-columns: repeat(var(--hp-card-columns), minmax(0, 1fr)) !important; }
 .hp-section-frame[style*="--hp-image-radius"] img { border-radius: var(--hp-image-radius) !important; }
-.hp-section-frame[style*="--hp-accent-color"] .text-\\[\\#F58220\\] { color: var(--hp-accent-color) !important; }
+.hp-section-frame[style*="--hp-accent-color"] [class~="text-[#F58220]"] { color: var(--hp-accent-color) !important; }

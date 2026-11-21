@@ -19,11 +19,10 @@ const PLAN_FEATURES = [
   {
     name: "BASIC",
     label: "پایه",
-    price: "رایگان",
     color: "text-zinc-700",
     bg: "bg-zinc-100",
     features: [
-      "تا ۱۰ آگهی فعال",
+      "تا ۴ آگهی فعال",
       "نمایش استاندارد در نتایج",
       "پشتیبانی ایمیلی",
       "داشبورد پایه",
@@ -33,12 +32,11 @@ const PLAN_FEATURES = [
   {
     name: "PRO",
     label: "حرفه‌ای",
-    price: "۴۹۹٬۰۰۰ تومان / ماه",
     color: "text-[#F58220]",
     bg: "bg-[#F58220]/10",
     features: [
-      "تا ۵۰ آگهی فعال",
-      "۳ آگهی ویژهٔ ماهانه",
+      "تا ۱۰ آگهی فعال",
+      "۲ آگهی ویژهٔ ماهانه",
       "دسترسی به تحلیل بازار",
       "اولویت در نتایج جستجو",
       "پشتیبانی تلفنی",
@@ -48,16 +46,17 @@ const PLAN_FEATURES = [
   {
     name: "PREMIUM",
     label: "پرمیوم",
-    price: "۱٬۴۹۹٬۰۰۰ تومان / ماه",
     color: "text-amber-600",
     bg: "bg-amber-100",
     features: [
-      "آگهی نامحدود",
-      "آگهی‌های ویژهٔ نامحدود",
+      "تا ۲۰ آگهی فعال",
+      "۵ آگهی ویژهٔ ماهانه",
+      "دسترسی به تحلیل بازار",
+      "اولویت در نتایج جستجو",
       "دسترسی به هوش مصنوعی",
-      "صفحهٔ شرکت اختصاصی",
+      "صفحه اشتراک اختصاصی",
       "سرنخ‌های اولویت‌دار",
-      "پشتیبانی اختصاصی ۷/۲۴",
+      "پشتیبانی اختصاصی ۲۴ ساعته",
     ],
     icon: Crown,
   },
@@ -78,7 +77,7 @@ export default async function SubscriptionsPage() {
     );
   }
 
-  const [subscriptions, stats] = await Promise.all([
+  const [subscriptions, stats, planCatalog] = await Promise.all([
     db.premiumSubscription.findMany({
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -101,7 +100,12 @@ export default async function SubscriptionsPage() {
       premium,
       active,
     })),
+    db.subscriptionPlan.findMany({
+      where: { code: { in: ["BASIC", "PRO", "PREMIUM"] } },
+      select: { code: true, priceMonthly: true },
+    }),
   ]);
+  const planPriceByCode = new Map(planCatalog.map((plan) => [plan.code, plan.priceMonthly]));
 
   await logAudit({
     actorId: user.id,
@@ -189,7 +193,7 @@ export default async function SubscriptionsPage() {
                 <span className={`text-xs font-black ${p.color}`}>{p.name}</span>
               </div>
               <h3 className="text-lg font-black text-zinc-900">{p.label}</h3>
-              <p className="mt-1 text-sm font-bold text-zinc-700">{p.price}</p>
+              <p className="mt-1 text-sm font-bold text-zinc-700">{p.name === "BASIC" ? "رایگان" : planPriceByCode.has(p.name) ? `${formatCompactPrice(planPriceByCode.get(p.name)!)} تومان / ماه` : "قیمت ثبت نشده"}</p>
               <ul className="mt-4 space-y-2">
                 {p.features.map((f) => (
                   <li key={f} className="flex items-start gap-2 text-xs text-zinc-600">

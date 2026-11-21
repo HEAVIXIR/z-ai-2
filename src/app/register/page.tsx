@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { UserPlus, Mail, ShieldCheck, ArrowLeft } from "lucide-react";
+import { safeInternalRedirect } from "@/lib/auth-redirect";
 
 /* ============================================================
    /register — user registration with email confirmation.
@@ -12,8 +13,10 @@ import { UserPlus, Mail, ShieldCheck, ArrowLeft } from "lucide-react";
    Step 3: success → redirect to login
    ============================================================ */
 
-export default function RegisterPage() {
-  const router = useRouter();
+function RegisterContent() {
+  const sp = useSearchParams();
+  const returnPath = safeInternalRedirect(sp.get("redirect"), "");
+  const loginHref = returnPath ? `/login?redirect=${encodeURIComponent(returnPath)}` : "/login";
   const [step, setStep] = useState<"form" | "verify" | "success">("form");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -219,7 +222,7 @@ export default function RegisterPage() {
 
             <p className="mt-4 text-center text-xs text-white/40">
               قبلاً ثبت‌نام کرده‌اید؟{" "}
-              <Link href="/login" className="font-bold text-[#F58220] hover:underline">
+              <Link href={loginHref} className="font-bold text-[#F58220] hover:underline">
                 ورود
               </Link>
             </p>
@@ -310,7 +313,7 @@ export default function RegisterPage() {
               ایمیل شما تأیید شد. اکنون می‌توانید با ایمیل یا شماره موبایل ثبت‌شده و رمز عبور وارد شوید.
             </p>
             <Link
-              href="/login"
+              href={loginHref}
               className="mt-5 inline-flex h-12 items-center justify-center rounded-xl bg-[#F58220] px-8 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
             >
               ورود به حساب
@@ -325,5 +328,14 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div dir="rtl" className="flex min-h-screen items-center justify-center bg-[#0b0b0b] text-white/50">در حال بارگذاری…</div>}>
+      <RegisterContent />
+    </Suspense>
   );
 }

@@ -35,11 +35,48 @@ const read = (file: string) =>
 describe("WANTED journey source-contract (NOT behavioral E2E)", () => {
   it("wizard sends WANTED to /api/wanted with intent + quantity + budget + deadline", () => {
     const page = read("src/app/listings/new/page.tsx");
-    expect(page).toContain('transactionType === "WANTED" ? "/api/wanted" : "/api/listings"');
-    expect(page).toContain("body.intent = wanted.intent");
+    expect(page).toContain('const isDemandSubmission = transactionType === "WANTED" || transactionType === "SERVICE_REQUEST"');
+    expect(page).toContain('const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings"');
+    expect(page).toContain('body.intent = transactionType === "SERVICE_REQUEST" ? "SERVICE_REQUEST" : wanted.intent');
     expect(page).toContain("body.quantity = Number(wanted.quantity)");
     expect(page).toContain("body.budgetMin = wanted.budgetMin");
+    expect(page).toContain("sellerName: form.sellerName || undefined");
+    expect(page).toContain("sellerPhone: form.sellerPhone || undefined");
     expect(page).toContain("body.deadline =");
+  });
+
+  it("enables private BuyRequest image selection and retries media through the entity-specific endpoint", () => {
+    const page = read("src/app/listings/new/page.tsx");
+    expect(page).toContain("<ListingImageUploader");
+    expect(page).not.toContain('data-testid="wanted-media-disabled"');
+    expect(page).toContain("<ListingImageUploader");
+    expect(page).toContain('entityType={isServiceRequest || transactionType === "WANTED" ? "BuyRequest" : "Listing"}');
+    expect(page).toContain("onAssetsChange={handleStagedAssetsChange}");
+    expect(page).toContain("body.assetIds = stagedMediaAssets.map((asset) => asset.assetId)");
+    expect(page).toContain("images: transactionType === \"WANTED\" || transactionType === \"SERVICE_REQUEST\" ? undefined : images.map((url) => ({ url }))");
+    expect(page).toContain("const mediaRetryPath = isDemandSubmission");
+    expect(page).toContain("`/api/wanted/${encodeURIComponent(mediaRepairEntityId)}/media`");
+    expect(page).toContain("`/api/listings/${encodeURIComponent(mediaRepairEntityId)}/media`");
+    expect(page).toContain('const mediaEntityLabel = isDemandSubmission ? "درخواست" : "آگهی"');
+  });
+
+  it("WANTED wizard labels exact-price input as an alternative to a budget range and blocks conflicting values", () => {
+    const page = read("src/app/listings/new/page.tsx");
+    expect(page).toContain("قیمت پیشنهادی دقیق (اختیاری؛ به‌جای بازه بودجه)");
+    expect(page).toContain("const exactPriceConflictsWithRange = hasExactPrice && (min !== null || max !== null)");
+    expect(page).toContain("const exactPriceConflictsWithRange = hasExactPrice && (wmin !== null || wmax !== null)");
+    expect(page).toContain("!exactPriceConflictsWithRange");
+    expect(page).toContain("{!isRequestFlow && (");
+  });
+
+  it("POST /api/wanted preserves contact details, requires category, and persists a suggested price as an exact budget", () => {
+    const route = read("src/app/api/wanted/route.ts");
+    expect(route).toContain("requesterName: normalizedRequesterName || null");
+    expect(route).toContain("requesterPhone: normalizedRequesterPhone || null");
+    expect(route).toContain("if (!requestedCategoryId)");
+    expect(route).toContain("const effectiveBudgetMin = hasSuggestedPrice ? price : budgetMin");
+    expect(route).toContain("const effectiveBudgetMax = hasSuggestedPrice ? price : budgetMax");
+    expect(route).toContain("هر دو هم‌زمان مجاز نیستند");
   });
 
   it("POST /api/wanted enforces CSRF + rate-limit + bounded-body + intent-required (P0-A)", () => {

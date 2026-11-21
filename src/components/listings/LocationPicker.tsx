@@ -26,6 +26,8 @@ export type LocationValue = {
   countryLabel?: string;
   provinceLabel?: string;
   cityLabel?: string;
+  latitude?: string;
+  longitude?: string;
 };
 
 type Country = { id: string; name: string; nameEn: string | null; code: string | null };
@@ -39,9 +41,11 @@ const labelCls = "mb-1.5 block text-xs font-bold text-white/60";
 export default function LocationPicker({
   value,
   onChange,
+  showExactPoint = true,
 }: {
   value: LocationValue;
   onChange: (v: LocationValue) => void;
+  showExactPoint?: boolean;
 }) {
   const [countries, setCountries] = useState<Country[]>([]);
   const [provinces, setProvinces] = useState<Province[]>([]);
@@ -59,6 +63,7 @@ export default function LocationPicker({
   // 1) Load country list (default to ایران)
   useEffect(() => {
     let alive = true;
+    setLoadingCountries(true);
     setCountryError(false);
     (async () => {
       try {
@@ -68,11 +73,15 @@ export default function LocationPicker({
         if (!alive) return;
         const countryList = data.countries ?? [];
         setCountries(countryList);
+        if (countryList.length === 0) {
+          setCountryError(true);
+          return;
+        }
         if (!value.countryId && countryList.length > 0) {
           const iran =
             countryList.find((c) => c.code === "IR" || c.name === "ایران") ??
             countryList[0];
-          onChange({ ...value, countryId: iran.id, provinceId: "", cityId: "", countryLabel: iran.name, provinceLabel: undefined, cityLabel: undefined });
+          onChange({ ...value, countryId: iran.id, provinceId: "", cityId: "", countryLabel: iran.name, provinceLabel: undefined, cityLabel: undefined, latitude: "", longitude: "" });
         }
       } catch {
         if (alive) setCountryError(true);
@@ -90,6 +99,10 @@ export default function LocationPicker({
     if (!value.countryId) {
       setProvinces([]);
       setCities([]);
+      setLoadingProvinces(false);
+      setLoadingCities(false);
+      setProvinceError(false);
+      setCityError(false);
       return;
     }
     let alive = true;
@@ -106,6 +119,7 @@ export default function LocationPicker({
         const data = (await res.json()) as { provinces: Province[] };
         if (!alive) return;
         setProvinces(data.provinces ?? []);
+        if ((data.provinces ?? []).length === 0) setProvinceError(true);
         // If the current provinceId is no longer valid, clear it
         if (value.provinceId && !(data.provinces ?? []).some((p) => p.id === value.provinceId)) {
           onChange({ ...value, provinceId: "", cityId: "", provinceLabel: undefined, cityLabel: undefined });
@@ -128,6 +142,8 @@ export default function LocationPicker({
   useEffect(() => {
     if (!value.provinceId) {
       setCities([]);
+      setLoadingCities(false);
+      setCityError(false);
       return;
     }
     let alive = true;
@@ -143,6 +159,7 @@ export default function LocationPicker({
         const data = (await res.json()) as { cities: City[] };
         if (!alive) return;
         setCities(data.cities ?? []);
+        if ((data.cities ?? []).length === 0) setCityError(true);
         if (value.cityId && !(data.cities ?? []).some((c) => c.id === value.cityId)) {
           onChange({ ...value, cityId: "", cityLabel: undefined });
         }
@@ -173,7 +190,7 @@ export default function LocationPicker({
             value={value.countryId}
             onChange={(e) => {
               const selected = countries.find((c) => c.id === e.target.value);
-              onChange({ countryId: e.target.value, provinceId: "", cityId: "", countryLabel: selected?.name, provinceLabel: undefined, cityLabel: undefined });
+              onChange({ ...value, countryId: e.target.value, provinceId: "", cityId: "", countryLabel: selected?.name, provinceLabel: undefined, cityLabel: undefined, latitude: "", longitude: "" });
             }}
             className={selectCls}
             disabled={loadingCountries}
@@ -193,7 +210,7 @@ export default function LocationPicker({
         </div>
         {countryError && (
           <p role="alert" className="mt-2 text-xs text-red-300">
-            دریافت کشورها ناموفق بود.
+            فهرست کشورها دریافت نشد یا هنوز داده‌ای در آن ثبت نشده است.
             <button type="button" onClick={() => setCountryRetry((current) => current + 1)} className="mr-2 underline">تلاش مجدد</button>
           </p>
         )}
@@ -214,6 +231,8 @@ export default function LocationPicker({
                 provinceLabel: selected?.name,
                 cityId: "",
                 cityLabel: undefined,
+                latitude: "",
+                longitude: "",
               });
             }}
             className={selectCls}
@@ -238,7 +257,7 @@ export default function LocationPicker({
         </div>
         {provinceError && (
           <p role="alert" className="mt-2 text-xs text-red-300">
-            دریافت استان‌ها ناموفق بود.
+            فهرست استان‌های این کشور دریافت نشد یا خالی است.
             <button type="button" onClick={() => setProvinceRetry((current) => current + 1)} className="mr-2 underline">تلاش مجدد</button>
           </p>
         )}
@@ -259,6 +278,8 @@ export default function LocationPicker({
                 provinceLabel: value.provinceLabel,
                 cityId: e.target.value,
                 cityLabel: selected?.name,
+                latitude: "",
+                longitude: "",
               });
             }}
             className={selectCls}
@@ -283,11 +304,58 @@ export default function LocationPicker({
         </div>
         {cityError && (
           <p role="alert" className="mt-2 text-xs text-red-300">
-            دریافت شهرها ناموفق بود.
+            فهرست شهرهای این استان دریافت نشد یا خالی است.
             <button type="button" onClick={() => setCityRetry((current) => current + 1)} className="mr-2 underline">تلاش مجدد</button>
           </p>
         )}
       </div>
+      {showExactPoint && (
+      <div className="sm:col-span-3 rounded-2xl border border-white/10 bg-black/20 p-4">
+        <div className="mb-2 text-xs font-bold text-white/75">نقطهٔ دقیق محل دستگاه (اختیاری)</div>
+        <p className="mb-3 text-[11px] leading-6 text-white/45">
+          این مختصات باید محل واقعی دستگاه باشد؛ مختصات مرکز شهر به‌صورت خودکار جایگزین نمی‌شود.
+          تا زمان راه‌اندازی نقشهٔ اختصاصی HEAVIX، می‌توانید مختصات را دستی وارد کنید.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className={labelCls}>
+            عرض جغرافیایی (Latitude)
+            <input
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min="-90"
+              max="90"
+              value={value.latitude ?? ""}
+              onChange={(event) => onChange({ ...value, latitude: event.target.value })}
+              placeholder="مثلاً 35.6892"
+              className={selectCls + " mt-1.5"}
+            />
+          </label>
+          <label className={labelCls}>
+            طول جغرافیایی (Longitude)
+            <input
+              type="number"
+              inputMode="decimal"
+              step="any"
+              min="-180"
+              max="180"
+              value={value.longitude ?? ""}
+              onChange={(event) => onChange({ ...value, longitude: event.target.value })}
+              placeholder="مثلاً 51.3890"
+              className={selectCls + " mt-1.5"}
+            />
+          </label>
+        </div>
+        {(Boolean(value.latitude?.trim()) !== Boolean(value.longitude?.trim())) && (
+          <p role="alert" className="mt-2 text-xs text-red-300">برای ثبت نقطهٔ دقیق، هر دو مختصات عرض و طول باید وارد شوند.</p>
+        )}
+        {value.latitude?.trim() && value.longitude?.trim() && (
+          <p className="mt-2 text-[11px] text-emerald-300">
+            نقطهٔ واردشده: {value.latitude} ، {value.longitude}
+          </p>
+        )}
+      </div>
+      )}
     </div>
   );
 }

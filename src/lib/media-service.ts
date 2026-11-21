@@ -28,6 +28,7 @@ import { logAuditStrict, type AuditActorType } from "@/lib/audit";
 
 const ALLOWED_ENTITY_TYPES = new Set([
   "Listing",
+  "BuyRequest",
   "Product",
   "Part",
   "Brand",
@@ -189,6 +190,8 @@ export interface UploadAssetInput {
   /** Admin-managed assets are public; seller uploads must explicitly be private. */
   visibility?: MediaVisibility;
   actorType?: AuditActorType;
+  /** Maximum durable optimized object size, derived server-side from the user's plan. */
+  maxOutputBytes?: number;
 }
 
 export interface UploadAssetResult {
@@ -210,7 +213,10 @@ export async function uploadAsset(input: UploadAssetInput): Promise<UploadAssetR
 
   let optimized: Awaited<ReturnType<typeof optimizeImageBuffer>>;
   try {
-    optimized = await optimizeImageBuffer(buffer, validation.type);
+    optimized = await optimizeImageBuffer(buffer, validation.type, input.maxOutputBytes);
+    if (input.maxOutputBytes !== undefined && optimized.buffer.length > input.maxOutputBytes) {
+      return { ok: false, error: "تصویر پس از بهینه‌سازی با سقف حجم پلن حساب مطابقت ندارد." };
+    }
   } catch {
     return { ok: false, error: "تصویر نامعتبر است یا ابعاد آن بیش از حد مجاز است." };
   }

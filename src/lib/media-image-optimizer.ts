@@ -202,6 +202,7 @@ async function resizeIfNeeded(image: ImageData): Promise<ImageData> {
 export async function optimizeImageBuffer(
   buffer: Buffer,
   detectedType: ImageType,
+  maxOutputBytes?: number,
 ): Promise<OptimizedImage> {
   if (!buffer || buffer.length < 12) {
     throw new Error("Image could not be decoded");
@@ -227,6 +228,47 @@ export async function optimizeImageBuffer(
   assertDimensions(image);
   const normalized = await resizeIfNeeded(image);
   assertDimensions(normalized);
+
+  if (maxOutputBytes !== undefined) {
+    if (!Number.isSafeInteger(maxOutputBytes) || maxOutputBytes < 1 || maxOutputBytes > 2 * 1024 * 1024) {
+      throw new Error("Invalid image output byte limit");
+    }
+
+    // Apply the tier cap to the final server-generated object. WebP supports
+    // alpha, so PNG transparency is retained while quality and dimensions are
+    // reduced only as much as needed to satisfy the persisted entitlement.
+    let candidate = normalized;
+    for (let resizeAttempt = 0; resizeAttempt < 7; resizeAttempt++) {
+      for (const quality of [84, 78, 72, 66, 60, 54, 48]) {
+        const encoded = await encodeWebp(candidate, { quality, method: 4 });
+        const output = Buffer.from(encoded);
+        if (output.length <= maxOutputBytes) {
+          return {
+            buffer: output,
+            type: "webp",
+            ext: OUTPUT_FORMATS.webp.ext,
+            mime: OUTPUT_FORMATS.webp.mime,
+            reencoded: true,
+          };
+        }
+      }
+
+      if (resizeAttempt < 6) {
+        const width = Math.max(1, Math.floor(candidate.width * 0.82));
+        const height = Math.max(1, Math.floor(candidate.height * 0.82));
+        if (width === candidate.width && height === candidate.height) break;
+        candidate = await resizeImage(candidate, {
+          width,
+          height,
+          method: "lanczos3",
+          fitMethod: "contain",
+          premultiply: true,
+          linearRGB: true,
+        });
+      }
+    }
+    throw new Error("Image cannot be reduced below the plan's output size limit");
+  }
 
   if (detectedType === "png") {
     const output = await encodePng(normalized, { bitDepth: 8 });

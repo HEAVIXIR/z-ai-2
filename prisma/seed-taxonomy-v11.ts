@@ -665,41 +665,25 @@ async function preflightTaxonomyHierarchy(): Promise<void> {
   }
 }
 
-type ProvinceSeed = { name: string; cities: string[] };
+import IRAN_LOCATION_DATA from "./data/iran-locations-1404.json";
+import IRAN_LOCATION_MANIFEST from "./data/iran-locations-1404.manifest.json";
 
-const IRAN_PROVINCES: ProvinceSeed[] = [
-  { name: "تهران",                    cities: ["تهران", "اسلامشهر", "شهریار", "ورامین", "پاکدشت", "ری", "رباط‌کریم"] },
-  { name: "اصفهان",                   cities: ["اصفهان", "کاشان", "نجف‌آباد", "خمینی‌شهر", "فولادشهر", "زرین‌شهر"] },
-  { name: "فارس",                     cities: ["شیراز", "مرودشت", "جهرم", "کازرون", "فسا", "استهبان"] },
-  { name: "خراسان رضوی",              cities: ["مشهد", "نیشابور", "سبزوار", "تربت حیدریه", "قوچان", "کاشمر"] },
-  { name: "آذربایجان شرقی",           cities: ["تبریز", "مراغه", "میانه", "اهر", "مرند", "بناب"] },
-  { name: "آذربایجان غربی",           cities: ["ارومیه", "خوی", "مهاباد", "مراغه", "بوکان", "سلماس"] },
-  { name: "گیلان",                    cities: ["رشت", "بندر انزلی", "لاهیجان", "آستارا", "صومعه‌سرا", "تالش"] },
-  { name: "مازندران",                 cities: ["ساری", "بابل", "آمل", "قائم‌شهر", "نوشهر", "تنکابن"] },
-  { name: "گلستان",                   cities: ["گرگان", "گنبد کاووس", "علی‌آباد کتول", "بندر ترکمن", "آق‌قلا"] },
-  { name: "کرمان",                    cities: ["کرمان", "سیرجان", "رفسنجان", "جیرفت", "بم", "زرند"] },
-  { name: "یزد",                      cities: ["یزد", "میبد", "اردکان", "بافق", "مهریز", "تفت"] },
-  { name: "سمنان",                    cities: ["سمنان", "شاهرود", "دامغان", "گرمسار", "مهدی‌شهر"] },
-  { name: "قزوین",                    cities: ["قزوین", "تاکستان", "آبیک", "بوئین‌زهرا", "البرز"] },
-  { name: "قم",                       cities: ["قم", "قنوات", "کهک", "جعفریه", "سلفچگان"] },
-  { name: "مرکزی",                    cities: ["اراک", "ساوه", "خمین", "محلات", "دلیجان", "تفرش"] },
-  { name: "زنجان",                    cities: ["زنجان", "ابهر", "خرمدره", "قیدار", "ماه‌نشان"] },
-  { name: "اردبیل",                   cities: ["اردبیل", "پارس‌آباد", "مشگین‌شهر", "خلخال", "گرمی"] },
-  { name: "کردستان",                  cities: ["سنندج", "سقز", "مریوان", "بانه", "قروه", "بیجار"] },
-  { name: "همدان",                    cities: ["همدان", "ملایر", "نهاوند", "تویسرکان", "اسدآباد", "کبودرآهنگ"] },
-  { name: "کرمانشاه",                 cities: ["کرمانشاه", "اسلام‌آباد غرب", "هرسین", "صحنه", "کنگاور", "قصر شیرین"] },
-  { name: "ایلام",                    cities: ["ایلام", "دهلران", "آبدانان", "مهران", "ایوان"] },
-  { name: "لرستان",                   cities: ["خرم‌آباد", "بروجرد", "دورود", "الیگودرز", "کوهدشت", "ازنا"] },
-  { name: "خوزستان",                  cities: ["اهواز", "آبادان", "خرمشهر", "دزفول", "ماهشهر", "بهبهان", "اندیمشک"] },
-  { name: "بوشهر",                    cities: ["بوشهر", "برازجان", "گناوه", "خارک", "دیلم", "کنگان"] },
-  { name: "هرمزگان",                  cities: ["بندرعباس", "میناب", "قشم", "بندر لنگه", "کیش", "حاجی‌آباد"] },
-  { name: "سیستان و بلوچستان",        cities: ["زاهدان", "زابل", "چابهار", "ایرانشهر", "خاش", "سراوان"] },
-  { name: "خراسان شمالی",             cities: ["بجنورد", "اسفراین", "شیروان", "آشخانه", "جاجرم"] },
-  { name: "خراسان جنوبی",             cities: ["بیرجند", "قاین", "فردوس", "نهبندان", "طبس"] },
-  { name: "چاهارمحال و بختیاری",      cities: ["شهرکرد", "بروجن", "فارسان", "لردگان", "سامان", "اردل"] },
-  { name: "کهگیلویه و بویراحمد",      cities: ["یاسوج", "گچساران", "دهدشت", "سی‌سخت", "چرام", "باشت"] },
-  { name: "البرز",                    cities: ["کرج", "فردیس", "نظرآباد", "اشتهارد", "هشتگرد", "ماهدشت"] },
-];
+type ProvinceSeed = {
+  sourceCode: string;
+  name: string;
+  cities: Array<{ sourceCode: string; name: string; sortOrder: number }>;
+};
+
+// Canonical Country → Province → City catalog. County/district/village rows
+// are intentionally absent from the listing selector's normalized dataset.
+const IRAN_PROVINCES: ProvinceSeed[] = IRAN_LOCATION_DATA.provinces.map((province) => ({
+  sourceCode: province.sourceCode,
+  name: province.name,
+  cities: IRAN_LOCATION_DATA.cities
+    .filter((city) => city.provinceCode === province.sourceCode)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((city) => ({ sourceCode: city.sourceCode, name: city.name, sortOrder: city.sortOrder })),
+}));
 
 // ════════════════════════════════════════════════════════════
 // RECURSIVE UPSERT
@@ -778,6 +762,15 @@ async function main() {
   if (process.env.HEAVIX_ENV !== "preview") {
     throw new Error("Refusing to seed: HEAVIX_ENV must be preview. No writes performed.");
   }
+  if (
+    IRAN_LOCATION_MANIFEST.rightsReviewStatus !== "APPROVED" ||
+    IRAN_LOCATION_MANIFEST.commercialUseAllowed !== true
+  ) {
+    throw new Error(
+      "Refusing to seed: Iran location dataset rights gate is not approved. " +
+      "No database writes performed; review prisma/data/iran-locations-1404.manifest.json first.",
+    );
+  }
   console.log("🌱 HEAVIX Taxonomy Seed V1.1 starting...\n");
 
   console.log("Preflighting existing category hierarchy (read-only)...");
@@ -821,30 +814,62 @@ async function main() {
     await upsertCat(root, undefined, undefined, 0);
   }
 
-  // 5. Locations (Iran)
-  console.log(`5/6 Seeding Locations (Iran + ${IRAN_PROVINCES.length} provinces)...`);
+  // 5. Locations (Iran): all 31 provinces and every distinct real-city
+  // name from the official-source-year-1404 dataset. Two same-name records
+  // occur in different counties of the same province; the current City model
+  // is province/name unique, so identical selectable names are deduplicated.
+  console.log(`5/6 Seeding Locations (Iran + ${IRAN_PROVINCES.length} provinces + ${IRAN_LOCATION_DATA.metadata.distinctCityCount} distinct city names)...`);
   const iran = await db.country.upsert({
     where: { name: "ایران" },
     create: { name: "ایران", nameEn: "Iran", code: "IR", phoneCode: "+98", sortOrder: 1 },
     update: {},
   });
 
+  // Correct the historical seed spelling without replacing the province row
+  // or changing its ID/relations. If both spellings exist, stop for reviewed
+  // reconciliation rather than creating another ambiguous province.
+  const legacyChaharmahal = await db.province.findUnique({
+    where: { countryId_name: { countryId: iran.id, name: "چاهارمحال و بختیاری" } },
+    select: { id: true },
+  });
+  const canonicalChaharmahal = await db.province.findUnique({
+    where: { countryId_name: { countryId: iran.id, name: "چهارمحال و بختیاری" } },
+    select: { id: true },
+  });
+  if (legacyChaharmahal && canonicalChaharmahal) {
+    throw new Error("Both legacy and canonical Chaharmahal province rows exist; reviewed data reconciliation is required before seeding locations.");
+  }
+  if (legacyChaharmahal) {
+    await db.province.update({
+      where: { id: legacyChaharmahal.id },
+      data: { name: "چهارمحال و بختیاری" },
+    });
+  }
+
   let totalCities = 0;
   for (let p = 0; p < IRAN_PROVINCES.length; p++) {
     const pr = IRAN_PROVINCES[p];
     const prov = await db.province.upsert({
       where: { countryId_name: { countryId: iran.id, name: pr.name } },
-      create: { countryId: iran.id, name: pr.name, sortOrder: p + 1 },
-      update: {},
+      create: { countryId: iran.id, name: pr.name, sourceCode: pr.sourceCode, sortOrder: p + 1 },
+      update: { sourceCode: pr.sourceCode },
     });
-    for (let c = 0; c < pr.cities.length; c++) {
+    for (const city of pr.cities) {
       await db.city.upsert({
-        where: { provinceId_name: { provinceId: prov.id, name: pr.cities[c] } },
-        create: { provinceId: prov.id, name: pr.cities[c], sortOrder: c + 1 },
-        update: {},
+        where: { provinceId_name: { provinceId: prov.id, name: city.name } },
+        create: {
+          provinceId: prov.id,
+          name: city.name,
+          sourceCode: city.sourceCode,
+          sortOrder: city.sortOrder,
+        },
+        update: { sourceCode: city.sourceCode },
       });
       totalCities++;
     }
+  }
+  if (totalCities !== IRAN_LOCATION_DATA.metadata.distinctCityCount) {
+    throw new Error(`Location seed count mismatch: expected ${IRAN_LOCATION_DATA.metadata.distinctCityCount}, processed ${totalCities}`);
   }
 
   // 6. Final counts

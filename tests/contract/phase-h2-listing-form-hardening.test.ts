@@ -27,9 +27,9 @@ describe("PHASE H.2 — listing-form hardening contracts", () => {
       // The corrected branch is present.
       expect(wizard).toContain("if (isServiceFlow) {");
       expect(wizard).toContain("if (!serviceTypeId) return false;");
-      expect(wizard).toContain("if (isWantedServiceRequest) {");
+      expect(wizard).toContain("if (isWantedServiceRequest || isServiceRequest) {");
       // The WANTED-specific quantity/budget/deadline checks run inside it.
-      const branch = wizard.split("if (isWantedServiceRequest) {")[1]?.split("return true;")[0] ?? "";
+      const branch = wizard.split("if (isWantedServiceRequest || isServiceRequest) {")[1]?.split("return true;")[0] ?? "";
       expect(branch).toContain("Number.isInteger(wq)");
       expect(branch).toContain("wq >= 1");
       expect(branch).toContain("wmin <= wmax");

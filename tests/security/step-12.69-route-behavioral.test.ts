@@ -28,6 +28,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mocks for W-03 (POST /api/listings) ────────────────────
 let mockCurrentUser: { id: string; firstName?: string } | null = null;
 
+vi.mock("@/lib/csrf", () => ({ checkCsrf: () => true }));
 vi.mock("@/lib/auth", () => ({
   getCurrentUser: async () => mockCurrentUser,
   getCurrentUserId: async () => mockCurrentUser?.id ?? null,
@@ -106,6 +107,17 @@ describe("W-03: POST /api/listings — behavioral route test", () => {
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBeTruthy();
+  });
+
+  it("NEGATIVE: malformed attributeValues object is rejected instead of silently discarded", async () => {
+    mockCurrentUser = { id: "seller-A" };
+    const res = await listingsRoute.POST(makePostReq({
+      title: "Test Excavator",
+      attributeValues: { attributeId: "weight", numberValue: 12000 },
+    }));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("مشخصات فنی");
   });
 
   it("POSITIVE: authenticated user proceeds (not 401)", async () => {

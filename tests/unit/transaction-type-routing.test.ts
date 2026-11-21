@@ -30,6 +30,7 @@ describe("HEAVIX V1.1 transaction routing", () => {
     expect(isMarketplaceTransactionType("SALE")).toBe(false);
     expect(isServiceTransactionType("SERVICE_REQUEST")).toBe(true);
     expect(isRequestTransactionType("QUOTE")).toBe(true);
+    expect(isRequestTransactionType("SERVICE_REQUEST")).toBe(true);
     expect(isRequestTransactionType("RENT")).toBe(false);
   });
 

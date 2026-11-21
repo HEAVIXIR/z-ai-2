@@ -47,7 +47,7 @@ export async function GET(req: Request) {
       }
 
       const links = await db.categoryAttribute.findMany({
-        where: { categoryId: category.id },
+        where: { categoryId: category.id, active: true },
         orderBy: [
           { displayOrder: "asc" },
           { attribute: { sortOrder: "asc" } },

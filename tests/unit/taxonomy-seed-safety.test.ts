@@ -84,4 +84,28 @@ describe("Preview taxonomy seed safety contracts", () => {
     expect(verifier).toContain("brands < 629");
   });
 
+  it("uses the complete official-source-year-1404 real-city dataset for all Iranian provinces", () => {
+    const data = JSON.parse(
+      readFileSync(path.resolve(process.cwd(), "prisma/data/iran-cities-1404.json"), "utf8"),
+    );
+    const seed = readSeed("seed-taxonomy-v11.ts");
+    expect(data.datasetVersion).toBe("3.1.2");
+    expect(data.officialSourceYear).toBe(1404);
+    expect(data.provinceCount).toBe(31);
+    expect(data.sourceCityRecordCount).toBe(1481);
+    expect(data.cityCount).toBe(1479);
+    expect(data.provinces).toHaveLength(31);
+    const flattened = data.provinces.flatMap((province: { name: string; cities: string[] }) =>
+      province.cities.map((city) => `${province.name}::${city}`),
+    );
+    expect(flattened).toHaveLength(1479);
+    expect(new Set(flattened).size).toBe(1479);
+    expect(data.provinces.every((province: { name: string; cities: string[] }) =>
+      province.name && province.cities.length > 0 && province.cities.every(Boolean),
+    )).toBe(true);
+    expect(seed).toContain('IRAN_LOCATION_DATA.provinces.map((province)');
+    expect(seed).toContain('name: "چهارمحال و بختیاری"');
+    expect(seed).toContain("totalCities !== IRAN_LOCATION_DATA.metadata.distinctCityCount");
+  });
+
 });

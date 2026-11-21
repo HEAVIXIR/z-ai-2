@@ -17,6 +17,8 @@ function createDb() {
     attributeDefinition: {
       findMany: vi.fn(async () => [{
         id: "attr-1",
+        name: "Operating weight",
+        labelFa: "وزن عملیاتی",
         type: "SELECT",
         options: [{ id: "option-1" }, { id: "option-2" }],
       }]),
@@ -109,7 +111,7 @@ describe("listing attribute validation", () => {
     );
     expect(result).toEqual({
       ok: false,
-      error: "لطفاً تمام ویژگی‌های الزامی این دسته‌بندی را تکمیل کنید.",
+      error: "لطفاً این مشخصات الزامی را تکمیل کنید: وزن عملیاتی",
     });
   });
 

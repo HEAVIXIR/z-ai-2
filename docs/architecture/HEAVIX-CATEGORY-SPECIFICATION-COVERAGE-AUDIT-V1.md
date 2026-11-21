@@ -1,27 +1,33 @@
 # HEAVIX Category-Specific Specification Coverage Audit — V1
 
-## Critical finding: two taxonomy layers that are not yet reconciled
+## Current static coverage re-audit (2026-11-20)
 
-The repository contains a broader V1.1 catalog seed and a separate definitive machine-subtree seed:
-
-1. `prisma/seed-taxonomy-v11.ts`: the current V1.1-style taxonomy. On this branch it contains 279 unique slugs after the first expansion.
-2. `prisma/seed-machine-taxonomy.ts`: explicitly describes itself as the **definitive machine taxonomy restructure**, with 16 L1 groups, 181 L2 families and 104 L3 variants (302 unique slugs including the `machinery` root after adding industrial utilities and fuel-station equipment).
-
-Repository docs and public mega-menu comments refer to the 16-L1 structure. The best current interpretation is that V1.1 defines the broader marketplace roots while the 16-group seed refines the `machinery` subtree. Their slug ownership and execution order still need explicit reconciliation; the actual Preview database state has not been verified. Do not run either seed against a database until the live Preview DB target and taxonomy state are verified read-only.
-
-## Definitive tree coverage audit
-
-Static parsing of the updated `seed-machine-taxonomy.ts`:
-- 16 L1 groups.
-- 181 L2 families, of which 15 have L3 children and 166 are terminal L2 categories.
+The current branch contains:
+- 16 L1 machine groups.
+- 182 L2 machine families: 167 terminal L2 categories and 15 L2 parents with L3 children.
 - 104 L3 variants.
-- **270 selectable terminal categories** (166 L2 leaves + 104 L3 leaves).
-- The current 128 exact-form template slugs overlap with 70 slugs in this definitive tree.
-- Of those, 64 map to terminal categories; 6 are family/parent nodes.
-- Including the legacy multi-slug catalog, 72 terminal categories have a direct mapping.
-- Thus **198 of the 270 terminal categories still lack a directly mapped exact form** in the definitive tree. Some may receive inherited legacy fields, but inheritance alone is not proof of a complete subtype-specific form.
+- **271 selectable terminal machine categories** (167 terminal L2 + 104 L3).
+- `prisma/seed-category-specific-attributes.ts` defines 258 unique templates across the audited catalog roots.
+- **271 of 271 machine terminal categories now have direct templates** after adding 88 subtype-specific leaf forms.
+- A further **73 of 73 terminal categories** across vehicles (12), attachments (13), agriculture (12), industrial equipment (20), and parts (16) also have direct templates.
+- **All 344 terminal categories across the six configured CATALOG roots are covered** in the static source comparison.
+- The form registry contains 362 unique template slugs across the broader configured catalog roots.
+- `tests/unit/machine-leaf-form-coverage.test.ts` enforces machine-tree coverage, the five additional root coverages, and duplicate-slug rejection.
 
-The 128-template catalog was initially built against the broader V1.1 taxonomy. It must be reconciled to the definitive 16-group machine tree before it is considered production-ready. Some V1.1-only templates belong to separate vehicle/agriculture/attachment roots; others use aliases that must map to canonical machine slugs rather than remain attached to retired duplicate categories. Do not interpret the earlier V1.1 counts (279 taxonomy slugs, 203 direct mappings) as coverage of the definitive machine tree.
+The 88 machine additions cover excavator, loader, grader, backhoe, scraper, roller, mining shovel/LHD, drilling, crushing, concrete/asphalt, crane, material handling, haulage, port, recycling, tunnel and generator subtypes. A further 16 direct forms cover general spare parts plus engine, transmission, hydraulic, electrical, undercarriage, pump, valve, final-drive, swing-motor, filter, cooling, wear-part, tire/track, bearing and other-parts categories. Each generated leaf template has a required primary technical field and keeps family-level fields inherited from its parent category. Existing direct templates cover the other 72 terminal categories across vehicles, attachments, agriculture, industrial equipment and parts.
+
+## Service and mineral form coverage
+
+- 26 supplemental service leaves in the dedicated service taxonomy have explicit forms.
+- 19 legacy terminal service categories in the V1.1 service tree have generated forms.
+- 22 terminal material categories (13 direct material categories plus 9 iron-ore/copper/coal product leaves) have generated product forms.
+- `tests/unit/service-mineral-form-coverage.test.ts` enforces all 26 + 19 + 22 mappings and verifies the shared mineral attributes are inherited from the material root.
+
+These counts are a static comparison of the checked-in machine TREE and template registry. The seed's runtime preflight is stricter and evaluates active terminal categories across its five configured CATALOG roots in the target database. It remains fail-closed and must not be run against Preview or Production as part of this work. The previous 198-missing and 88-missing snapshots are historical and must not be used as current status.
+
+## Taxonomy source reconciliation
+
+The repository still contains a broader V1.1 catalog seed and a definitive 16-group machine-subtree seed. V1.1 owns the broader marketplace roots; the definitive seed refines the machinery subtree. Their database execution order and current Preview state are not inferred from source files. Keep all seeds in dry-run/read-only mode until the Preview target and backup are separately verified.
 
 ## The 16 definitive machine families
 
@@ -110,15 +116,14 @@ For L2 families with L3 children, the intended implementation is a complete fami
 ## Execution status
 
 - No taxonomy seed or attribute seed has been run against Preview or Production.
-- No database write or migration was performed.
-- No Cloudflare/Vercel build or deployment was run.
-- PR #317 remains Draft and unmerged.
-- The exact Preview Worker database branch is still not verified. Do not seed or migrate until the target is proven.
+- No database write or migration was performed for this audit.
+- No Cloudflare/Vercel deployment was run.
+- The machine taxonomy seed and form seed both have explicit fail-closed gates; the form seed aborts before writes when any active terminal equipment category lacks a dedicated template.
+- The Preview Worker database target and its current taxonomy state remain unverified.
 
 ## Next acceptance gate
 
-1. Reconcile V1.1 and the definitive 16-group tree into one canonical taxonomy source.
-2. Add missing industrial/fuel-station families to the definitive tree in the correct L1/L2/L3 positions (the first industrial-utility and fuel-station expansion is now present).
-3. Build an explicit 243-terminal-category form matrix: L2 family fields + L3 subtype-specific fields.
-4. Add tests for taxonomy slug coverage, composed inheritance, required validation, unit consistency and listing persistence.
-5. Read-only verify actual Preview category rows and attribute links before any Preview seed.
+1. Validate the new 88 leaf templates against manufacturer technical references and refine labels/options/units where authoritative specifications are available.
+2. Extend static tests to validate field-key type/unit consistency, option definitions, and composed parent/leaf inheritance.
+3. Reconcile broader V1.1 roots and service/mineral taxonomy with the definitive machine subtree.
+4. Read-only verify actual Preview category rows and attribute links before any separately approved Preview seed.

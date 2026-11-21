@@ -1,33 +1,83 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { describeCompression, prepareImageForUpload } from "@/lib/browser-image-optimization";
+import {
+  FREE_LISTING_IMAGE_POLICY,
+  PRO_LISTING_IMAGE_POLICY,
+  PREMIUM_LISTING_IMAGE_POLICY,
+  type ListingImagePolicy,
+} from "@/lib/listing-image-policy-shared";
 
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+type UploadedMediaAsset = { assetId: string; url: string };
 
 type Props = {
   images: string[];
   onChange: (images: string[]) => void;
+  /** Stable staging identifiers for canonical attach/retry flows. */
+  onAssetsChange?: (assets: UploadedMediaAsset[]) => void;
   onUploadingChange?: (uploading: boolean) => void;
-  maxImages?: number;
+  required?: boolean;
+  entityType?: "Listing" | "BuyRequest";
 };
 
 export default function ListingImageUploader({
   images,
   onChange,
+  onAssetsChange,
   onUploadingChange,
-  maxImages = 10,
+  required = false,
+  entityType = "Listing",
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [policy, setPolicy] = useState<ListingImagePolicy>(FREE_LISTING_IMAGE_POLICY);
+  const [policyReady, setPolicyReady] = useState(false);
+  const maxImages = policy.maxImages;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/media/staging", { method: "GET", cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("policy unavailable");
+        const payload = await response.json();
+        const next = payload?.policy as ListingImagePolicy | undefined;
+        if (
+          next &&
+          (next.tier === "FREE" || next.tier === "PRO" || next.tier === "PREMIUM") &&
+          Number.isInteger(next.maxImages) &&
+          Number.isInteger(next.maxImageBytes)
+        ) {
+          setPolicy({
+            tier: next.tier,
+            maxListings:
+              next.tier === "PREMIUM"
+                ? PREMIUM_LISTING_IMAGE_POLICY.maxListings
+                : next.tier === "PRO"
+                  ? PRO_LISTING_IMAGE_POLICY.maxListings
+                  : FREE_LISTING_IMAGE_POLICY.maxListings,
+            maxImages: Math.min(8, Math.max(1, next.maxImages)),
+            maxImageBytes: Math.min(2 * 1024 * 1024, Math.max(1, next.maxImageBytes)),
+          });
+        }
+      })
+      .catch(() => {
+        // Fail closed to the free UI policy; the upload and listing APIs
+        // independently resolve and enforce the authoritative entitlement.
+      })
+      .finally(() => setPolicyReady(true));
+    return () => controller.abort();
+  }, []);
 
   const uploadFiles = async (selected: FileList | File[]) => {
     const files = Array.from(selected);
-    if (!files.length) return;
+    if (!files.length || !policyReady) return;
     setError(null);
     setNotice(null);
 
@@ -46,6 +96,7 @@ export default function ListingImageUploader({
     onUploadingChange?.(true);
     setProgress({ completed: 0, total: accepted.length });
     const uploaded: string[] = [];
+    const uploadedAssets: UploadedMediaAsset[] = [];
     const compressionNotes: string[] = [];
 
     try {
@@ -55,33 +106,45 @@ export default function ListingImageUploader({
           throw new Error(`فرمت «${source.name}» پشتیبانی نمی‌شود. فقط JPG، PNG و WebP مجاز هستند.`);
         }
 
-        const prepared = await prepareImageForUpload(source);
+        const prepared = await prepareImageForUpload(source, policy.maxImageBytes);
         const body = new FormData();
         body.append("file", prepared.file);
+        body.append("entityType", entityType);
 
         const response = await fetch("/api/media/staging", {
           method: "POST",
           body,
         });
         const result = await response.json().catch(() => null);
-        if (!response.ok || !result?.url) {
+        if (
+          !response.ok ||
+          typeof result?.url !== "string" ||
+          typeof result?.assetId !== "string"
+        ) {
           throw new Error(result?.error ?? `آپلود تصویر «${source.name}» ناموفق بود.`);
         }
 
-        uploaded.push(result.url as string);
+        uploaded.push(result.url);
+        uploadedAssets.push({ assetId: result.assetId, url: result.url });
         const compression = describeCompression(prepared);
         if (compression) compressionNotes.push(compression);
         setProgress({ completed: index + 1, total: accepted.length });
       }
 
-      if (uploaded.length) onChange([...images, ...uploaded]);
+      if (uploaded.length) {
+        onChange([...images, ...uploaded]);
+        onAssetsChange?.(uploadedAssets);
+      }
       if (compressionNotes.length) {
         setNotice(`${uploaded.length} تصویر با موفقیت آپلود شد. ${compressionNotes[0]}`);
       } else if (uploaded.length) {
         setNotice(`${uploaded.length} تصویر با موفقیت آپلود شد.`);
       }
     } catch (uploadError) {
-      if (uploaded.length) onChange([...images, ...uploaded].slice(0, maxImages));
+      if (uploaded.length) {
+        onChange([...images, ...uploaded].slice(0, maxImages));
+        onAssetsChange?.(uploadedAssets);
+      }
       setError(
         uploadError instanceof Error
           ? `${uploadError.message}${uploaded.length ? ` ${uploaded.length} تصویر قبلی با موفقیت آپلود شدند.` : ""}`
@@ -97,11 +160,11 @@ export default function ListingImageUploader({
   return (
     <div>
       <label className="mb-1.5 block text-xs font-bold text-white/60">
-        تصاویر دستگاه *
+        تصاویر{required ? " *" : " (اختیاری)"}
       </label>
       <button
         type="button"
-        disabled={uploading || images.length >= maxImages}
+        disabled={uploading || !policyReady || images.length >= maxImages}
         onClick={() => inputRef.current?.click()}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
@@ -116,10 +179,10 @@ export default function ListingImageUploader({
           <ImagePlus className="mb-3 h-10 w-10 text-white/30" />
         )}
         <span className="text-sm font-bold text-white/60">
-          {uploading ? "در حال آپلود تصاویر واقعی..." : "تصاویر دستگاه را انتخاب کنید"}
+          {uploading ? "در حال آپلود تصاویر واقعی..." : !policyReady ? "در حال بررسی سطح اشتراک..." : "تصاویر را انتخاب کنید"}
         </span>
         <span className="mt-1 text-[11px] text-white/30">
-          JPG، PNG و WebP · حداکثر ۲۰ مگابایت ورودی برای هر تصویر
+          {policy.tier === "PREMIUM" ? "اشتراک پریمیوم" : policy.tier === "PRO" ? "اشتراک حرفه‌ای" : "اشتراک پایه"} · حداکثر {maxImages} عکس · هر عکس تا {policy.maxImageBytes / (1024 * 1024)} مگابایت · بهینه‌سازی خودکار
         </span>
         {uploading && (
           <span className="mt-2 text-xs text-[#F58220]">
@@ -133,7 +196,7 @@ export default function ListingImageUploader({
         multiple
         accept="image/jpeg,image/png,image/webp"
         className="hidden"
-        disabled={uploading || images.length >= maxImages}
+        disabled={uploading || !policyReady || images.length >= maxImages}
         onChange={(event) => {
           if (event.target.files) void uploadFiles(event.target.files);
         }}
@@ -159,7 +222,7 @@ export default function ListingImageUploader({
             >
               <img
                 src={imageUrl}
-                alt={`تصویر دستگاه ${index + 1}`}
+                alt={`تصویر ${index + 1}`}
                 className="h-full w-full object-cover"
                 loading="lazy"
               />
@@ -183,7 +246,7 @@ export default function ListingImageUploader({
       )}
       <div className="mt-3 flex items-center justify-between text-[11px] text-white/35">
         <span>{images.length} از {maxImages} تصویر آپلود شده</span>
-        <span>حداقل یک تصویر الزامی است</span>
+        <span>{required ? "حداقل یک تصویر الزامی است" : "افزودن تصویر اختیاری است"}</span>
       </div>
     </div>
   );
