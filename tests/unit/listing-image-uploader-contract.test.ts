@@ -33,7 +33,11 @@ describe("Listing image upload contract", () => {
 
   it("uses the real uploader in the listing wizard instead of placeholder URLs", () => {
     const source = read("src/app/listings/new/page.tsx");
-    expect(source).toContain("ListingImageUploader images={images} onChange={setImages}");
+    expect(source).toContain("<ListingImageUploader");
+    expect(source).toContain("images={images}");
+    expect(source).toContain("onChange={handleImagesChange}");
+    expect(source).toContain("onAssetsChange={handleStagedAssetsChange}");
+    expect(source).toContain('entityType={transactionType === "WANTED" || isServiceRequest ? "BuyRequest" : "Listing"}');
     expect(source).not.toContain("placeholder-${Date.now()}");
   });
 });
