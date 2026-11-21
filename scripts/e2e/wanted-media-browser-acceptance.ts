@@ -19,7 +19,7 @@ import { deleteAsset, getAsset } from "../../src/lib/media-service";
 
 type PageLike = {
   goto(url: string, options?: { waitUntil?: string }): Promise<{ status(): number } | null>;
-  evaluate<Arg, Result>(fn: (arg: Arg) => Result | Promise<Result>, arg: Arg): Promise<Awaited<Result>>;
+  evaluate<Arg, Result>(fn: ((arg: Arg) => Result | Promise<Result>) | string, arg: Arg): Promise<Awaited<Result>>;
 };
 type APIResponseLike = {
   status(): number;
@@ -220,39 +220,29 @@ async function loadImage(page: PageLike, mediaUrl: string): Promise<{ width: num
       image.src = src;
     });
     return { width: image.naturalWidth, height: image.naturalHeight };
-  }, mediaUrl);
-}
-
-// WANTED_MEDIA_BROWSER_E2E: exercise the real seven-step wizard's demand taxonomy entry path.
+  }, med// WANTED_MEDIA_BROWSER_E2E: exercise the real seven-step wizard's demand taxonomy entry path.
 async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; detail: string }> {
   await page.goto(`${baseUrl}/listings/new`, { waitUntil: "domcontentloaded" });
-  return page.evaluate(async () => {
-    async function pause(): Promise<void> {
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 80));
-    }
-    async function waitFor(predicate: () => boolean, label: string): Promise<void> {
+  const browserScript = `(async () => {
+    const pause = () => new Promise(resolve => window.setTimeout(resolve, 80));
+    const waitFor = async (predicate, label) => {
       for (let attempt = 0; attempt < 50; attempt++) {
         if (predicate()) return;
         await pause();
       }
-      throw new Error(`Timed out waiting for ${label}`);
-    }
-    function button(label: string): HTMLButtonElement | undefined {
-      return [...document.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent?.trim() === label);
-    }
-    async function click(label: string): Promise<void> {
-      await waitFor(() => {
-        const candidate = button(label);
-        return !!candidate && !candidate.disabled;
-      }, `enabled button: ${label}`);
-      button(label)!.click();
+      throw new Error("Timed out waiting for " + label);
+    };
+    const button = label => Array.from(document.querySelectorAll("button")).find(item => item.textContent.trim() === label);
+    const click = async label => {
+      await waitFor(() => { const candidate = button(label); return !!candidate && !candidate.disabled; }, "enabled button: " + label);
+      button(label).click();
       await pause();
-    }
+    };
     try {
       const typeResponse = await fetch("/api/transaction-types", { cache: "no-store" });
       if (!typeResponse.ok) throw new Error("transaction types API failed");
-      const typePayload = await typeResponse.json() as { types?: Array<{ key: string; nameFa: string }> };
-      const wantedType = typePayload.types?.find((item) => item.key === "WANTED");
+      const typePayload = await typeResponse.json();
+      const wantedType = typePayload.types && typePayload.types.find(item => item.key === "WANTED");
       if (!wantedType) throw new Error("WANTED transaction type is not configured");
       await waitFor(() => !!button(wantedType.nameFa), "WANTED transaction card");
       await click(wantedType.nameFa);
@@ -261,12 +251,9 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       await waitFor(() => document.body.innerText.includes("دسته‌بندی موضوع آگهی"), "marketplace category step");
       const taxonomyResponse = await fetch("/api/taxonomy", { cache: "no-store" });
       if (!taxonomyResponse.ok) throw new Error("taxonomy API failed");
-      const taxonomy = await taxonomyResponse.json() as {
-        marketplaceRoots?: Array<{ name: string }>;
-        serviceRoots?: Array<{ name: string }>;
-      };
-      const marketplaceRoot = taxonomy.marketplaceRoots?.find((item) => item.name === "HEAVIX Browser E2E Machine");
-      const serviceRoot = taxonomy.serviceRoots?.find((item) => item.name === "HEAVIX Browser E2E Service");
+      const taxonomy = await taxonomyResponse.json();
+      const marketplaceRoot = taxonomy.marketplaceRoots && taxonomy.marketplaceRoots.find(item => item.name === "HEAVIX Browser E2E Machine");
+      const serviceRoot = taxonomy.serviceRoots && taxonomy.serviceRoots.find(item => item.name === "HEAVIX Browser E2E Service");
       if (!marketplaceRoot || !serviceRoot) throw new Error("isolated marketplace/service taxonomy fixtures are missing");
       await click(marketplaceRoot.name);
       await click("مرحله بعد");
@@ -276,19 +263,15 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       await click("خدمات");
       await click("مرحله بعد");
       await waitFor(() => document.body.innerText.includes("دسته‌بندی خدمات"), "service category step");
-      if (document.body.innerText.includes(marketplaceRoot.name)) {
-        throw new Error("marketplace category leaked into service taxonomy after intent switch");
-      }
+      if (document.body.innerText.includes(marketplaceRoot.name)) throw new Error("marketplace category leaked into service taxonomy after intent switch");
       await click(serviceRoot.name);
-      await waitFor(() => {
-        const next = button("مرحله بعد");
-        return !!next && !next.disabled;
-      }, "terminal service category selection");
+      await waitFor(() => { const next = button("مرحله بعد"); return !!next && !next.disabled; }, "terminal service category selection");
       return { ok: true, detail: "WANTED buy → marketplace category → back → service intent → service taxonomy → terminal category" };
     } catch (error) {
-      return { ok: false, detail: error instanceof Error ? error.message : String(error) };
+      return { ok: false, detail: error && error.message ? error.message : String(error) };
     }
-  }, null);
+  })()`;
+  return page.evaluate<null, { ok: boolean; detail: string }>(browserScript, null);
 }
 
 async function main(): Promise<void> {
