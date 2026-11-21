@@ -155,3 +155,4 @@ jobs:
 # acceptance job. It never targets Preview/Production or a persistent database.
 # WANTED_MEDIA_BROWSER_E2E — explicit owner-authorized execution marker.
 # Triggered from Integration with a marker-only workflow comment change; isolated disposable DB only.
+# Re-run after aligning the WANTED E2E taxonomy fixture with the canonical CATALOG roots.
