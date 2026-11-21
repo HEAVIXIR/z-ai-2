@@ -504,9 +504,12 @@ export async function POST(req: Request) {
     // A wanted request must target a selectable leaf, not a navigation parent.
     // This is enforced server-side even if a client bypasses the wizard.
     if (requestedCategoryId) {
-      const expectedLayer = intentStr === "SERVICE_REQUEST" ? "SERVICE" : "MARKETPLACE";
-      if (categoryRow && categoryRow.layer !== expectedLayer) {
-        return NextResponse.json({ error: intentStr === "SERVICE_REQUEST" ? "برای درخواست خدمات، دسته‌بندی خدمات را انتخاب کنید." : "برای درخواست کالا، دسته‌بندی بازار را انتخاب کنید." }, { status: 400 });
+      // WANTED product requests now select canonical CATALOG categories in the
+      // wizard. Keep MARKETPLACE accepted for backward compatibility with
+      // existing clients/data while SERVICE_REQUEST remains SERVICE-only.
+      const allowedLayers = intentStr === "SERVICE_REQUEST" ? ["SERVICE"] : ["CATALOG", "MARKETPLACE"];
+      if (categoryRow && !allowedLayers.includes(categoryRow.layer)) {
+        return NextResponse.json({ error: intentStr === "SERVICE_REQUEST" ? "برای درخواست خدمات، دسته‌بندی خدمات را انتخاب کنید." : "برای درخواست کالا، دسته‌بندی معتبر کالا را انتخاب کنید." }, { status: 400 });
       }
       const activeChild = await db.category.findFirst({
         where: { parentId: requestedCategoryId, active: true },
