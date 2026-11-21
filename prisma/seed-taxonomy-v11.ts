@@ -772,7 +772,8 @@ async function main() {
   // Isolated modes avoid touching unrelated taxonomy dimensions or locations.
   const categoriesOnly = process.argv.includes("--categories-only");
   const serviceTypesOnly = process.argv.includes("--service-types-only");
-  if (!categoriesOnly && !serviceTypesOnly && (
+  const applicationIndustriesOnly = process.argv.includes("--application-industries-only");
+  if (!categoriesOnly && !serviceTypesOnly && !applicationIndustriesOnly && (
     IRAN_LOCATION_MANIFEST.rightsReviewStatus !== "APPROVED" ||
     IRAN_LOCATION_MANIFEST.commercialUseAllowed !== true
   )) {
@@ -805,6 +806,66 @@ async function main() {
     if (missing.length) throw new Error(`ServiceType verification failed: ${missing.join(", ")}`);
     console.log("SERVICE TYPES VERIFIED");
     console.log(JSON.stringify({ activeServiceTypes: seeded.length, keys: seeded.map((row) => row.key).sort() }, null, 2));
+    return;
+  }
+
+  if (applicationIndustriesOnly) {
+    const links: Array<{ categorySlug: string; industryKey: string }> = [];
+    const collectLinks = (nodes: CatSeed[]) => {
+      for (const node of nodes) {
+        for (const industryKey of node.appIndustries ?? []) {
+          links.push({ categorySlug: node.slug, industryKey });
+        }
+        if (node.children?.length) collectLinks(node.children);
+      }
+    };
+    collectLinks(TREE);
+    const uniqueLinks = [...new Map(links.map((link) => [`${link.categorySlug}::${link.industryKey}`, link])).values()];
+    const categorySlugs = [...new Set(uniqueLinks.map((link) => link.categorySlug))];
+    const categoryRows = await db.category.findMany({
+      where: { slug: { in: categorySlugs }, active: true },
+      select: { id: true, slug: true },
+    });
+    const missingCategories = categorySlugs.filter((slug) => !categoryRows.some((row) => row.slug === slug));
+    const validIndustryKeys = new Set(APP_INDUSTRIES.map((industry) => industry.key));
+    const missingIndustryKeys = [...new Set(uniqueLinks.map((link) => link.industryKey).filter((key) => !validIndustryKeys.has(key)))];
+    if (missingCategories.length || missingIndustryKeys.length) {
+      throw new Error(`ApplicationIndustry preflight failed; no links written: ${JSON.stringify({ missingCategories, missingIndustryKeys })}`);
+    }
+
+    for (const industry of APP_INDUSTRIES) {
+      await db.applicationIndustry.upsert({
+        where: { key: industry.key },
+        create: industry,
+        update: {},
+      });
+    }
+    const industryRows = await db.applicationIndustry.findMany({
+      where: { key: { in: APP_INDUSTRIES.map((industry) => industry.key) }, active: true },
+      select: { id: true, key: true },
+    });
+    const categoryBySlug = new Map(categoryRows.map((row) => [row.slug, row.id]));
+    const industryByKey = new Map(industryRows.map((row) => [row.key, row.id]));
+    for (const link of uniqueLinks) {
+      const categoryId = categoryBySlug.get(link.categorySlug)!;
+      const applicationIndustryId = industryByKey.get(link.industryKey)!;
+      await db.categoryApplicationIndustry.upsert({
+        where: { categoryId_applicationIndustryId: { categoryId, applicationIndustryId } },
+        create: { categoryId, applicationIndustryId },
+        update: {},
+      });
+    }
+    const linkedCount = await db.categoryApplicationIndustry.count({
+      where: {
+        categoryId: { in: categoryRows.map((row) => row.id) },
+        applicationIndustryId: { in: industryRows.map((row) => row.id) },
+      },
+    });
+    if (linkedCount < uniqueLinks.length) {
+      throw new Error(`ApplicationIndustry link verification failed: expected at least ${uniqueLinks.length}, got ${linkedCount}`);
+    }
+    console.log("APPLICATION INDUSTRIES VERIFIED");
+    console.log(JSON.stringify({ activeIndustries: industryRows.length, expectedLinks: uniqueLinks.length, linkedCount }, null, 2));
     return;
   }
 
