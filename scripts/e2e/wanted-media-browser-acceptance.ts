@@ -318,25 +318,29 @@ async function main(): Promise<void> {
   });
   const category = await prisma.category.upsert({
     where: { slug: "heavix-browser-e2e-machine" },
-    update: { active: true, layer: "MARKETPLACE", domain: "MACHINE" },
+    update: { active: true, layer: "MARKETPLACE", domain: "MACHINE", parentId: null, level: 0 },
     create: {
       name: "HEAVIX Browser E2E Machine",
       nameEn: "HEAVIX Browser E2E Machine",
       slug: "heavix-browser-e2e-machine",
       layer: "MARKETPLACE",
       domain: "MACHINE",
+      parentId: null,
+      level: 0,
       active: true,
     },
   });
   await prisma.category.upsert({
     where: { slug: "heavix-browser-e2e-service" },
-    update: { active: true, layer: "SERVICE", domain: "MACHINE" },
+    update: { active: true, layer: "SERVICE", domain: "MACHINE", parentId: null, level: 0 },
     create: {
       name: "HEAVIX Browser E2E Service",
       nameEn: "HEAVIX Browser E2E Service",
       slug: "heavix-browser-e2e-service",
       layer: "SERVICE",
       domain: "MACHINE",
+      parentId: null,
+      level: 0,
       active: true,
     },
   });
