@@ -4,6 +4,28 @@ import { join } from "node:path";
 
 const read = (file: string) => readFileSync(join(process.cwd(), file), "utf8");
 
+const findJsonArrayEnd = (source: string, start: number) => {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "[") depth += 1;
+    else if (char === "]") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+};
+
 describe("definitive machine terminal form coverage", () => {
   const taxonomy = read("prisma/seed-machine-taxonomy.ts");
   const taxonomyV11 = read("prisma/seed-taxonomy-v11.ts");
@@ -26,7 +48,7 @@ describe("definitive machine terminal form coverage", () => {
     // The machine TREE is emitted as JSON-compatible TypeScript. Parse the
     // actual hierarchy instead of inferring terminal nodes from indentation.
     const arrayStart = treeBlock.indexOf("= [") + 2;
-    const arrayEnd = treeBlock.lastIndexOf("]");
+    const arrayEnd = findJsonArrayEnd(treeBlock, arrayStart);
     const machineTree = JSON.parse(
       treeBlock.slice(arrayStart, arrayEnd + 1).replace(/^\s*\/\/.*$/gm, ""),
     ) as Array<{ l2: Array<{ slug: string; l3?: Array<{ slug: string }> }> }>;
