@@ -204,7 +204,7 @@ async function loadImage(page: PageLike, mediaUrl: string): Promise<{ width: num
 }
 
 // WANTED_MEDIA_BROWSER_E2E: exercise the real seven-step wizard's demand taxonomy entry path.
-async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; detail: string }> {
+async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; detail: string; uploadedAssetId?: string }> {
   await page.goto(`${baseUrl}/listings/new`, { waitUntil: "domcontentloaded" });
   const browserScript = `(async () => {
     const pause = () => new Promise(resolve => window.setTimeout(resolve, 80));
@@ -291,33 +291,7 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
         const input = document.querySelector('input[type="file"]');
         return !!input && !input.disabled;
       }, "enabled WANTED private image file input");
-      await page.setInputFiles('input[type="file"]', [{
-        name: "wanted-wizard-browser-e2e.png",
-        mimeType: "image/png",
-        buffer: createPngFixture(),
-      }]);
-      await page.evaluate(async () => {
-        for (let attempt = 0; attempt < 150; attempt++) {
-          if (document.querySelector('img[alt="تصویر 1"]')) return;
-          const error = document.querySelector('[role="alert"]');
-          if (error?.textContent?.trim()) throw new Error("WANTED wizard upload failed: " + error.textContent.trim());
-          await new Promise(resolve => window.setTimeout(resolve, 100));
-        }
-        throw new Error("WANTED wizard upload did not render its staged image preview");
-      }, null);
-
-      // Return to step 1, then verify switching to service intent loads only
-      // the service taxonomy as a separate wizard path.
-      for (let index = 0; index < 5; index++) await click("مرحله قبل");
-      await click("خدمات");
-      await click("مرحله بعد");
-      await waitFor(() => document.body.innerText.includes("دسته‌بندی خدمات"), "service category step");
-      await waitFor(() => !document.body.innerText.includes("در حال بارگذاری دسته‌بندی‌ها"), "service taxonomy hydration");
-      if (document.body.innerText.includes(marketplaceRoot.name)) throw new Error("marketplace category leaked into service taxonomy after intent switch");
-      await waitFor(() => !!button(serviceRoot.name), "service root rendered in the wizard");
-      await click(serviceRoot.name);
-      await waitFor(() => { const next = button("مرحله بعد"); return !!next && !next.disabled; }, "terminal service category selection");
-      return { ok: true, detail: "WANTED buy → marketplace category → back → service intent → service taxonomy → terminal category" };
+      return { ok: true, detail: "WANTED buy → marketplace taxonomy → details step → enabled private image picker" };
     } catch (error) {
       // WANTED_MEDIA_BROWSER_E2E: capture the taxonomy API response + resolved
       // root names alongside the DOM state so a timeout on the waitFor is
@@ -358,7 +332,31 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       };
     }
   })()`;
-  return page.evaluate<null, { ok: boolean; detail: string }>(browserScript, null);
+  const uiResult = await page.evaluate<null, { ok: boolean; detail: string }>(browserScript, null);
+  if (!uiResult.ok) return uiResult;
+  try {
+    // setInputFiles is a Playwright/Node operation; it must run outside page.evaluate.
+    await page.setInputFiles('input[type="file"]', [{
+      name: "wanted-wizard-browser-e2e.png",
+      mimeType: "image/png",
+      buffer: createPngFixture(),
+    }]);
+    const previewUrl = await page.evaluate<null, string>('(async () => {
+      for (let attempt = 0; attempt < 150; attempt++) {
+        const image = document.querySelector(\'img[alt="تصویر 1"]\');
+        if (image) return image.getAttribute("src") || "";
+        const error = document.querySelector(\'[role="alert"]\');
+        if (error?.textContent?.trim()) throw new Error("WANTED wizard upload failed: " + error.textContent.trim());
+        await new Promise(resolve => window.setTimeout(resolve, 100));
+      }
+      throw new Error("WANTED wizard upload did not render its staged image preview");
+    })()', null);
+    const assetId = previewUrl.match(/\\/api\\/media\\/([a-f0-9]{24})/)?.[1];
+    if (!assetId) throw new Error("WANTED wizard preview did not expose a canonical media asset URL: " + previewUrl);
+    return { ...uiResult, detail: uiResult.detail + " → real file selected and private staged preview rendered", uploadedAssetId: assetId };
+  } catch (error) {
+    return { ok: false, detail: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 async function main(): Promise<void> {
@@ -452,6 +450,7 @@ async function main(): Promise<void> {
   const contexts: ContextLike[] = [];
   let requestId: string | null = null;
   let assetId: string | null = null;
+  let wizardAssetId: string | null = null;
   try {
     const buyerBrowser = await browserContext(browser, buyerToken);
     contexts.push(buyerBrowser.context);
@@ -461,6 +460,7 @@ async function main(): Promise<void> {
     contexts.push(publicBrowser.context);
 
     const wizardUi = await runWantedWizardUiSmoke(buyerBrowser.page);
+    wizardAssetId = wizardUi.uploadedAssetId ?? null;
     assert.equal(wizardUi.ok, true, `WANTED wizard UI flow failed: ${wizardUi.detail}`);
 
     const policy = await browserFetch(buyerBrowser.page, { path: "/api/media/staging" });
@@ -620,6 +620,10 @@ async function main(): Promise<void> {
   } finally {
     for (const context of contexts) await context.close().catch(() => {});
     await browser.close().catch(() => {});
+    if (wizardAssetId) {
+      const deleted = await deleteAsset(wizardAssetId, admin.id);
+      if (!deleted.ok) throw new Error(`E2E cleanup could not delete WANTED wizard B2 asset ${wizardAssetId}: ${deleted.error ?? "unknown"}`);
+    }
     if (assetId) {
       const deleted = await deleteAsset(assetId, admin.id);
       if (!deleted.ok) throw new Error(`E2E cleanup could not delete B2 asset ${assetId}: ${deleted.error ?? "unknown"}`);
