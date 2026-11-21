@@ -1,6 +1,6 @@
 {
   "target": "APP_PREVIEW_ONLY",
-  "migration": "WANTED_STRUCTURAL",
-  "confirm": "APPLY_APP_PREVIEW_20261119160000",
-  "request_id": "20261121114500-wanted-artifact-authenticated-readback"
+  "migration": "GEO_FOUNDATION",
+  "confirm": "APPLY_APP_PREVIEW_20261119190000",
+  "request_id": "20261121152500-geo-foundation-owner-push"
 }
