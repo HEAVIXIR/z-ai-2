@@ -588,6 +588,13 @@ type PlannedTaxonomyCategory = {
   taxPath: string;
 };
 
+// The machine subtree has its own canonical 16-group seed. V1.1 owns the
+// 14 business parents and the other verticals; it must never rewrite machine
+// parent/child paths after seed-machine-taxonomy.ts has applied them.
+const CATEGORY_SEED_TREE: CatSeed[] = TREE.map((root) =>
+  root.slug === "machinery" ? { ...root, children: [] } : root,
+);
+
 function collectTaxonomyPlan(
   nodes: CatSeed[],
   parentSlug: string | null = null,
@@ -827,12 +834,19 @@ async function main() {
       select: { id: true, slug: true },
     });
     const missingCategories = categorySlugs.filter((slug) => !categoryRows.some((row) => row.slug === slug));
+    const machineRoot = TREE.find((root) => root.slug === "machinery");
+    const machineSlugs = new Set(machineRoot ? collectTaxonomyPlan([machineRoot]).map((item) => item.slug) : []);
+    const missingNonMachineCategories = missingCategories.filter((slug) => !machineSlugs.has(slug));
+    const skippedMissingMachineCategories = missingCategories.filter((slug) => machineSlugs.has(slug));
     const validIndustryKeys = new Set(APP_INDUSTRIES.map((industry) => industry.key));
     const unmappedIndustryKeys = [...new Set(uniqueLinks.map((link) => link.industryKey).filter((key) => !validIndustryKeys.has(key)))];
-    if (missingCategories.length) {
-      throw new Error(`ApplicationIndustry preflight failed; no links written: ${JSON.stringify({ missingCategories })}`);
+    if (missingNonMachineCategories.length) {
+      throw new Error(`ApplicationIndustry preflight failed; no links written: ${JSON.stringify({ missingNonMachineCategories })}`);
     }
-    const validLinks = uniqueLinks.filter((link) => validIndustryKeys.has(link.industryKey));
+    const activeCategorySlugs = new Set(categoryRows.map((row) => row.slug));
+    const validLinks = uniqueLinks.filter((link) =>
+      validIndustryKeys.has(link.industryKey) && activeCategorySlugs.has(link.categorySlug),
+    );
 
     for (const industry of APP_INDUSTRIES) {
       await db.applicationIndustry.upsert({
@@ -875,7 +889,7 @@ async function main() {
       throw new Error(`ApplicationIndustry link verification failed: expected ${validLinks.length}, got ${linkedPairs.length}`);
     }
     console.log("APPLICATION INDUSTRIES VERIFIED");
-    console.log(JSON.stringify({ activeIndustries: industryRows.length, expectedLinks: validLinks.length, verifiedLinks: linkedPairs.length, skippedUnmappedLinks: uniqueLinks.length - validLinks.length, unmappedIndustryKeys }, null, 2));
+    console.log(JSON.stringify({ activeIndustries: industryRows.length, expectedLinks: validLinks.length, verifiedLinks: linkedPairs.length, skippedUnmappedLinks: uniqueLinks.length - validLinks.length, skippedMissingMachineCategories, unmappedIndustryKeys }, null, 2));
     return;
   }
 
@@ -885,14 +899,14 @@ async function main() {
   // Category-only mode is isolated from TransactionTypes, ServiceTypes,
   // ApplicationIndustries and Location seeds.
   if (process.argv.includes("--categories-only")) {
-    console.log(`Applying canonical HEAVIX category hierarchy (${TREE.length} roots)...`);
-    for (let i = 0; i < TREE.length; i++) {
-      const root = TREE[i];
+    console.log(`Applying canonical HEAVIX category hierarchy (${CATEGORY_SEED_TREE.length} roots; machine subtree managed separately)...`);
+    for (let i = 0; i < CATEGORY_SEED_TREE.length; i++) {
+      const root = CATEGORY_SEED_TREE[i];
       if (root.sortOrder === undefined) root.sortOrder = i + 1;
       await upsertCat(root, undefined, undefined, 0);
     }
 
-    const plan = collectTaxonomyPlan(TREE);
+    const plan = collectTaxonomyPlan(CATEGORY_SEED_TREE);
     const rows = await db.category.findMany({
       where: { active: true },
       select: { id: true, slug: true, parentId: true, level: true, taxPath: true },
@@ -906,9 +920,25 @@ async function main() {
         row.level !== item.level ||
         row.taxPath !== item.taxPath;
     }).map((item) => item.slug);
-    const expectedRoots = TREE.map((root) => root.slug).sort();
+    const expectedRoots = CATEGORY_SEED_TREE.map((root) => root.slug).sort();
     const actualRoots = rows.filter((row) => row.parentId === null).map((row) => row.slug).sort();
-    const unexpectedCategories = rows.filter((row) => !plan.some((item) => item.slug === row.slug)).map((row) => row.slug);
+    const machineryRootId = bySlug.get("machinery")?.id;
+    const machineSubtreeIds = new Set<string>(machineryRootId ? [machineryRootId] : []);
+    let expandedMachineSubtree = true;
+    while (expandedMachineSubtree) {
+      expandedMachineSubtree = false;
+      for (const row of rows) {
+        if (row.parentId && machineSubtreeIds.has(row.parentId) && !machineSubtreeIds.has(row.id)) {
+          machineSubtreeIds.add(row.id);
+          expandedMachineSubtree = true;
+        }
+      }
+    }
+    const machineSubtreeSlugs = new Set(rows.filter((row) => machineSubtreeIds.has(row.id)).map((row) => row.slug));
+    const plannedSlugs = new Set(plan.map((item) => item.slug));
+    const unexpectedCategories = rows
+      .filter((row) => !plannedSlugs.has(row.slug) && !machineSubtreeSlugs.has(row.slug))
+      .map((row) => row.slug);
     if (mismatches.length || unexpectedCategories.length ||
         JSON.stringify(expectedRoots) !== JSON.stringify(actualRoots)) {
       throw new Error("Category hierarchy verification failed: " + JSON.stringify({
@@ -958,9 +988,9 @@ async function main() {
   }
 
   // 4. Category tree V1.1
-  console.log(`4/6 Seeding Category tree V1.1 (${TREE.length} roots)...`);
-  for (let i = 0; i < TREE.length; i++) {
-    const root = TREE[i];
+  console.log(`4/6 Seeding Category tree V1.1 (${CATEGORY_SEED_TREE.length} roots; machine subtree managed separately)...`);
+  for (let i = 0; i < CATEGORY_SEED_TREE.length; i++) {
+    const root = CATEGORY_SEED_TREE[i];
     if (root.sortOrder === undefined) root.sortOrder = i + 1;
     await upsertCat(root, undefined, undefined, 0);
   }
