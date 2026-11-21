@@ -844,6 +844,12 @@ async function main() {
       where: { key: { in: APP_INDUSTRIES.map((industry) => industry.key) }, active: true },
       select: { id: true, key: true },
     });
+    const missingActiveIndustryKeys = APP_INDUSTRIES.map((industry) => industry.key).filter(
+      (key) => !industryRows.some((row) => row.key === key),
+    );
+    if (missingActiveIndustryKeys.length) {
+      throw new Error(`ApplicationIndustry records are inactive or missing; no category links written: ${missingActiveIndustryKeys.join(", ")}`);
+    }
     const categoryBySlug = new Map(categoryRows.map((row) => [row.slug, row.id]));
     const industryByKey = new Map(industryRows.map((row) => [row.key, row.id]));
     for (const link of uniqueLinks) {
@@ -855,17 +861,20 @@ async function main() {
         update: {},
       });
     }
-    const linkedCount = await db.categoryApplicationIndustry.count({
+    const linkedPairs = await db.categoryApplicationIndustry.findMany({
       where: {
-        categoryId: { in: categoryRows.map((row) => row.id) },
-        applicationIndustryId: { in: industryRows.map((row) => row.id) },
+        OR: uniqueLinks.map((link) => ({
+          categoryId: categoryBySlug.get(link.categorySlug)!,
+          applicationIndustryId: industryByKey.get(link.industryKey)!,
+        })),
       },
+      select: { categoryId: true, applicationIndustryId: true },
     });
-    if (linkedCount < uniqueLinks.length) {
-      throw new Error(`ApplicationIndustry link verification failed: expected at least ${uniqueLinks.length}, got ${linkedCount}`);
+    if (linkedPairs.length !== uniqueLinks.length) {
+      throw new Error(`ApplicationIndustry link verification failed: expected ${uniqueLinks.length}, got ${linkedPairs.length}`);
     }
     console.log("APPLICATION INDUSTRIES VERIFIED");
-    console.log(JSON.stringify({ activeIndustries: industryRows.length, expectedLinks: uniqueLinks.length, linkedCount }, null, 2));
+    console.log(JSON.stringify({ activeIndustries: industryRows.length, expectedLinks: uniqueLinks.length, verifiedLinks: linkedPairs.length }, null, 2));
     return;
   }
 
