@@ -21,6 +21,7 @@ const RETIRED_MACHINE_TEMPLATE_SLUGS = new Set([
   "other-port-machinery", "mining-equipment", "other-road-construction",
   "other-conveying", "other-recycling", "other-industrial-equipment",
   "other-special-machinery", "welding-equipment", "other-machinery",
+  "mining-excavator-machine", "mining-loader-machine", "mining-dump-truck", "heavy-haulage",
 ]);
 
 
@@ -328,17 +329,7 @@ const templates: Template[] = [
   ]},
 
   // MINING and MATERIAL PROCESSING.
-  { slug: "mining-excavator-machine", label: "Mining Excavator", required: ["operating_weight", "bucket_capacity", "engine_power_kw"], fields: [
-    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON", filterable: true, card: true }),
-    f("bucket_capacity", "ظرفیت باکت", "Bucket Capacity", "DECIMAL", { unit: "M3", filterable: true, card: true }),
-    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
-    f("max_digging_depth", "حداکثر عمق حفاری", "Maximum Digging Depth", "DECIMAL", { unit: "M" }),
-    f("swing_torque", "گشتاور چرخش", "Swing Torque", "DECIMAL", { unit: "KNM" }),
-    f("track_shoe_width", "عرض کفشک", "Track Shoe Width", "DECIMAL", { unit: "MM" }),
-    f("ground_pressure", "فشار بر زمین", "Ground Pressure", "DECIMAL", { unit: "KPA" }),
-    f("payload_capacity", "ظرفیت بارگیری", "Payload Capacity", "DECIMAL", { unit: "TON" }),
-  ]},
-  { slug: "mining-loader", label: "Mining Loader", required: ["bucket_capacity", "payload_capacity"], fields: [
+    { slug: "mining-loader", label: "Mining Loader", required: ["bucket_capacity", "payload_capacity"], fields: [
     f("bucket_capacity", "ظرفیت باکت", "Bucket Capacity", "DECIMAL", { unit: "M3", filterable: true }),
     f("payload_capacity", "ظرفیت بارگیری", "Payload Capacity", "DECIMAL", { unit: "TON", filterable: true, card: true }),
     f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
@@ -1314,7 +1305,7 @@ function cloneTemplate(
 // to the shared L2 family fields. L2 terminal categories receive full forms.
 templates.push(
   cloneTemplate("long-reach", "excavator-long-reach", "Long Reach Excavator", ["boom_reach", "max_digging_depth"]),
-  cloneTemplate("mining-excavator-machine", "excavator-mining", "Mining Excavator", ["operating_weight", "bucket_capacity", "payload_capacity"]),
+  cloneTemplate("excavator", "excavator-mining", "Mining Excavator", ["operating_weight", "bucket_capacity", "payload_capacity"]),
   cloneTemplate("excavator-chain", "excavator-demolition", "Demolition Excavator", ["demolition_reach", "hydraulic_flow"], [
     f("demolition_reach", "برد کاری تخریب", "Demolition Reach", "DECIMAL", { unit: "M" }),
     f("hydraulic_flow", "دبی هیدرولیک متعلقات", "Attachment Hydraulic Flow", "DECIMAL", { unit: "LPM" }),
@@ -1560,7 +1551,7 @@ templates.push(
 
 templates.push(
   // L2 parent forms for complete inheritance into subtype leaves.
-  { slug: "mining-dump-truck", label: "Mining Dump Truck Family", required: ["rated_payload_ton", "body_volume", "axle_configuration"], fields: [
+  { slug: "dump-truck", label: "Dump Truck Family", required: ["rated_payload_ton", "body_volume", "axle_configuration"], fields: [
     f("rated_payload_ton", "ظرفیت بار اسمی", "Rated Payload", "DECIMAL", { unit: "TON", filterable: true, card: true }),
     f("body_volume", "حجم اتاق بار", "Body Volume", "DECIMAL", { unit: "M3" }),
     f("gross_vehicle_weight", "وزن ناخالص مجاز", "Gross Vehicle Weight", "DECIMAL", { unit: "TON" }),
@@ -1650,7 +1641,6 @@ templates.push(
     f("max_digging_depth", "حداکثر عمق حفاری", "Maximum Digging Depth", "DECIMAL", { unit: "M" }),
     f("bucket_breakout_force", "نیروی کندن باکت", "Bucket Breakout Force", "DECIMAL", { unit: "KN" }),
   ]),
-  cloneTemplate("mining-loader", "mining-loader-machine", "Mining Loader Machine", ["bucket_capacity", "payload_capacity"]),
   { slug: "loading-machinery", label: "Mining Loading Machinery", required: ["loading_method", "rated_capacity"], fields: [
     f("loading_method", "روش بارگیری", "Loading Method", "SELECT", { options: ["باکت", "پیوسته", "اسکریپر", "نقاله‌ای", "شاول"] }),
     f("rated_capacity", "ظرفیت نامی", "Rated Capacity", "DECIMAL", { unit: "T/H" }),
@@ -1984,7 +1974,7 @@ templates.push(
   ]},
 
   // Industrial haulage families.
-  cloneTemplate("mining-dump-truck", "site-dump-truck", "Construction Site Dump Truck", ["rated_payload_ton", "body_volume"]),
+  cloneTemplate("dump-truck", "site-dump-truck", "Construction Site Dump Truck", ["rated_payload_ton", "body_volume"]),
   { slug: "site-transport", label: "Construction Site Transport Vehicle", required: ["payload_capacity", "drive_configuration"], fields: [
     f("payload_capacity", "ظرفیت بار مفید", "Payload Capacity", "DECIMAL", { unit: "TON" }),
     f("drive_configuration", "آرایش محرک", "Drive Configuration", "TEXT"),
@@ -1992,12 +1982,12 @@ templates.push(
     f("gradeability_percent", "قابلیت عبور از شیب", "Gradeability", "DECIMAL", { unit: "%" }),
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
   ]},
-  cloneTemplate("mining-dump-truck", "haul-truck", "Industrial Haul Truck", ["rated_payload_ton", "body_volume"]),
+  cloneTemplate("dump-truck", "haul-truck", "Industrial Haul Truck", ["rated_payload_ton", "body_volume"]),
   cloneTemplate("rigid-mining-truck", "off-highway-truck", "Off Highway Truck", ["rated_payload_ton", "gross_vehicle_weight"], [
     f("rated_payload_ton", "ظرفیت بار مفید", "Rated Payload", "DECIMAL", { unit: "TON", filterable: true, card: true }),
     f("gross_vehicle_weight", "وزن ناخالص خودرو", "Gross Vehicle Weight", "DECIMAL", { unit: "TON" }),
   ]),
-  cloneTemplate("mining-dump-truck", "mining-truck", "Mining Truck", ["rated_payload_ton", "body_volume"]),
+  cloneTemplate("dump-truck", "mining-truck", "Mining Truck", ["rated_payload_ton", "body_volume"]),
   { slug: "industrial-tractor", label: "Industrial Tractor", required: ["drawbar_pull", "engine_power_kw"], fields: [
     f("drawbar_pull", "نیروی کشش", "Drawbar Pull", "DECIMAL", { unit: "KN" }),
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
@@ -2969,12 +2959,7 @@ const missingTerminalLeafForms: Template[] = [
     { key: "bucket_capacity_m3", fa: "ظرفیت باکت", en: "Bucket Capacity", type: "DECIMAL", unit: "M3", filterable: true },
     { key: "crowd_force_kn", fa: "نیروی نفوذ", en: "Crowd Force", type: "DECIMAL", unit: "KN" },
   ]),
-  leafForm("mining-loader-machine", "لودر ماشین‌آلات معدنی", [
-    { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
-    { key: "bucket_capacity_m3", fa: "ظرفیت باکت", en: "Bucket Capacity", type: "DECIMAL", unit: "M3" },
-    { key: "mine_operating_class", fa: "کلاس کاربری معدنی", en: "Mine Operating Class", type: "SELECT", options: ["زیرزمینی", "روباز", "زیرزمینی و روباز"] },
-  ]),
-  leafForm("diesel-lhd", "لودر زیرزمینی دیزلی", [
+    leafForm("diesel-lhd", "لودر زیرزمینی دیزلی", [
     { key: "payload_ton", fa: "ظرفیت بار", en: "Payload", type: "DECIMAL", unit: "TON", filterable: true, card: true },
     { key: "engine_emission_stage", fa: "مرحله آلایندگی موتور", en: "Engine Emission Stage", type: "TEXT" },
     { key: "ventilation_requirement", fa: "نیاز تهویه معدن", en: "Mine Ventilation Requirement", type: "TEXT" },
