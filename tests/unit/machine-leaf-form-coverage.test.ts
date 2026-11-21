@@ -23,17 +23,16 @@ describe("definitive machine terminal form coverage", () => {
   it("provides exactly one direct template for every terminal L2 and L3 machine category", () => {
     const treeBlock = taxonomy.slice(treeStart, treeEnd);
     const formBlock = formSeed.slice(templateStart, templateEnd);
-    // In the canonical TREE source, indentation 6 identifies terminal L2
-    // nodes and indentation 10 identifies L3 leaves. L2 parents at indent 8
-    // are intentionally not treated as terminal categories.
-    const terminalSlugs = treeBlock
-      .split("\n")
-      .filter((line) => {
-        const indent = line.match(/^ */)?.[0].length ?? 0;
-        return indent === 6 || indent === 10;
-      })
-      .map((line) => line.match(/slug:\s*"([^"]+)"/)?.[1])
-      .filter((slug): slug is string => Boolean(slug));
+    // The machine TREE is emitted as JSON-compatible TypeScript. Parse the
+    // actual hierarchy instead of inferring terminal nodes from indentation.
+    const arrayStart = treeBlock.indexOf("[");
+    const arrayEnd = treeBlock.lastIndexOf("]");
+    const machineTree = JSON.parse(
+      treeBlock.slice(arrayStart, arrayEnd + 1).replace(/^\s*\/\/.*$/gm, ""),
+    ) as Array<{ l2: Array<{ slug: string; l3?: Array<{ slug: string }> }> }>;
+    const terminalSlugs = machineTree.flatMap((group) =>
+      group.l2.flatMap((family) => family.l3?.length ? family.l3.map((variant) => variant.slug) : [family.slug]),
+    );
 
     const literalTemplateSlugs = [...formBlock.matchAll(/slug:\s*"([^"]+)"/g)].map((match) => match[1]);
     const generatedTemplateSlugs = [...formBlock.matchAll(/leafForm\("([^"]+)"/g)].map((match) => match[1]);
@@ -42,7 +41,7 @@ describe("definitive machine terminal form coverage", () => {
     const missing = terminalSlugs.filter((slug) => !templateSet.has(slug));
     const duplicates = templateSlugs.filter((slug, index, all) => all.indexOf(slug) !== index);
 
-    expect(terminalSlugs).toHaveLength(271);
+    expect(terminalSlugs).toHaveLength(243);
     expect(templateSet.size).toBe(templateSlugs.length);
     expect(duplicates).toEqual([]);
     expect(missing).toEqual([]);
