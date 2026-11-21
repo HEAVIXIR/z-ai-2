@@ -1,9 +1,11 @@
 /**
  * Canonical HEAVIX V1.1 transaction-to-category routing.
  *
- * CATALOG: product/machine listings (SALE)
- * MARKETPLACE: rental, trading/request, and auction flows
- * SERVICE: service requests + service offers
+ * Category identifies the underlying catalog subject; transaction intent is
+ * a separate dimension. SALE, RENT, AUCTION and QUOTE asset flows therefore
+ * select CATALOG leaves. WANTED requests are handled by /api/wanted and use
+ * CATALOG for buy/rent intent or SERVICE for service intent. Only service
+ * supply/request transaction types use SERVICE categories.
  *
  * NOTE on SERVICE_OFFER: the V1.1 base-6 TransactionType seed
  * (prisma/seed-taxonomy-v11.ts) lists SALE/RENT/WANTED/QUOTE/AUCTION/
@@ -18,10 +20,12 @@ export type ListingCategoryLayer = "CATALOG" | "MARKETPLACE" | "SERVICE" | "FALL
 
 const TRANSACTION_CATEGORY_LAYER: Record<string, ListingCategoryLayer> = {
   SALE: "CATALOG",
-  RENT: "MARKETPLACE",
-  WANTED: "MARKETPLACE",
-  QUOTE: "MARKETPLACE",
-  AUCTION: "MARKETPLACE",
+  RENT: "CATALOG",
+  // WANTED is persisted as BuyRequest through /api/wanted, not Listing.
+  // Its category layer depends on BuyRequest.intent and is validated there.
+  WANTED: "CATALOG",
+  QUOTE: "CATALOG",
+  AUCTION: "CATALOG",
   SERVICE_REQUEST: "SERVICE",
   // Seeded by the supplemental seed (prisma/seed-service-and-mineral-
   // taxonomy.ts); canonical service-supply type. Not in the base-6 V1.1
@@ -33,8 +37,11 @@ export function categoryLayerForTransactionType(key: string): ListingCategoryLay
   return TRANSACTION_CATEGORY_LAYER[String(key ?? "").trim().toUpperCase()] ?? "CATALOG";
 }
 
+const MARKETPLACE_TRANSACTION_TYPES = new Set(["RENT", "WANTED", "QUOTE", "AUCTION"]);
+
+/** Transaction intent classification is intentionally independent from Category.layer. */
 export function isMarketplaceTransactionType(key: string): boolean {
-  return categoryLayerForTransactionType(key) === "MARKETPLACE";
+  return MARKETPLACE_TRANSACTION_TYPES.has(String(key ?? "").trim().toUpperCase());
 }
 
 export function isServiceTransactionType(key: string): boolean {
