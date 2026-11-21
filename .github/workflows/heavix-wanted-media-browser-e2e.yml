@@ -10,6 +10,8 @@ on:
       - scripts/e2e/wanted-media-browser-acceptance.ts
       - scripts/e2e/initialize-image-wasm.mjs
       - src/app/listings/new/page.tsx
+      - src/app/api/wanted/route.ts
+      - tests/unit/listing-taxonomy-domain-forms.test.ts
       - src/components/listings/ListingImageUploader.tsx
       - tests/contract/wanted-journey-contract.test.ts
       - tests/unit/listing-image-b2-contract.test.ts
@@ -154,5 +156,5 @@ jobs:
 # The owner-authorized WANTED_MEDIA_BROWSER_E2E token triggers this isolated
 # acceptance job. It never targets Preview/Production or a persistent database.
 # WANTED_MEDIA_BROWSER_E2E — explicit owner-authorized execution marker.
-# Triggered from Integration with a marker-only workflow comment change; isolated disposable DB only.
+# Triggered from Integration for WANTED product-category validation; isolated disposable DB only.
 # Re-run after aligning the WANTED E2E taxonomy fixture with the canonical CATALOG roots.
