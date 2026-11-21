@@ -208,7 +208,7 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
   const browserScript = `(async () => {
     const pause = () => new Promise(resolve => window.setTimeout(resolve, 80));
     const waitFor = async (predicate, label) => {
-      for (let attempt = 0; attempt < 50; attempt++) {
+      for (let attempt = 0; attempt < 150; attempt++) {
         if (predicate()) return;
         await pause();
       }
@@ -231,12 +231,14 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       await click("خرید");
       await click("مرحله بعد");
       await waitFor(() => document.body.innerText.includes("دسته‌بندی موضوع آگهی"), "marketplace category step");
+      await waitFor(() => !document.body.innerText.includes("در حال بارگذاری دسته‌بندی‌ها"), "marketplace taxonomy hydration");
       const taxonomyResponse = await fetch("/api/taxonomy", { cache: "no-store" });
       if (!taxonomyResponse.ok) throw new Error("taxonomy API failed");
       const taxonomy = await taxonomyResponse.json();
       const marketplaceRoot = taxonomy.marketplaceRoots && taxonomy.marketplaceRoots.find(item => item.name === "HEAVIX Browser E2E Machine");
       const serviceRoot = taxonomy.serviceRoots && taxonomy.serviceRoots.find(item => item.name === "HEAVIX Browser E2E Service");
       if (!marketplaceRoot || !serviceRoot) throw new Error("isolated marketplace/service taxonomy fixtures are missing");
+      await waitFor(() => !!button(marketplaceRoot.name), "marketplace root rendered in the wizard");
       await click(marketplaceRoot.name);
       await click("مرحله بعد");
       await waitFor(() => document.body.innerText.includes("اطلاعات پایه"), "base information step");
@@ -245,7 +247,9 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       await click("خدمات");
       await click("مرحله بعد");
       await waitFor(() => document.body.innerText.includes("دسته‌بندی خدمات"), "service category step");
+      await waitFor(() => !document.body.innerText.includes("در حال بارگذاری دسته‌بندی‌ها"), "service taxonomy hydration");
       if (document.body.innerText.includes(marketplaceRoot.name)) throw new Error("marketplace category leaked into service taxonomy after intent switch");
+      await waitFor(() => !!button(serviceRoot.name), "service root rendered in the wizard");
       await click(serviceRoot.name);
       await waitFor(() => { const next = button("مرحله بعد"); return !!next && !next.disabled; }, "terminal service category selection");
       return { ok: true, detail: "WANTED buy → marketplace category → back → service intent → service taxonomy → terminal category" };
