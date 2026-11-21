@@ -932,12 +932,11 @@ export default function NewListingPage() {
                     </div>
 
                     {/* P0-A: WANTED intent selector MOVED to Step 1 — BEFORE category selection.
-                        The intent (buy/rent/service) determines which taxonomy roots are shown
-                        at Step 2 (serviceRoots for SERVICE_REQUEST, marketplaceRoots otherwise).
+                        The intent (buy/rent/service) determines the taxonomy roots shown
+                        at Step 2 (serviceRoots for SERVICE_REQUEST, catalogRoots otherwise).
                         Moving it here ensures the category is always chosen with the correct
-                        taxonomy, eliminating the mismatch where a MARKETPLACE category was
-                        paired with a SERVICE_REQUEST intent. The user MUST pick an intent
-                        before proceeding (canProceed enforces it). */}
+                        taxonomy and prevents service requests from selecting asset categories.
+                        The user MUST pick an intent before proceeding (canProceed enforces it). */}
                     {transactionType === "WANTED" && (
                       <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] p-5">
                         <label className={labelCls}>نوع تقاضا *</label>
