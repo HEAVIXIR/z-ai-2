@@ -98,6 +98,16 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(firstWrite).toBeGreaterThan(preflight);
   });
 
+  it("refuses machine taxonomy slug collisions owned by other canonical parents", () => {
+    const seed = read("prisma/seed-machine-taxonomy.ts");
+    expect(seed).toContain("externalSlugCollisions");
+    expect(seed).toContain("another parent taxonomy");
+    const preflight = seed.indexOf("const externalSlugCollisions = await db.category.findMany");
+    const firstWrite = seed.indexOf("await db.category.update({");
+    expect(preflight).toBeGreaterThan(-1);
+    expect(firstWrite).toBeGreaterThan(preflight);
+  });
+
   it("preflights all category slugs before writing any domain attributes", () => {
     const seed = read("prisma/seed-service-mineral-attributes.ts");
     const preflight = seed.indexOf('if(missing.length)throw new Error("Missing category forms; no attributes were written:');
