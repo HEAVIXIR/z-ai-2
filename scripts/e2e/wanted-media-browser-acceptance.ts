@@ -240,16 +240,16 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       await click(wantedType.nameFa);
       await click("خرید");
       await click("مرحله بعد");
-      await waitFor(() => document.body.innerText.includes("دسته‌بندی موضوع آگهی"), "marketplace category step");
+      await waitFor(() => document.body.innerText.includes("دسته‌بندی موضوع آگهی"), "catalog category step");
       await waitFor(() => !document.body.innerText.includes("در حال بارگذاری دسته‌بندی‌ها"), "marketplace taxonomy hydration");
       const taxonomyResponse = await fetch("/api/taxonomy", { cache: "no-store" });
       if (!taxonomyResponse.ok) throw new Error("taxonomy API failed");
       const taxonomy = await taxonomyResponse.json();
-      const marketplaceRoot = taxonomy.marketplaceRoots && taxonomy.marketplaceRoots.find(item => item.name === "HEAVIX Browser E2E Machine");
+      const catalogRoot = taxonomy.catalogRoots && taxonomy.catalogRoots.find(item => item.name === "HEAVIX Browser E2E Machine");
       const serviceRoot = taxonomy.serviceRoots && taxonomy.serviceRoots.find(item => item.name === "HEAVIX Browser E2E Service");
-      if (!marketplaceRoot || !serviceRoot) throw new Error("isolated marketplace/service taxonomy fixtures are missing");
-      await waitFor(() => !!button(marketplaceRoot.name), "marketplace root rendered in the wizard");
-      await click(marketplaceRoot.name);
+      if (!catalogRoot || !serviceRoot) throw new Error("isolated catalog/service taxonomy fixtures are missing");
+      await waitFor(() => !!button(catalogRoot.name), "marketplace root rendered in the wizard");
+      await click(catalogRoot.name);
       await click("مرحله بعد");
       await waitFor(() => document.body.innerText.includes("اطلاعات پایه"), "base information step");
 
@@ -291,7 +291,7 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
         const input = document.querySelector('input[type="file"]');
         return !!input && !input.disabled;
       }, "enabled WANTED private image file input");
-      return { ok: true, detail: "WANTED buy → marketplace taxonomy → details step → enabled private image picker" };
+      return { ok: true, detail: "WANTED buy → catalog taxonomy → details step → enabled private image picker" };
     } catch (error) {
       // WANTED_MEDIA_BROWSER_E2E: capture the taxonomy API response + resolved
       // root names alongside the DOM state so a timeout on the waitFor is
@@ -301,16 +301,16 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
         const probeResponse = await fetch("/api/taxonomy", { cache: "no-store" });
         taxonomyProbe = {
           status: probeResponse.status,
-          marketplaceRootsCount: 0,
+          catalogRootsCount: 0,
           serviceRootsCount: 0,
-          marketplaceRootNames: [],
+          catalogRootNames: [],
           serviceRootNames: [],
         };
         if (probeResponse.ok) {
           const probePayload = await probeResponse.json();
-          taxonomyProbe.marketplaceRootsCount = (probePayload.marketplaceRoots || []).length;
+          taxonomyProbe.catalogRootsCount = (probePayload.catalogRoots || []).length;
           taxonomyProbe.serviceRootsCount = (probePayload.serviceRoots || []).length;
-          taxonomyProbe.marketplaceRootNames = (probePayload.marketplaceRoots || []).map(function (r) { return r.name; });
+          taxonomyProbe.catalogRootNames = (probePayload.catalogRoots || []).map(function (r) { return r.name; });
           taxonomyProbe.serviceRootNames = (probePayload.serviceRoots || []).map(function (r) { return r.name; });
         }
       } catch (probeError) {
@@ -417,12 +417,12 @@ async function main(): Promise<void> {
   });
   const category = await prisma.category.upsert({
     where: { slug: "heavix-browser-e2e-machine" },
-    update: { active: true, layer: "MARKETPLACE", domain: "MACHINE", parentId: null, level: 0 },
+    update: { active: true, layer: "CATALOG", domain: "MACHINE", parentId: null, level: 0 },
     create: {
       name: "HEAVIX Browser E2E Machine",
       nameEn: "HEAVIX Browser E2E Machine",
       slug: "heavix-browser-e2e-machine",
-      layer: "MARKETPLACE",
+      layer: "CATALOG",
       domain: "MACHINE",
       parentId: null,
       level: 0,
@@ -603,7 +603,7 @@ async function main(): Promise<void> {
       database: "disposable PostgreSQL *_test",
       storage: "isolated Backblaze B2 bucket/prefix",
       checks: [
-        "real Chromium WANTED wizard: buy → marketplace taxonomy → private image file selection/upload → service intent switch → service taxonomy",
+        "real Chromium WANTED wizard: buy → catalog taxonomy → private image file selection/upload → service intent switch → service taxonomy",
         "authenticated private staging upload",
         "BuyRequest + relational image manifest persistence",
         "B2 sidecar attachment and owner-private rendering",
