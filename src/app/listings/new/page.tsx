@@ -629,7 +629,7 @@ export default function NewListingPage() {
         sellerPhone: form.sellerPhone || undefined,
         serviceTypeId: isServiceFlow ? serviceTypeId : undefined,
         attributeValues: attributePayload,
-        // Demand media is canonicalized by staged asset IDs, not client-provided URLs.
+        // Demand media is canonicalized by staged asset IDs, not client-provided URLs. WANTED_MEDIA_BROWSER_E2E
         images: transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? undefined : images.map((url) => ({ url })),
       };
 
