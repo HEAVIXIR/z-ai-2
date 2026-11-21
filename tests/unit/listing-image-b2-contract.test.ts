@@ -31,6 +31,7 @@ describe("seller B2 media staging contract", () => {
   });
 
   // WANTED_MEDIA_BROWSER_E2E: include this contract change in the isolated browser acceptance trigger.
+  // The demand wizard must omit legacy URL images and rely on the canonical assetIds manifest.
   it("sends only canonical staged asset IDs for demand media and never client image URLs", () => {
     const page = read("src/app/listings/new/page.tsx");
     expect(page).toContain('images: transactionType === "WANTED" || transactionType === "SERVICE_REQUEST" ? undefined : images.map((url) => ({ url }))');
