@@ -1,6 +1,6 @@
 {
   "target": "APP_PREVIEW_ONLY",
-  "migration": "CATEGORY_ATTRIBUTE_ACTIVE_POLICY",
-  "confirm": "APPLY_APP_PREVIEW_20261120130000",
-  "request_id": "20261121184500-category-attribute-active-policy-after-location-source-codes"
+  "migration": "BUY_REQUEST_IMAGES",
+  "confirm": "APPLY_APP_PREVIEW_20261120150000",
+  "request_id": "20261121191500-buy-request-images-final-preview-migration"
 }
