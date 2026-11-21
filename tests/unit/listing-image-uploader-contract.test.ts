@@ -37,7 +37,8 @@ describe("Listing image upload contract", () => {
     expect(source).toContain("images={images}");
     expect(source).toContain("onChange={handleImagesChange}");
     expect(source).toContain("onAssetsChange={handleStagedAssetsChange}");
-    expect(source).toContain('entityType={transactionType === "WANTED" || isServiceRequest ? "BuyRequest" : "Listing"}');
+    expect(source).toContain('{transactionType !== "WANTED" && (');
+    expect(source).toContain('entityType={isServiceRequest ? "BuyRequest" : "Listing"}');
     expect(source).not.toContain("placeholder-${Date.now()}");
   });
 });
