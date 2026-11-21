@@ -227,21 +227,27 @@ async function loadImage(page: PageLike, mediaUrl: string): Promise<{ width: num
 async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; detail: string }> {
   await page.goto(`${baseUrl}/listings/new`, { waitUntil: "domcontentloaded" });
   return page.evaluate(async () => {
-    const pause = () => new Promise((resolve) => setTimeout(resolve, 80));
-    const waitFor = async (predicate: () => boolean, label: string) => {
+    async function pause(): Promise<void> {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 80));
+    }
+    async function waitFor(predicate: () => boolean, label: string): Promise<void> {
       for (let attempt = 0; attempt < 50; attempt++) {
         if (predicate()) return;
         await pause();
       }
       throw new Error(`Timed out waiting for ${label}`);
-    };
-    const button = (label: string) =>
-      [...document.querySelectorAll("button")].find((item) => item.textContent?.trim() === label);
-    const click = async (label: string) => {
-      await waitFor(() => !!button(label) && !button(label)!.disabled, `enabled button: ${label}`);
+    }
+    function button(label: string): HTMLButtonElement | undefined {
+      return [...document.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent?.trim() === label);
+    }
+    async function click(label: string): Promise<void> {
+      await waitFor(() => {
+        const candidate = button(label);
+        return !!candidate && !candidate.disabled;
+      }, `enabled button: ${label}`);
       button(label)!.click();
       await pause();
-    };
+    }
     try {
       const typeResponse = await fetch("/api/transaction-types", { cache: "no-store" });
       if (!typeResponse.ok) throw new Error("transaction types API failed");
