@@ -423,9 +423,15 @@ jobs:
           bunx prisma generate --schema=prisma/schema.prisma
           DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-transaction-types.ts --dry-run
           DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-transaction-types.ts --apply
-          keys="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT string_agg(key, ',' ORDER BY sortOrder) FROM public.\\\"TransactionType\\\" WHERE key IN ('SALE','RENT','WANTED','QUOTE','AUCTION','SERVICE_REQUEST') AND active=true")"
+          keys="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT string_agg(key, ',' ORDER BY "sortOrder") FROM public."TransactionType" WHERE key IN ('SALE','RENT','WANTED','QUOTE','AUCTION','SERVICE_REQUEST') AND active=true;
+          SQL
+          )"
           test "$keys" = "SALE,RENT,WANTED,QUOTE,AUCTION,SERVICE_REQUEST"
-          count="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\\\"TransactionType\\\" WHERE key IN ('SALE','RENT','WANTED','QUOTE','AUCTION','SERVICE_REQUEST') AND active=true")"
+          count="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT count(*) FROM public."TransactionType" WHERE key IN ('SALE','RENT','WANTED','QUOTE','AUCTION','SERVICE_REQUEST') AND active=true;
+          SQL
+          )"
           test "$count" = "6"
           {
             echo "## App Preview TransactionType seed"
