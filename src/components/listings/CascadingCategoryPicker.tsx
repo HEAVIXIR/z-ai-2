@@ -133,6 +133,8 @@ export default function CascadingCategoryPicker({ roots, value, selectedPath, on
                   type="button"
                   onClick={() => void select(option, level)}
                   aria-pressed={selectedId === option.id}
+                  data-category-name={option.name}
+                  data-category-id={option.id}
                   className={`rounded-xl border px-4 py-2.5 text-xs font-bold transition ${
                     selectedId === option.id
                       ? "border-[#F58220] bg-[#F58220]/15 text-[#F58220]"

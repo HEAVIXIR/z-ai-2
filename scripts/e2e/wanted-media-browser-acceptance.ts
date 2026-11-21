@@ -215,6 +215,10 @@ async function runWantedWizardUiSmoke(page: PageLike): Promise<{ ok: boolean; de
       throw new Error("Timed out waiting for " + label);
     };
     const button = label => {
+      // Prefer data-category-name (exact, no whitespace/icon interference) for
+      // category buttons. Fall back to exact normalized textContent, then includes.
+      const byData = document.querySelector('button[data-category-name="' + label.replace(/"/g, '\\"') + '"]');
+      if (byData) return byData;
       const norm = item => (item.textContent || "").replace(/\s+/g, " ").trim();
       const exact = Array.from(document.querySelectorAll("button")).find(item => norm(item) === label);
       if (exact) return exact;
