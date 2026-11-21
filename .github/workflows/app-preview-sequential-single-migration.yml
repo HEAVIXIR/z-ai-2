@@ -1,22 +1,9 @@
 name: HEAVIX App Preview sequential single-migration gate
 
 on:
-  workflow_dispatch:
-    inputs:
-      target:
-        description: App Preview only; Store and Production are excluded
-        required: true
-        type: choice
-        options: [APP_PREVIEW_ONLY]
-      migration:
-        description: Apply exactly one reviewed Main migration
-        required: true
-        type: choice
-        options: [LINK_LISTING_SERVICE_RFQ, WANTED_STRUCTURAL, GEO_FOUNDATION, LOCATION_SOURCE_CODES, CATEGORY_ATTRIBUTE_ACTIVE_POLICY, BUY_REQUEST_IMAGES]
-      confirm:
-        description: Type the exact migration-specific confirmation token
-        required: true
-        type: string
+  push:
+    branches: [integration/preview-readiness-workerd-2026-11-15]
+    paths: [.github/preview-migration-request.json]
 
 permissions:
   contents: read
@@ -26,8 +13,59 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve-request:
+    runs-on: ubuntu-latest
+    outputs:
+      apply: ${{ steps.resolve.outputs.apply }}
+      migration: ${{ steps.resolve.outputs.migration }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
+      confirm: ${{ steps.resolve.outputs.confirm }}
+    steps:
+      - name: Checkout exact Integration request commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate one-time migration request and resolve pinned source
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test -f .github/preview-migration-request.json
+          target="$(jq -r '.target // empty' .github/preview-migration-request.json)"
+          migration="$(jq -r '.migration // empty' .github/preview-migration-request.json)"
+          confirm="$(jq -r '.confirm // empty' .github/preview-migration-request.json)"
+          test "$target" = "APP_PREVIEW_ONLY"
+          if [[ "$migration" == "NONE" && "$confirm" == "NONE" ]]; then
+            echo "apply=false" >> "$GITHUB_OUTPUT"
+            echo "migration=NONE" >> "$GITHUB_OUTPUT"
+            echo "source_sha=NONE" >> "$GITHUB_OUTPUT"
+            echo "confirm=NONE" >> "$GITHUB_OUTPUT"
+            echo "No migration requested; no environment or database access will occur."
+            exit 0
+          fi
+          case "$migration" in
+            LINK_LISTING_SERVICE_RFQ) source_sha="6de80f7e275bb455b77e061c27d21eb0e4f2d107"; token="APPLY_APP_PREVIEW_20261118152000" ;;
+            WANTED_STRUCTURAL) source_sha="2b83df673c28df9ce66a1799b042e1639c53f75d"; token="APPLY_APP_PREVIEW_20261119160000" ;;
+            GEO_FOUNDATION) source_sha="3aa4416163df4fec7dde5e8adde6c6b1761637fd"; token="APPLY_APP_PREVIEW_20261119190000" ;;
+            LOCATION_SOURCE_CODES) source_sha="31ebac549e6c334548965208701a92e9f70aa464"; token="APPLY_APP_PREVIEW_20261120113000" ;;
+            CATEGORY_ATTRIBUTE_ACTIVE_POLICY) source_sha="8b96679d6ee648df47f25cbdeac915212cac3b06"; token="APPLY_APP_PREVIEW_20261120130000" ;;
+            BUY_REQUEST_IMAGES) source_sha="d0b5058a4278a9f1d36d99a0ac1305152951b98a"; token="APPLY_APP_PREVIEW_20261120150000" ;;
+            *) echo "Unsupported migration request."; exit 1 ;;
+          esac
+          test "$confirm" = "$token"
+          commit_message="$(git log -1 --format=%B)"
+          grep -Fq "$token" <<< "$commit_message"
+          echo "apply=true" >> "$GITHUB_OUTPUT"
+          echo "migration=$migration" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+          echo "confirm=$confirm" >> "$GITHUB_OUTPUT"
+          echo "PASS: one-time typed migration request and pinned source SHA validated."
+
   backup-restore-and-migrate:
-    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    needs: resolve-request
+    if: needs.resolve-request.outputs.apply == 'true' && github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
     environment: preview-backup
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -47,14 +85,16 @@ jobs:
       - name: Checkout pinned source containing exactly one pending migration
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: \${{ inputs.migration == 'LINK_LISTING_SERVICE_RFQ' && '6de80f7e275bb455b77e061c27d21eb0e4f2d107' || inputs.migration == 'WANTED_STRUCTURAL' && '2b83df673c28df9ce66a1799b042e1639c53f75d' || inputs.migration == 'GEO_FOUNDATION' && '3aa4416163df4fec7dde5e8adde6c6b1761637fd' || inputs.migration == 'LOCATION_SOURCE_CODES' && '31ebac549e6c334548965208701a92e9f70aa464' || inputs.migration == 'CATEGORY_ATTRIBUTE_ACTIVE_POLICY' && '8b96679d6ee648df47f25cbdeac915212cac3b06' || 'd0b5058a4278a9f1d36d99a0ac1305152951b98a' }}
+          ref: ${{ needs.resolve-request.outputs.source_sha }}
+          persist-credentials: false
 
       - name: Resolve and enforce exact migration target, source SHA and typed approval
         shell: bash
         env:
-          TARGET: \${{ inputs.target }}
-          MIGRATION: \${{ inputs.migration }}
-          CONFIRM: \${{ inputs.confirm }}
+          TARGET: ${{ APP_PREVIEW_ONLY }}
+          MIGRATION: ${{ needs.resolve-request.outputs.migration }}
+          CONFIRM: ${{ needs.resolve-request.outputs.confirm }}
+          SOURCE_SHA_INPUT: ${{ needs.resolve-request.outputs.source_sha }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
@@ -87,6 +127,7 @@ jobs:
             *) echo "Unsupported migration target."; exit 1 ;;
           esac
           test "$CONFIRM" = "$TOKEN"
+          test "$SOURCE_SHA_INPUT" = "$SOURCE_SHA"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           test -f "prisma/migrations/$NAME/migration.sql"
           actual_folders="$(find prisma/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | wc -l | tr -d ' ')"
@@ -111,13 +152,13 @@ jobs:
       - name: Validate App Preview backup credentials and encryption keypair
         shell: bash
         env:
-          APP_PREVIEW_DATABASE_URL: \${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
-          B2_S3_ENDPOINT: \${{ secrets.B2_S3_ENDPOINT }}
-          B2_BUCKET: \${{ secrets.B2_BUCKET }}
-          B2_APPLICATION_KEY_ID: \${{ secrets.B2_APPLICATION_KEY_ID }}
-          B2_APPLICATION_KEY: \${{ secrets.B2_APPLICATION_KEY }}
-          AGE_RECIPIENT: \${{ secrets.AGE_RECIPIENT }}
-          AGE_IDENTITY: \${{ secrets.AGE_IDENTITY }}
+          APP_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+          AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
         run: |
           set -euo pipefail
           test -n "$APP_PREVIEW_DATABASE_URL"
@@ -135,10 +176,10 @@ jobs:
       - name: Verify exact App Preview identity, migration history and schema preconditions
         shell: bash
         env:
-          DATABASE_URL: \${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
-          EXPECTED_DATABASE_OID: \${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
           EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
-          MIGRATION: \${{ inputs.migration }}
+          MIGRATION: ${{ needs.resolve-request.outputs.migration }}
           PGSSLMODE: verify-full
         run: |
           set -euo pipefail
@@ -162,8 +203,8 @@ jobs:
       - name: Create encrypted App Preview-only backup
         shell: bash
         env:
-          DATABASE_URL: \${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
-          AGE_RECIPIENT: \${{ secrets.AGE_RECIPIENT }}
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
           PGSSLMODE: verify-full
         run: |
           set -euo pipefail
@@ -181,7 +222,7 @@ jobs:
             echo "migration_source_sha=$SOURCE_SHA"
             echo "migration_name=$MIGRATION_NAME"
             echo "app_system_identifier=7701427422680793119"
-            echo "app_database_oid=\${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}"
+            echo "app_database_oid=${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}"
             cat "$WORK/SHA256SUMS"
           } > "$WORK/manifest.txt"
           for table in User Listing BuyRequest RFQ Category Brand _prisma_migrations; do
@@ -198,10 +239,10 @@ jobs:
       - name: Upload encrypted backup and verify B2 read-back
         shell: bash
         env:
-          B2_S3_ENDPOINT: \${{ secrets.B2_S3_ENDPOINT }}
-          B2_BUCKET: \${{ secrets.B2_BUCKET }}
-          B2_APPLICATION_KEY_ID: \${{ secrets.B2_APPLICATION_KEY_ID }}
-          B2_APPLICATION_KEY: \${{ secrets.B2_APPLICATION_KEY }}
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
           AWS_REGION: us-east-005
           AWS_DEFAULT_REGION: us-east-005
           AWS_EC2_METADATA_DISABLED: "true"
@@ -224,7 +265,7 @@ jobs:
       - name: Restore backup into disposable PostgreSQL 17
         shell: bash
         env:
-          AGE_IDENTITY: \${{ secrets.AGE_IDENTITY }}
+          AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
           RESTORE_PASSWORD: local-restore-only
         run: |
           set -euo pipefail
@@ -273,7 +314,7 @@ jobs:
         shell: bash
         env:
           DATABASE_URL: "postgresql://restore:local-restore-only@127.0.0.1:5432/app_preview_restore?schema=public&sslmode=disable"
-          MIGRATION: \${{ inputs.migration }}
+          MIGRATION: ${{ needs.resolve-request.outputs.migration }}
         run: |
           set -euo pipefail
           case "$MIGRATION" in
@@ -289,8 +330,8 @@ jobs:
       - name: Recheck exact live App Preview identity and migration pre-state immediately before apply
         shell: bash
         env:
-          DATABASE_URL: \${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
-          EXPECTED_DATABASE_OID: \${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
           EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
           PGSSLMODE: verify-full
         run: |
@@ -305,7 +346,7 @@ jobs:
       - name: Apply exactly one selected App Preview migration
         shell: bash
         env:
-          DATABASE_URL: \${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
           PGSSLMODE: verify-full
         run: |
           set -euo pipefail
@@ -314,11 +355,11 @@ jobs:
       - name: Verify exact post-migration history and live App Preview schema
         shell: bash
         env:
-          DATABASE_URL: \${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
-          EXPECTED_DATABASE_OID: \${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
           EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
           PGSSLMODE: verify-full
-          MIGRATION: \${{ inputs.migration }}
+          MIGRATION: ${{ needs.resolve-request.outputs.migration }}
         run: |
           set -euo pipefail
           identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
