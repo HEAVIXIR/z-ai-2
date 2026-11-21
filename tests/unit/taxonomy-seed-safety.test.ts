@@ -58,6 +58,14 @@ describe("Preview taxonomy seed safety contracts", () => {
     expect(modeBlock).not.toContain("db.category.update(");
   });
 
+  it("keeps the machine subtree owned by the dedicated 16-group seed", () => {
+    const source = readSeed("seed-taxonomy-v11.ts");
+    expect(source).toContain('root.slug === "machinery" ? { ...root, children: [] } : root');
+    expect(source).toContain("collectTaxonomyPlan(CATEGORY_SEED_TREE)");
+    expect(source).toContain("machineSubtreeSlugs");
+    expect(source).toContain("machineSlugs.has(slug)");
+  });
+
   it("does not reactivate disabled transaction, service, or industry records", () => {
     const source = readSeed("seed-taxonomy-v11.ts");
     expect(source).not.toMatch(/update:\s*\{[^}]*active:\s*true/);
