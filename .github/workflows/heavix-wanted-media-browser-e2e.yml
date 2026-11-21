@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/buyrequest-media-staging-2026-11-20
+      - integration/preview-readiness-workerd-2026-11-15
     paths:
       - .github/workflows/heavix-wanted-media-browser-e2e.yml
       - scripts/e2e/wanted-media-browser-acceptance.ts
@@ -24,7 +25,7 @@ concurrency:
 
 jobs:
   wanted-media-browser-e2e:
-    if: github.ref == 'refs/heads/feat/buyrequest-media-staging-2026-11-20' && contains(github.event.head_commit.message, 'WANTED_MEDIA_BROWSER_E2E')
+    if: (github.ref == 'refs/heads/feat/buyrequest-media-staging-2026-11-20' || github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15') && contains(github.event.head_commit.message, 'WANTED_MEDIA_BROWSER_E2E')
     environment: b2-media-isolated-test
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -71,7 +72,10 @@ jobs:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/feat/buyrequest-media-staging-2026-11-20"
+          case "$GITHUB_REF" in
+            refs/heads/feat/buyrequest-media-staging-2026-11-20|refs/heads/integration/preview-readiness-workerd-2026-11-15) ;;
+            *) echo "FAIL: browser acceptance is restricted to the approved feature or Integration branch."; exit 1 ;;
+          esac
           [[ "$COMMIT_MESSAGE" == *"WANTED_MEDIA_BROWSER_E2E"* ]]
           [[ "$DATABASE_URL" == *"127.0.0.1:5432/heavix_media_browser_test"* ]]
           test "$HEAVIX_ENV" = "preview"
@@ -79,7 +83,7 @@ jobs:
           test "$B2_MEDIA_PREFIX" = "heavix-media/"
           test "$B2_REGION" = "us-east-005"
           test "$B2_S3_ENDPOINT" = "https://s3.us-east-005.backblazeb2.com"
-          echo "PASS: exact PR branch, loopback-only disposable PostgreSQL, and fixed B2 scope."
+          echo "PASS: approved feature/Integration branch, loopback-only disposable PostgreSQL, and fixed B2 scope."
       - name: Verify dedicated B2 credentials exist without printing them
         shell: bash
         run: |
