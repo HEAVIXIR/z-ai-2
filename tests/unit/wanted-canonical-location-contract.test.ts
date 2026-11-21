@@ -19,8 +19,8 @@ describe("canonical location integrity across listing and demand creation", () =
 
   it("rejects non-leaf categories in the WANTED API even if the client bypasses the wizard", () => {
     expect(wantedRoute).toContain("select: { id: true, active: true, name: true, layer: true }");
-    expect(wantedRoute).toContain('const expectedLayer = intentStr === "SERVICE_REQUEST" ? "SERVICE" : "MARKETPLACE"');
-    expect(wantedRoute).toContain("categoryRow.layer !== expectedLayer");
+    expect(wantedRoute).toContain('const allowedLayers = intentStr === "SERVICE_REQUEST" ? ["SERVICE"] : ["CATALOG", "MARKETPLACE"]');
+    expect(wantedRoute).toContain("!allowedLayers.includes(categoryRow.layer)");
     expect(wantedRoute).toContain("const activeChild = await db.category.findFirst");
     expect(wantedRoute).toContain("where: { parentId: requestedCategoryId, active: true }");
     expect(wantedRoute).toContain("برای ثبت درخواست، دسته‌بندی نهایی و بدون زیرشاخه فعال را انتخاب کنید.");
