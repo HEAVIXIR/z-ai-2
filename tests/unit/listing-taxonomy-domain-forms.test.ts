@@ -6,13 +6,15 @@ const read = (relativePath: string) =>
   readFileSync(path.join(process.cwd(), relativePath), "utf8");
 
 describe("HEAVIX listing taxonomy and domain-form contracts", () => {
-  it("rejects parent categories at the listing API boundary", () => {
+  it("rejects parent categories and validates the free-text model at the listing API boundary", () => {
     const route = read("src/app/api/listings/route.ts");
     expect(route).toContain('children: { where: { active: true }, select: { id: true }, take: 1 }');
     expect(route).toContain("if (category.children.length > 0)");
     expect(route).toContain("فقط انتخاب آخرین زیرشاخه برای ثبت آگهی مجاز است");
-    expect(route).toContain("const modelCategoryMatches =");
-    expect(route).toContain("if (body.categoryId && !modelCategoryMatches)");
+    expect(route).toContain('const modelName = typeof body.modelName === "string" ? body.modelName.trim() : "";');
+    expect(route).toContain("if (modelName.length > 120)");
+    expect(route).toContain("modelName: modelName || null");
+    expect(route).not.toContain("const modelCategoryMatches =");
   });
 
   it("composes inherited category attributes from root to selected leaf", () => {

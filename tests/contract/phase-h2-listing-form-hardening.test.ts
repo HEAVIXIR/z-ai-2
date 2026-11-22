@@ -445,10 +445,14 @@ describe("H.3 follow-up hardening: WANTED attribute transport and server enforce
     expect(route).toContain('intentStr !== "SERVICE_REQUEST" && requestedServiceTypeId');
   });
 
-  it("rejects brand/category and model/category mismatches before persistence", () => {
+  it("validates brands against the global registry and accepts a free-text model", () => {
     const route = read("src/app/api/wanted/route.ts");
-    expect(route).toContain("db.brandCategory.findUnique");
-    expect(route).toContain("!brandCategoryRow");
-    expect(route).toContain("modelRow.categoryId !== requestedCategoryId");
+    expect(route).toContain("requestedBrandId ? db.brand.findUnique");
+    expect(route).toContain('!brandRow || !brandRow.active || brandRow.status !== "ACTIVE"');
+    expect(route).toContain("requestedModelName.length > 120");
+    expect(route).toContain("modelName: requestedModelName || null");
+    expect(route).not.toContain("db.brandCategory.findUnique");
+    expect(route).not.toContain("modelRow.categoryId !== requestedCategoryId");
+    expect(route).toContain("modelRow.brandId !== requestedBrandId");
   });
 });
