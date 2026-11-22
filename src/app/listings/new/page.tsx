@@ -318,6 +318,7 @@ export default function NewListingPage() {
     setForm((f) => ({ ...f, brandLabel: b.name }));
     setBrandOpen(false);
     setModelId("");
+    setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
     setModels([]);
     setAttributes({});
     setAttributeDefs([]);
@@ -397,6 +398,7 @@ export default function NewListingPage() {
       setBrandResults([]);
       setBrandOpen(false);
       setModelId("");
+      setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
       setModels([]);
       setAttributes({});
       setAttributeDefs([]);
@@ -1077,7 +1079,8 @@ export default function NewListingPage() {
                               setAttributeDefs([]);
                               setAttributesLoaded(false);
                               setAttrErrors({});
-                              setForm((f) => ({ ...f, brandLabel: e.target.value }));
+                              // Text in this field is a search query, never a new Brand.
+                              setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
                             }}
                             onFocus={() => brandResults.length > 0 && setBrandOpen(true)}
                             placeholder="نام برند را فارسی یا انگلیسی تایپ کنید…"
@@ -1094,7 +1097,7 @@ export default function NewListingPage() {
                               onClick={() => {
                                 setBrandId("");
                                 setBrandQuery("");
-                                setForm((f) => ({ ...f, brandLabel: "" }));
+                                setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
                                 setBrandResults([]);
                                 setBrandOpen(false);
                               }}
@@ -1125,7 +1128,7 @@ export default function NewListingPage() {
                           <div className="absolute z-50 mt-2 max-h-72 w-full overflow-y-auto rounded-2xl border border-white/10 bg-[#0f0f0f] shadow-[0_25px_60px_rgba(0,0,0,.6)]">
                             {brandResults.length === 0 ? (
                               <div className="p-4 text-center text-xs text-white/50">
-                                نتیجه‌ای یافت نشد. می‌توانید نام دلخواه را وارد کنید و ادامه دهید.
+                                برندی پیدا نشد. املای فارسی یا انگلیسی را بررسی کنید؛ برای افزودن برند جدید باید مدیر آن را به فهرست مرکزی اضافه کند.
                               </div>
                             ) : (
                               <ul className="py-1">

@@ -25,7 +25,7 @@ Therefore HEAVIX adopts a global Brand entity and keeps category metadata as a s
 1. Brand is unique by canonical slug and has localized display names (name, nameEn) plus normalized aliases (BrandAlias) for multilingual search.
 2. The user selects only an existing active brand from the global picker. User-entered text must not silently create a new Brand.
 3. Admin/authorized owner workflows may add, verify, merge, deactivate, and enrich canonical brands.
-4. Models are separate from brands. The user may type a model name even when no ProductModel row exists. The typed model text is saved on the listing; it must not create a canonical model automatically.
+4. Planned model UX (not yet shipped): models remain separate from brands. The user may type a model name even when no ProductModel row exists; that text will be saved on the listing without creating a canonical ProductModel automatically. This requires an additive Listing.modelName migration before the UI/API rollout.
 5. BrandIndustry, BrandCategory, and BrandDomain are descriptive/curation metadata. Missing relations must not block brand search or listing creation.
 6. Brand aliases must be normalized consistently for Persian and English search (Arabic/Persian Yeh and Kaf, ZWNJ, Arabic/Persian digits, Arabic diacritics/tatweel, case-folding and spacing).
 
@@ -41,3 +41,13 @@ Therefore HEAVIX adopts a global Brand entity and keeps category metadata as a s
 - The brand picker must not pass a category constraint to the search query.
 - Category associations can be backfilled later without affecting whether a brand is selectable.
 - Product/category-specific required attributes remain category-aware and separate from brand identity.
+
+## Primary references
+
+- Google Merchant Center, Brand attribute: https://support.google.com/merchants/answer/6324351
+- Google Merchant Center, Product data specification (brand and product category are separate attributes): https://support.google.com/merchants/answer/7052112
+- eBay, Finding categories for a listing and category aspects: https://developer.ebay.com/api-docs/sell/static/metadata/sell-categories.html
+- eBay, Required item specifics (Brand is required only in some categories): https://developer.ebay.com/api-docs/user-guides/static/trading-user-guide/item-specifics-requirements.html
+- Shopify Admin GraphQL Product object (category and vendor are separate product properties): https://shopify.dev/docs/api/admin-graphql/latest/objects/product
+- Wikidata, structured data licensing (CC0): https://www.wikidata.org/wiki/Wikidata:Licensing
+- Wikidata, data access and responsible query guidance: https://www.wikidata.org/wiki/Wikidata:Data_access/en
