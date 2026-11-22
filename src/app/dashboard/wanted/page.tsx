@@ -72,6 +72,7 @@ export default async function DashboardWantedPage() {
       categoryId: true,
       brandId: true,
       modelId: true,
+      modelName: true,
       serviceTypeId: true,
       intent: true,
       // H.3 resolved taxonomy names (single round-trip via the FK relations).
@@ -150,7 +151,7 @@ export default async function DashboardWantedPage() {
                         <span>·</span>
                         <span>{r.categoryRef?.name ?? r.category ?? "—"}</span>
                         {(r.brandRef?.name ?? r.brandPref) && <><span>·</span><span>{r.brandRef?.name ?? r.brandPref}</span></>}
-                        {r.modelRef?.name && <><span>·</span><span>{r.modelRef.name}</span></>}
+                        {(r.modelName || r.modelRef?.name) && <><span>·</span><span>{r.modelName || r.modelRef?.name}</span></>}
                         {r.serviceTypeRef?.nameFa && <><span>·</span><span>{r.serviceTypeRef.nameFa}</span></>}
                         {r.quantity != null && <><span>·</span><span>تعداد: {toFa(r.quantity)}</span></>}
                         <span>·</span>
