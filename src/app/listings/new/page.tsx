@@ -311,7 +311,6 @@ export default function NewListingPage() {
     setForm((f) => ({ ...f, brandLabel: b.name }));
     setBrandOpen(false);
     setModelName("");
-    setModels([]);
     setAttributes({});
     setAttributeDefs([]);
     setAttributesLoaded(false);
@@ -354,8 +353,7 @@ export default function NewListingPage() {
       setBrandOpen(false);
       setModelName("");
       setForm((f) => ({ ...f, brandLabel: "" }));
-      setModels([]);
-      setAttributes({});
+        setAttributes({});
       setAttributeDefs([]);
       setAttributesLoaded(false);
       setAttrErrors({});
@@ -376,7 +374,6 @@ export default function NewListingPage() {
     setBrandResults([]);
     setBrandOpen(false);
     setModelName("");
-    setModels([]);
     setAttributes({});
     setAttributeDefs([]);
     setAttributesLoaded(false);
@@ -1029,8 +1026,7 @@ export default function NewListingPage() {
                               setBrandQuery(e.target.value);
                               setBrandId("");
                               setModelName("");
-                              setModels([]);
-                              setAttributes({});
+                                                        setAttributes({});
                               setAttributeDefs([]);
                               setAttributesLoaded(false);
                               setAttrErrors({});
