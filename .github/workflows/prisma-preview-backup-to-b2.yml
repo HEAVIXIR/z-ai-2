@@ -510,7 +510,13 @@ jobs:
 
           [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
           (( HEAVIX_APP_PREVIEW_DATABASE_OID <= 4294967295 ))
-          observed="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
+          CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
+          test -n "$CID"
+          run_preview_sql() {
+            local sql="$1"
+            docker exec -e "HEAVIX_PREVIEW_DATABASE_URL=$MAIN_PREVIEW_DATABASE_URL" -e "HEAVIX_PREVIEW_SQL=$sql" -e PGSSLMODE=verify-full "$CID" bash -ceu 'psql --dbname="$HEAVIX_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$HEAVIX_PREVIEW_SQL"'
+          }
+          observed="$(run_preview_sql "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
           expected="7701427422680793119|$HEAVIX_APP_PREVIEW_DATABASE_OID"
           test "$observed" = "$expected"
           echo "PASS: direct migration connection matches the pinned App Preview cluster and database OID."
@@ -522,9 +528,9 @@ jobs:
           # Fail closed unless this is the only unapplied migration. This prevents
           # migrate deploy from accidentally applying unrelated pending migrations.
           target="20261122203000_listing_model_name"
-          all_migrations="$(find prisma/migrations -mindepth 2 -maxdepth 2 -type f -name migration.sql -printf '%h\\n' | sed 's#^prisma/migrations/##' | sort)"
+          all_migrations="$(find prisma/migrations -mindepth 2 -maxdepth 2 -type f -name migration.sql -printf '%h\n' | sed 's#^prisma/migrations/##' | sort)"
           applied_migrations="$(run_preview_sql 'SELECT migration_name FROM public."_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL')"
-          mapfile -t pending_migrations < <(comm -23 <(printf '%s\\n' "$all_migrations") <(printf '%s\\n' "$applied_migrations" | sort))
+          mapfile -t pending_migrations < <(comm -23 <(printf '%s\n' "$all_migrations") <(printf '%s\n' "$applied_migrations" | sort))
           if (( ${#pending_migrations[@]} > 0 )); then
             test "${#pending_migrations[@]}" -eq 1
             test "${pending_migrations[0]}" = "$target"
