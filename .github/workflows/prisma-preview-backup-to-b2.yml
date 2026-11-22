@@ -22,6 +22,16 @@ on:
         description: Type SEED_RBAC_PREVIEW_ONLY only when explicitly approving the Preview RBAC seed
         required: false
         type: string
+      brand_seed:
+        description: Optional additive global brand catalog seed after exact-SHA paired backup and Worker identity proof
+        required: true
+        type: choice
+        default: SKIP
+        options: [SKIP, RUN_PREVIEW_BRAND_SEEDS]
+      brand_seed_confirm:
+        description: Type SEED_PREVIEW_BRANDS_ONLY only when explicitly approving the Preview brand catalog seed
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -451,5 +461,101 @@ jobs:
         with:
           name: heavix-preview-rbac-seed-evidence
           path: ${{ runner.temp }}/heavix-preview-rbac-evidence/rbac-seed-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Seed the global Preview brand catalog (additive, idempotent)
+        if: inputs.brand_seed == 'RUN_PREVIEW_BRAND_SEEDS'
+        shell: bash
+        env:
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          BRAND_SEED_CONFIRM: ${{ inputs.brand_seed_confirm }}
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$BRAND_SEED_CONFIRM" = "SEED_PREVIEW_BRANDS_ONLY"
+          test -s "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_run_id=$GITHUB_RUN_ID" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+
+          # Require the Workerd identity guard AND an independent direct DB identity match.
+          PREVIEW_URL="https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev"
+          curl --retry 5 --retry-delay 2 --retry-connrefused --max-time 20 -fsS "$PREVIEW_URL/api/health" -o "$RUNNER_TEMP/preview-health-brand-seed.json"
+          node -e '
+            const fs = require("node:fs");
+            const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (h.status !== "ok" || h.checks?.db !== "up") {
+              throw new Error("Preview Worker app DB identity/readiness check failed.");
+            }
+            process.stdout.write("PASS: Preview Worker app DB identity guard.\\n");
+          ' "$RUNNER_TEMP/preview-health-brand-seed.json"
+          [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
+          (( HEAVIX_APP_PREVIEW_DATABASE_OID <= 4294967295 ))
+          observed="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
+          expected="7701427422680793119|$HEAVIX_APP_PREVIEW_DATABASE_OID"
+          test "$observed" = "$expected"
+          echo "PASS: direct seed connection matches the pinned App Preview cluster and database OID."
+
+          # The seed scripts are additive/idempotent: no deletes, no destructive
+          # category rewrite, and no changes to existing curated identity unless
+          # a seed row explicitly opts into refreshIdentity (none are enabled by this workflow).
+          before="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM public.\\"Brand\\")::text || '|' || (SELECT count(*) FROM public.\\"BrandAlias\\")::text || '|' || (SELECT count(*) FROM public.\\"BrandIndustry\\")::text")"
+          IFS='|' read -r brands_before aliases_before industries_before <<< "$before"
+          [[ "$brands_before" =~ ^[0-9]+$ && "$aliases_before" =~ ^[0-9]+$ && "$industries_before" =~ ^[0-9]+$ ]]
+
+          bun --version
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+          HEAVIX_ENV=preview DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-brands-a.ts --apply
+          HEAVIX_ENV=preview DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-brands-b.ts --apply
+
+          after="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM public.\\"Brand\\")::text || '|' || (SELECT count(*) FROM public.\\"BrandAlias\\")::text || '|' || (SELECT count(*) FROM public.\\"BrandIndustry\\")::text || '|' || (SELECT count(*) FROM public.\\"Brand\\" WHERE active = true AND status = 'ACTIVE')::text || '|' || (SELECT count(DISTINCT lower(\\"nameEn\\")) FROM public.\\"Brand\\" WHERE \\"nameEn\\" IS NOT NULL)::text")"
+          IFS='|' read -r brands_after aliases_after industries_after active_brands distinct_name_en <<< "$after"
+          [[ "$brands_after" =~ ^[0-9]+$ && "$aliases_after" =~ ^[0-9]+$ && "$industries_after" =~ ^[0-9]+$ ]]
+          [[ "$active_brands" =~ ^[0-9]+$ && "$distinct_name_en" =~ ^[0-9]+$ ]]
+          (( brands_after >= brands_before ))
+          (( aliases_after >= aliases_before ))
+          (( industries_after >= industries_before ))
+
+          {
+            echo "## Global Preview brand catalog seed"
+            echo
+            echo "- Exact Integration commit: $GITHUB_SHA"
+            echo "- Paired encrypted backup and disposable restore: passed in this run"
+            echo "- Worker App Preview identity guard: passed"
+            echo "- Direct database identity: pinned App Preview cluster and OID matched"
+            echo "- Brand rows: $brands_before -> $brands_after"
+            echo "- Brand aliases: $aliases_before -> $aliases_after"
+            echo "- Brand-industry links: $industries_before -> $industries_after"
+            echo "- Active brands: $active_brands"
+            echo "- Distinct normalized English names: $distinct_name_en"
+            echo "- Category crosswalk: not run; brand discoverability is global and category-independent"
+            echo "- Store DB and Production: untouched"
+          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/heavix-preview-brand-evidence"
+          {
+            echo "format=heavix-preview-global-brand-seed-evidence-v1"
+            echo "seed_sha=$GITHUB_SHA"
+            echo "backup_run_id=$GITHUB_RUN_ID"
+            echo "brands_before=$brands_before"
+            echo "brands_after=$brands_after"
+            echo "aliases_before=$aliases_before"
+            echo "aliases_after=$aliases_after"
+            echo "industries_before=$industries_before"
+            echo "industries_after=$industries_after"
+            echo "active_brands=$active_brands"
+            echo "distinct_name_en=$distinct_name_en"
+            echo "worker_app_db_identity_guard=passed"
+          } > "$RUNNER_TEMP/heavix-preview-brand-evidence/brand-seed-evidence.txt"
+
+      - name: Upload Preview global brand seed evidence
+        if: inputs.brand_seed == 'RUN_PREVIEW_BRAND_SEEDS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-preview-global-brand-seed-evidence
+          path: ${{ runner.temp }}/heavix-preview-brand-evidence/brand-seed-evidence.txt
           if-no-files-found: error
           retention-days: 7
