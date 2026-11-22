@@ -63,6 +63,7 @@ const VERIFICATION_OPTIONS = [
 const EMPTY_FORM = {
   name: "",
   nameEn: "",
+  aliases: "",
   shortName: "",
   slug: "",
   type: "",
@@ -119,6 +120,14 @@ export default function CreateBrandForm() {
         body: JSON.stringify({
           name: form.name.trim(),
           nameEn: form.nameEn.trim() || null,
+          aliases: form.aliases
+            .split(/[\\n,،;；]+/)
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .map((value) => ({
+              value,
+              language: /[\\u0600-\\u06FF]/.test(value) ? "fa" : "en",
+            })),
           shortName: form.shortName.trim() || null,
           slug: form.slug.trim() || undefined,
           type: form.type || null,
@@ -212,6 +221,20 @@ export default function CreateBrandForm() {
               dir="ltr"
               placeholder="Komatsu"
             />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className={labelCls}>نام‌های جایگزین و املای دیگر</label>
+            <textarea
+              value={form.aliases}
+              onChange={(e) => setField("aliases", e.target.value)}
+              rows={2}
+              className="w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm text-zinc-800 outline-none focus:border-[#F58220]"
+              placeholder={"Komatsu Ltd.\\nکوماتسو\\nKomatsu"}
+            />
+            <p className="mt-1 text-[10px] text-zinc-400">
+              هر نام را در یک خط یا با ویرگول جدا کنید؛ نام فارسی و انگلیسی اصلی هم خودکار به جست‌وجو اضافه می‌شوند.
+            </p>
           </div>
 
           <div>

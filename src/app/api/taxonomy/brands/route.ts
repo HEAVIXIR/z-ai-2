@@ -138,34 +138,45 @@ export async function POST(req: Request) {
         },
       });
 
-      if (Array.isArray(body.aliases)) {
-        for (const alias of body.aliases) {
-          if (!alias || !alias.value) continue;
-          const normalizedValue = normalizeAliasValue(String(alias.value));
-          if (!normalizedValue) continue;
-          await tx.brandAlias.upsert({
-            where: {
-              brandId_normalizedValue: {
-                brandId: createdBrand.id,
-                normalizedValue,
-              },
-            },
-            update: {
-              value: String(alias.value),
-              language: alias.language ?? "fa",
-              type: alias.type ?? "COMMON",
-              confidence: Number(alias.confidence) || 80,
-            },
-            create: {
+      // Always index the canonical Persian and English names. Admin-entered
+      // alternate spellings are additive and never replace canonical aliases.
+      const aliasEntries = [
+        createdBrand.name,
+        createdBrand.nameEn,
+        ...(Array.isArray(body.aliases) ? body.aliases : []),
+      ];
+      for (const alias of aliasEntries) {
+        const value = typeof alias === "string" ? alias : alias?.value;
+        if (typeof value !== "string" || !value.trim()) continue;
+        const normalizedValue = normalizeAliasValue(value);
+        if (!normalizedValue) continue;
+        const language =
+          (typeof alias === "object" && alias?.language) ||
+          (/[\u0600-\u06FF]/.test(value) ? "fa" : /[a-zA-Z]/.test(value) ? "en" : "other");
+        const type = typeof alias === "object" ? alias?.type ?? "COMMON" : "COMMON";
+        const confidence = typeof alias === "object" ? Number(alias?.confidence) || 80 : 100;
+        await tx.brandAlias.upsert({
+          where: {
+            brandId_normalizedValue: {
               brandId: createdBrand.id,
-              value: String(alias.value),
               normalizedValue,
-              language: alias.language ?? "fa",
-              type: alias.type ?? "COMMON",
-              confidence: Number(alias.confidence) || 80,
             },
-          });
-        }
+          },
+          update: {
+            value,
+            language,
+            type,
+            confidence,
+          },
+          create: {
+            brandId: createdBrand.id,
+            value,
+            normalizedValue,
+            language,
+            type,
+            confidence,
+          },
+        });
       }
 
       if (Array.isArray(body.industries)) {
