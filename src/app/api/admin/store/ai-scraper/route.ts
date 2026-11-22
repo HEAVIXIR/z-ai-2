@@ -9,6 +9,7 @@ import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import { db } from "@/lib/db";
 import ZAI from "z-ai-web-dev-sdk";
 import { fetchAllowedSourcePage, isAllowedSourceUrl } from "@/lib/server/safe-source-fetch";
+import { readBoundedJson } from "@/lib/read-bounded-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -642,17 +643,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid CSRF origin" }, { status: 403 });
   }
 
-  // ── Parse body once (used for both preflight inputLength + downstream) ──
-  const body = await req.json().catch(() => ({}));
+  // Parse once with a hard byte bound for both manual imports and AI discovery.
+  const parsedBody = await readBoundedJson<Record<string, any>>(req, 1_000_000);
+  if (!parsedBody.ok) {
+    return NextResponse.json({ ok: false, error: parsedBody.error }, { status: parsedBody.status });
+  }
+  const body = parsedBody.value;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ ok: false, error: "بدنه درخواست معتبر نیست." }, { status: 400 });
+  }
   const isManualImport = body.action === "import" || body.action === "bulk-import";
 
   // Manual catalog imports are deterministic database operations, not AI tasks.
   // They must not consume SCRAPER quota/budget or require an active AI policy.
-  // Keep an explicit payload bound because this path intentionally skips AI preflight.
   if (isManualImport) {
-    if (JSON.stringify(body).length > 1_000_000) {
-      return NextResponse.json({ ok: false, error: "درخواست واردسازی بیش از حد بزرگ است." }, { status: 413 });
-    }
     return _doPost(body, user, new AbortController());
   }
 
