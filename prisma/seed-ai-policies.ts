@@ -97,7 +97,7 @@ const POLICIES: PolicySeed[] = [
     maxOutputTokens: 3000,
     model: "default",
     timeoutMs: 60000,
-    costCeilingUsd: 0.1,
+    costCeilingUsd: 0,
   },
   {
     taskType: "MODERATION",

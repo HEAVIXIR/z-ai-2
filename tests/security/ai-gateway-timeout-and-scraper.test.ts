@@ -55,7 +55,7 @@ const mockPreflightAIRequest = vi.fn(async () =>
         ok: true as const,
         policy: {
           model: "default",
-          costCeilingUsd: 0.1,
+          costCeilingUsd: 0,
           timeoutMs: 30000,
           hourlyLimit: 5,
           dailyLimit: 20,

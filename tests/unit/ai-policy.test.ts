@@ -161,6 +161,11 @@ describe("getTaskPolicy — deny-by-default", () => {
   });
 });
 
+it("keeps SCRAPER internal AI cost ceiling at zero even when a stored policy is stale", async () => {
+    mockTaskPolicy = { taskType: "SCRAPER", active: false, costCeilingUsd: 0.1, hourlyLimit: 5, dailyLimit: 20 };
+    const result = await getTaskPolicy("SCRAPER");
+    expect(result).toMatchObject({ taskType: "SCRAPER", active: true, costCeilingUsd: 0 });
+  });
 // ============================================================
 // 2. checkAIAuth — fail-closed authorization
 // ============================================================

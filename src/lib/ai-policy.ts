@@ -75,7 +75,7 @@ export async function getTaskPolicy(taskType: string) {
         maxOutputTokens: 6000,
         model: "default",
         timeoutMs: 120000,
-        costCeilingUsd: 0.1,
+        costCeilingUsd: 0,
         active: true,
       };
       return row ? { ...row, ...defaults } : defaults;

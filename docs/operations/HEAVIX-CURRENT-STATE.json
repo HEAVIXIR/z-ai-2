@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-22T06:16:58Z",
+  "updated_at_utc": "2026-11-22T06:31:32.934Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "integration/preview-readiness-workerd-2026-11-15",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -204,7 +204,12 @@
     "Inspected Issue #337, PR #340 and Integration Preview workflow #44187433734.",
     "Recorded 2026-11-18 evidence-led continuation report and append-only worklog.",
     "Completed read-only route acceptance on isolated Integration Preview and recorded HTTP status/data observations.",
-    "Fetched and reviewed selected Marketplace/Store scraper source, hardened Marketplace candidate, and historical Gmail registration/email source; updated operational report and append-only worklog."
+    "Fetched and reviewed selected Marketplace/Store scraper source, hardened Marketplace candidate, and historical Gmail registration/email source; updated operational report and append-only worklog.",
+    "Verified exact Integration head 1ee3dc780b307497bd822006a4c5b16f4bfa3d23: CI run #44993147351 and OpenNext real-route smoke #44993147211 both passed.",
+    "Audited Marketplace scraper: import requires source URL and server-side re-fetch; legacy action interface returns 410, so no manual listing form/API exists.",
+    "Audited Store scraper route: manual import/bulk-import actions exist and bypass AI preflight, but Store admin page lacks a dedicated manual-entry form.",
+    "Confirmed ZAI SDK config loader reads .z-ai-config files only (project/home/etc) and current .env ZAI_API_KEY is not consumed; no config file is tracked, so runtime error is expected.",
+    "Prepared zero-cost scraper policy and secure ZAI config template/handoff (pending code commit)."
   ],
   "not_done_and_not_to_be_claimed": [
     "Exact-head CI/OpenNext for recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d.",
@@ -226,21 +231,30 @@
     "Store DB is down in the latest Integration-preview health result."
   ],
   "next_action": [
-    "Implement a separate no-ZAI manual Marketplace import path. It must be explicit, admin-authorized, CSRF-protected, bounded, taxonomy/transaction validated, pending moderation, provenance-backed, audited, and must not initialize ZAI or consume AI quota.",
-    "Verify exact-SHA CI for the latest Store manual-import fix; prior connector response returned no workflow runs, so test status remains NOT VERIFIED.",
-    "Continue the P0 listing lifecycle/server validation audit after manual import path; do not infer Preview acceptance from CI.",
-    "Keep Preview DB migration/seed/deployment behind the protected backup, restore, exact identity, and reviewer gates; Production and DNS untouched."
+    "Implement explicit no-ZAI manual Marketplace listing create path and admin UI; validate admin permission, CSRF, bounded body, active canonical taxonomy/transaction/service IDs, PENDING status, provenance and audit; prove no ZAI init or AI quota/cost/log path.",
+    "Add manual Store part/product entry UI to existing manual-import route; validate fields and preserve audit; no source URL required and no AI dependency.",
+    "Securely resolve ZAI configuration for selected OpenNext/Cloudflare Preview runtime without secrets in Git or build artifacts; local .z-ai-config remains untracked; clear diagnostics for missing config.",
+    "Verify exact-SHA CI for manual Marketplace/Store UI and configuration changes. Keep Preview DB migration/seed/deployment behind protected backup, restore, exact identity and reviewer gates. Production/DNS untouched."
   ],
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/340",
   "latest_exact_head_ci_run": {
-    "id": 44189645298,
-    "sha": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
+    "id": 44993147351,
+    "sha": "1ee3dc780b307497bd822006a4c5b16f4bfa3d23",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44189645298"
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44993147351",
+    "jobs": [
+      "audit-transaction",
+      "phase-tests",
+      "tls-proof",
+      "Workerd runtime smoke",
+      "docker-build-proof",
+      "verify",
+      "Cloudflare compatibility (report-only)"
+    ]
   },
-  "latest_code_head_sha": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
+  "latest_code_head_sha": "1ee3dc780b307497bd822006a4c5b16f4bfa3d23",
   "latest_ci_run": {
     "id": 44189645298,
     "sha": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
@@ -804,12 +818,15 @@
     "latest_code_commit": "bfc15c1aab3a64dfe9a1f5009858de87bce572a9"
   },
   "latest_opennext_proof_run": {
-    "id": 44189645381,
-    "sha": "7a439a140acad87e4f538684fcffd4ca6722f0e6",
+    "id": 44993147211,
+    "sha": "1ee3dc780b307497bd822006a4c5b16f4bfa3d23",
+    "branch": "integration/preview-readiness-workerd-2026-11-15",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44189645381",
-    "note": "Exact-head OpenNext/Workerd proof successful."
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/44993147211",
+    "jobs": [
+      "OpenNext real-route smoke (no DB credentials)"
+    ]
   },
   "integration_preview": {
     "url": "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev",
@@ -874,12 +891,12 @@
       "c4ad4ca11b23c544af73acaaadf7f863fa3e9022",
       "5fbb4b4115df7ee4f4bc93bf1b582280543cf424",
       "a1fd27978b3f971c4247a5951410c3e0230624df",
-      "bfc15c1aab3a64dfe9a1f5009858de87bce572a9"
+      "bfc15c1aab3a64dfe9a1f5009858de87bce572a9",
+      "1ee3dc780b307497bd822006a4c5b16f4bfa3d23"
     ],
-    "summary": "Store single and bulk manual imports now bypass AI preflight/quota/cost/logging while retaining auth, permission, CSRF, bounded parsing and audit.",
-    "source_verification": "Integration source and tests fetched after commits; both manual import tests and early bypass present.",
-    "test_execution": "NOT VERIFIED locally; GitHub workflow connector returned no runs for latest commit.",
-    "safety": "No database, deployment, seed, paid provider, Cloudflare build, PR merge, DNS or Worker activation.",
-    "next_action": "Implement no-ZAI manual Marketplace import path; validate authorization, CSRF, bounded input, canonical taxonomy, pending moderation, provenance/audit, and tests."
+    "summary": "Store manual single/bulk import bypasses AI preflight/quota/cost/logging and rejects oversized payloads. Exact-head GitHub CI #4545 and OpenNext #1174 both passed. Read-only audit confirmed Marketplace scraper is provider-only and ZAI config is missing; SDK expects private .z-ai-config JSON. Next is dual manual UI/API and secure ZAI runtime configuration.",
+    "source_verification": "Fetched current Integration route, Store route, AI policy, seed, UI, env example, SDK declarations/source, tests, and exact PR #340 head. Latest CI and OpenNext jobs queried to completion.",
+    "test_execution": "GitHub Actions exact-head CI run #44993147351 completed success; OpenNext run #44993147211 completed success. No local tests executed.",
+    "safety": "No Preview/Production deployment, DB migrations/seeds/writes, paid-provider calls, Cloudflare Builds, PR merge, DNS, or Worker activation."
   }
 }

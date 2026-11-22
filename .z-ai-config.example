@@ -1,0 +1,6 @@
+{
+  "baseUrl": "https://REPLACE-WITH-FREE-ZAI-ENDPOINT/v1",
+  "apiKey": "REPLACE-WITH-FREE-API-KEY",
+  "chatId": "",
+  "userId": ""
+}

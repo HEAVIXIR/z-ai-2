@@ -1283,3 +1283,14 @@ The B2 media infrastructure is robust:
 - Marketplace scraper currently exposes provider-backed discovery/import only; its legacy action interface rejects actions with HTTP 410. A no-ZAI manual import path remains to implement.
 - Safety: no Preview/Production deployment, database migration/seed/write outside code, paid-provider invocation, Cloudflare Build, PR merge, DNS change, or Worker activation.
 - Next action: implement a separate, explicit no-ZAI manual Marketplace import path with admin authorization, CSRF, bounded payload, validated canonical category/transaction, pending moderation status, provenance, and audit; add tests proving it does not initialize ZAI or consume AI quota. Then verify exact-SHA CI. Preview schema/migration approval remains a separate blocker.
+
+
+## 2026-11-22 — Dual manual/ZAI scraper direction and zero-cost policy
+
+- Verified latest Integration code head `1ee3dc780b307497bd822006a4c5b16f4bfa3d23`: GitHub Actions CI run #44993147351 passed all substantive jobs, including typecheck/lint/security/production build, TLS proof, Workerd smoke and Docker/Caddy proof; Cloudflare compatibility report-only passed. OpenNext real-route smoke #44993147211 also passed. No local test execution was performed.
+- Re-read Marketplace and Store scraper routes and client UI. Marketplace import is currently ZAI-only: mode=import requires a source URL, re-fetches and extracts server-side, and the route rejects legacy action interface with 410. Store import/bulk-import APIs already exist and bypass AI preflight, but the admin page is scraper-suggestion-oriented and lacks a dedicated manual entry form.
+- Verified z-ai-web-dev-sdk configuration contract via SDK README/declarations/source: ZAI.create() loads JSON .z-ai-config only from project cwd, home, or /etc; requires baseUrl and apiKey, with baseUrl including /v1. Current commented ZAI_API_KEY in .env.example is not read by this SDK loader. No credentials were accessed or committed.
+- Confirmed SCRAPER default AI policy currently assigns an internal cost ceiling of USD 0.10; this is inconsistent with the owner’s zero-cost policy and must be set to 0 in runtime defaults/seed, with a regression test. Quota can remain as abuse protection; paid providers/billing are prohibited.
+- Added operational dual-mode design/handoff note (planned) and placeholder-only .z-ai-config.example. Do not bake credentials into tracked files or Worker bundles; runtime-safe secret/config injection must be verified before enabling deployed ZAI.
+- No Preview/Production deployment, DB migration/seed/write, paid provider, Cloudflare Build, DNS, or Worker activation.
+- Next: implement no-ZAI manual Marketplace listing API/UI and manual Store entry form; fix/diagnose secure ZAI config resolution separately.
