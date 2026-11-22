@@ -12,7 +12,7 @@ describe("AI listing builder request and output contract", () => {
     const csrf = post.indexOf("checkCsrf(req)");
     const parser = post.indexOf("readBoundedJson<unknown>(req, 64 * 1024)");
     const policy = post.indexOf("preflightAIRequest(");
-    const provider = post.indexOf("ZAI.create()");
+    const provider = post.indexOf("getAIProvider()");
     expect(auth).toBeGreaterThanOrEqual(0);
     expect(csrf).toBeGreaterThan(auth);
     expect(parser).toBeGreaterThan(csrf);
