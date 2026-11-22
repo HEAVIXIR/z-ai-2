@@ -499,7 +499,7 @@ jobs:
             if (h.status !== "ok" || h.checks?.db !== "up") {
               throw new Error("Preview Worker app DB identity/readiness check failed.");
             }
-            process.stdout.write("PASS: Preview Worker app DB identity guard.\\n");
+            process.stdout.write("PASS: Preview Worker app DB identity guard.\n");
           ' "$RUNNER_TEMP/preview-health-model-migration.json"
 
           [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
@@ -527,18 +527,18 @@ jobs:
             process.env.MAIN_PREVIEW_DATABASE_URL, "-XAtq", "-v", "ON_ERROR_STOP=1",
             "-c", 'SELECT migration_name FROM public."_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL'
           ], { encoding: "utf8" });
-          const applied = new Set(raw.split(/\\r?\\n/).map((value) => value.trim()).filter(Boolean));
+          const applied = new Set(raw.split(/\r?\n/).map((value) => value.trim()).filter(Boolean));
           const pending = dirs.filter((name) => !applied.has(name));
           if (pending.length && (pending.length !== 1 || pending[0] !== target)) {
             throw new Error("Refusing migration: pending migrations are not limited to the approved Listing.modelName migration: " + pending.join(", "));
           }
-          process.stdout.write(pending.length ? "PASS: only approved Listing.modelName migration is pending.\\n" : "PASS: migration is already applied; no pending migrations.\\n");
+          process.stdout.write(pending.length ? "PASS: only approved Listing.modelName migration is pending.\n" : "PASS: migration is already applied; no pending migrations.\n");
           NODE
 
           DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx prisma migrate deploy --schema=prisma/schema.prisma
           column_count="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='modelName'")"
           test "$column_count" = "1"
-          migration_count="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\\"_prisma_migrations\\" WHERE migration_name='20261122203000_listing_model_name' AND finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          migration_count="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"_prisma_migrations\" WHERE migration_name='20261122203000_listing_model_name' AND finished_at IS NOT NULL AND rolled_back_at IS NULL")"
           test "$migration_count" = "1"
 
           {
