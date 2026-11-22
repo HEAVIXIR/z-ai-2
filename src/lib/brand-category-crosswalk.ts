@@ -64,7 +64,7 @@ export function computeCategoryIndustries(categories: CategoryNode[], direct: Ma
     if (visiting.has(id)) throw new Error("Category tree cycle detected at " + id);
     visiting.add(id);
     const result = new Set(direct.get(id) ?? []);
-    for (const child of children.get(id) ?? []) for (const key of walk(child.id) { result.add(key); }
+    for (const child of children.get(id) ?? []) {\n      for (const key of walk(child.id)) result.add(key);\n    }
     visiting.delete(id);
     cache.set(id, result);
     return result;
