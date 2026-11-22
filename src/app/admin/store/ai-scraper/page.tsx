@@ -64,6 +64,37 @@ export default function StoreAiScraperPage() {
   const [importedCount, setImportedCount] = useState(0);
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [manualPart, setManualPart] = useState({ name: "", nameEn: "", brandName: "", categoryName: "", description: "", priceUsd: "", stock: "0" });
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualNotice, setManualNotice] = useState<string | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const updateManualPart = (key: keyof typeof manualPart, value: string) => setManualPart(prev => ({ ...prev, [key]: value }));
+  const saveManualPart = async () => {
+    if (!manualPart.name.trim() || !manualPart.categoryName.trim()) {
+      setManualError("نام قطعه و دسته‌بندی الزامی است.");
+      return;
+    }
+    setManualSaving(true); setManualError(null); setManualNotice(null);
+    try {
+      const res = await fetch("/api/admin/store/ai-scraper", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "import", part: {
+          name: manualPart.name.trim(), nameFa: manualPart.name.trim(), nameEn: manualPart.nameEn.trim() || null,
+          brandName: manualPart.brandName.trim() || "سایر", categoryName: manualPart.categoryName.trim(),
+          category: manualPart.categoryName.trim(), description: manualPart.description.trim() || null,
+          priceUsd: manualPart.priceUsd.trim() ? Number(manualPart.priceUsd) : null,
+          contactForPrice: !manualPart.priceUsd.trim(), priceText: manualPart.priceUsd.trim() || "تماس بگیرید",
+          stock: Number(manualPart.stock) || 0, imageUrl: null, sourceUrl: null, sourceSite: "MANUAL",
+        } }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "ثبت دستی قطعه ناموفق بود.");
+      setManualNotice("قطعه بدون استفاده از AI در فروشگاه ثبت شد.");
+      setImportedCount(count => count + 1);
+      setManualPart({ name: "", nameEn: "", brandName: "", categoryName: "", description: "", priceUsd: "", stock: "0" });
+    } catch (e: any) { setManualError(e?.message ?? "ثبت دستی قطعه ناموفق بود."); }
+    finally { setManualSaving(false); }
+  };
 
   // Load categories + brands for the filter dropdowns. These are
   // pre-filter helpers only — the scraper itself finds/creates
@@ -281,6 +312,24 @@ export default function StoreAiScraperPage() {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Manual catalog entry — zero AI/provider dependency */}
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5">
+        <div className="mb-2 flex items-center gap-2"><Plus className="h-5 w-5 text-emerald-700" /><h2 className="text-lg font-extrabold text-zinc-900">ثبت دستی قطعه در فروشگاه — رایگان و مستقل از AI</h2></div>
+        <p className="mb-4 text-sm text-zinc-600">ثبت مستقیم اطلاعات در فروشگاه؛ نیازی به اسکرپر، ZAI، سهمیه یا تنظیمات AI ندارد.</p>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <label className="text-xs font-bold text-zinc-600">نام قطعه<input value={manualPart.name} onChange={e => updateManualPart("name", e.target.value)} maxLength={200} className={INPUT_CLS} /></label>
+          <label className="text-xs font-bold text-zinc-600">نام انگلیسی<input value={manualPart.nameEn} onChange={e => updateManualPart("nameEn", e.target.value)} maxLength={200} className={INPUT_CLS} /></label>
+          <label className="text-xs font-bold text-zinc-600">برند<input value={manualPart.brandName} onChange={e => updateManualPart("brandName", e.target.value)} maxLength={120} className={INPUT_CLS} placeholder="اختیاری" /></label>
+          <label className="text-xs font-bold text-zinc-600">دسته‌بندی<input value={manualPart.categoryName} onChange={e => updateManualPart("categoryName", e.target.value)} maxLength={120} className={INPUT_CLS} placeholder="مثلاً قطعات موتور" /></label>
+          <label className="text-xs font-bold text-zinc-600">قیمت (USD)<input value={manualPart.priceUsd} onChange={e => updateManualPart("priceUsd", e.target.value)} inputMode="decimal" className={INPUT_CLS} placeholder="خالی = تماس برای قیمت" /></label>
+          <label className="text-xs font-bold text-zinc-600">موجودی<input value={manualPart.stock} onChange={e => updateManualPart("stock", e.target.value)} inputMode="numeric" className={INPUT_CLS} /></label>
+          <label className="text-xs font-bold text-zinc-600 md:col-span-2 xl:col-span-3">توضیحات<textarea value={manualPart.description} onChange={e => updateManualPart("description", e.target.value)} maxLength={5000} rows={3} className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-normal" /></label>
+        </div>
+        {manualError && <p className="mt-3 text-sm font-bold text-red-700">{manualError}</p>}
+        {manualNotice && <p className="mt-3 text-sm font-bold text-emerald-700">{manualNotice}</p>}
+        <button type="button" onClick={saveManualPart} disabled={manualSaving} className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-bold text-white disabled:opacity-50">{manualSaving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}{manualSaving ? "در حال ثبت..." : "ثبت دستی قطعه"}</button>
       </div>
 
       {/* Search + filters */}

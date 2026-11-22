@@ -13,6 +13,10 @@ export const dynamic = "force-dynamic";
 const LISTING_TYPES = new Set(["SALE", "RENT", "AUCTION", "WANTED", "SERVICE_OFFER", "SERVICE_REQUEST", "QUOTE"]);
 const CONDITIONS = new Set(["NEW", "USED", "REFURBISHED", "FOR_PARTS"]);
 
+function toEnglishDigits(value: string): string {
+  return value.replace(/[۰-۹٠-٩]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩".indexOf(digit) % 10));
+}
+
 function boundedText(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -55,11 +59,11 @@ export async function POST(req: Request) {
   if (serviceTypeId && !serviceType) return NextResponse.json({ error: "نوع خدمت معتبر یا فعال نیست." }, { status: 400 });
   if (["SERVICE_OFFER", "SERVICE_REQUEST"].includes(transaction.key) && !serviceType) return NextResponse.json({ error: "برای آگهی خدماتی انتخاب نوع خدمت الزامی است." }, { status: 400 });
 
-  const rawPrice = typeof body.price === "string" || typeof body.price === "number" ? String(body.price).trim() : "";
+  const rawPrice = typeof body.price === "string" || typeof body.price === "number" ? toEnglishDigits(String(body.price).trim()) : "";
   const price = rawPrice ? parseBig(rawPrice) : null;
   if (rawPrice && (!price || price <= 0n || rawPrice.replace(/[^0-9]/g, "").length > 18)) return NextResponse.json({ error: "قیمت باید عدد مثبت و معتبر باشد." }, { status: 400 });
-  const year = body.year === "" || body.year == null ? null : Number(body.year);
-  const workingHours = body.workingHours === "" || body.workingHours == null ? null : Number(body.workingHours);
+  const year = body.year === "" || body.year == null ? null : Number(toEnglishDigits(String(body.year)));
+  const workingHours = body.workingHours === "" || body.workingHours == null ? null : Number(toEnglishDigits(String(body.workingHours)));
   if (year !== null && (!Number.isInteger(year) || year < 1900 || year > new Date().getFullYear() + 1)) return NextResponse.json({ error: "سال ساخت معتبر نیست." }, { status: 400 });
   if (workingHours !== null && (!Number.isInteger(workingHours) || workingHours < 0 || workingHours > 1_000_000)) return NextResponse.json({ error: "کارکرد معتبر نیست." }, { status: 400 });
   const condition = body.condition == null || body.condition === "" ? null : String(body.condition).toUpperCase();

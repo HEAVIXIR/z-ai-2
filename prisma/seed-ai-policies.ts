@@ -214,9 +214,7 @@ async function main() {
     await db.aITaskPolicy.upsert({
       where: { taskType: p.taskType },
       create: { ...p, active: true },
-      update: p.taskType === "SCRAPER" ? { costCeilingUsd: 0 } : {
-        // Existing policy fields remain admin-tunable. SCRAPER cost is a hard zero-cost contract.
-      },
+      update: p.taskType === "SCRAPER" ? { costCeilingUsd: 0 } : {},
     });
   }
   console.log(`  ✓ ${POLICIES.length} AI task policies ensured`);
