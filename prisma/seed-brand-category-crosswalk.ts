@@ -16,6 +16,8 @@ import { crosswalkBrandIndustry, computeCategoryIndustries } from "../src/lib/br
 
 const db = new PrismaClient();
 
+type Pair = { brandId: string; categoryId: string };
+
 async function main() {
   const preview = process.env.HEAVIX_ENV === "preview";
   const apply = process.env.BRAND_CATEGORY_MAPPING_APPLY === "1";
