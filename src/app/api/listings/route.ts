@@ -432,6 +432,13 @@ export async function POST(req: Request) {
     }
 
     const title = String(body.title ?? "").trim();
+    if (body.modelName !== undefined && body.modelName !== null && typeof body.modelName !== "string") {
+      return NextResponse.json({ error: "نام مدل باید متن باشد." }, { status: 400 });
+    }
+    const modelName = typeof body.modelName === "string" ? body.modelName.trim() : "";
+    if (modelName.length > 120) {
+      return NextResponse.json({ error: "نام مدل نباید بیش از ۱۲۰ نویسه باشد." }, { status: 400 });
+    }
     if (!title || title.length < 3) {
       return NextResponse.json({ error: "عنوان آگهی معتبر نیست" }, { status: 400 });
     }
@@ -544,12 +551,6 @@ export async function POST(req: Request) {
       }
       if (!body.brandId || model.brandId !== String(body.brandId)) {
         return NextResponse.json({ error: "مدل انتخاب‌شده به برند انتخابی تعلق ندارد." }, { status: 400 });
-      }
-      const modelCategoryMatches =
-        model.categoryId === String(body.categoryId) ||
-        model.modelCategories.some((link) => link.categoryId === String(body.categoryId));
-      if (body.categoryId && !modelCategoryMatches) {
-        return NextResponse.json({ error: "مدل انتخاب‌شده به دسته‌بندی انتخابی متصل نیست." }, { status: 400 });
       }
     }
 
@@ -865,6 +866,7 @@ export async function POST(req: Request) {
           categoryId: String(body.categoryId),
           brandId: body.brandId ? String(body.brandId) : null,
           modelId: body.modelId ? String(body.modelId) : null,
+          modelName: modelName || null,
           attributeValues: Array.isArray(body.attributeValues) ? body.attributeValues : [],
         }),
         budgetMin,
@@ -917,6 +919,7 @@ export async function POST(req: Request) {
       brandId: body.brandId || null,
       categoryId: body.categoryId || null,
       modelId: body.modelId || null,
+      modelName: modelName || null,
       sellerId: user.id, // W-03 FIX: from authenticated session only (never null, never from body)
       companyId,
       // A pending moderation record is not published and its lifetime has
@@ -1088,6 +1091,7 @@ export async function POST(req: Request) {
             categoryId: created.categoryId ?? null,
             brandId: created.brandId ?? null,
             modelId: created.modelId ?? null,
+            modelName: created.modelName ?? null,
             serviceTypeId: created.serviceTypeId ?? null,
           },
           reason: `ثبت آگهی: ${created.title}`,
@@ -1123,6 +1127,7 @@ export async function POST(req: Request) {
           categoryId: listing.categoryId ?? null,
           brandId: listing.brandId ?? null,
           modelId: listing.modelId ?? null,
+          modelName: listing.modelName ?? null,
           serviceTypeId: listing.serviceTypeId ?? null,
         },
         reason: `ثبت آگهی: ${listing.title}`,

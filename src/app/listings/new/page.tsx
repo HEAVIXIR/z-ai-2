@@ -90,7 +90,6 @@ type TaxRoot = {
   children: TaxChild[];
 };
 
-type ModelOption = { id: string; name: string; nameEn: string | null };
 type ServiceTypeOption = { id: string; key: string; nameFa: string; nameEn: string | null };
 
 export default function NewListingPage() {
@@ -158,7 +157,7 @@ export default function NewListingPage() {
   const [attributesLoaded, setAttributesLoaded] = useState(false);
   const [attrErrors, setAttrErrors] = useState<Record<string, string>>({});
   const [brandId, setBrandId] = useState<string>("");
-  const [modelId, setModelId] = useState<string>("");
+  const [modelName, setModelName] = useState<string>("");
   const [location, setLocation] = useState<LocationValue>({
     countryId: "",
     provinceId: "",
@@ -222,11 +221,6 @@ export default function NewListingPage() {
   const brandAbort = useRef<AbortController | null>(null);
   const brandWrapRef = useRef<HTMLDivElement>(null);
 
-  // Models of selected brand
-  const [models, setModels] = useState<ModelOption[]>([]);
-  const [modelsLoading, setModelsLoading] = useState(false);
-  const [modelsError, setModelsError] = useState<string | null>(null);
-  const [modelsRetryKey, setModelsRetryKey] = useState(0);
 
   // ── Fetch V1.1 catalog roots ──
   useEffect(() => {
@@ -276,8 +270,7 @@ export default function NewListingPage() {
       const ctrl = new AbortController();
       brandAbort.current = ctrl;
       try {
-        const categoryParam = categoryId ? `&categoryId=${encodeURIComponent(categoryId)}` : "";
-        const res = await fetch(`/api/brands/search?q=${encodeURIComponent(q)}${categoryParam}`, {
+        const res = await fetch(`/api/brands/search?q=${encodeURIComponent(q)}`, {
           signal: ctrl.signal,
         });
         if (!res.ok) throw new Error("brand search failed");
@@ -299,7 +292,7 @@ export default function NewListingPage() {
       clearTimeout(t);
       brandAbort.current?.abort();
     };
-  }, [brandQuery, categoryId, brandRetryKey]);
+  }, [brandQuery, brandRetryKey]);
 
   // ── Close brand dropdown on outside click ──
   useEffect(() => {
@@ -317,50 +310,13 @@ export default function NewListingPage() {
     setBrandQuery(b.name);
     setForm((f) => ({ ...f, brandLabel: b.name }));
     setBrandOpen(false);
-    setModelId("");
+    setModelName("");
     setModels([]);
     setAttributes({});
     setAttributeDefs([]);
     setAttributesLoaded(false);
     setAttrErrors({});
   };
-
-  // ── Fetch models when brand changes; failures stay visible and retryable ──
-  useEffect(() => {
-    if (!brandId) {
-      setModels([]);
-      setModelsLoading(false);
-      setModelsError(null);
-      return;
-    }
-    const controller = new AbortController();
-    setModelsLoading(true);
-    setModelsError(null);
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/taxonomy/brands/${encodeURIComponent(brandId)}/models${categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : ""}`,
-          { cache: "no-store", signal: controller.signal },
-        );
-        if (!res.ok) throw new Error("models fetch failed");
-        const data = (await res.json()) as {
-          data: Array<{ id: string; name: string; nameEn: string | null }>;
-        };
-        if (controller.signal.aborted) return;
-        setModels(
-          (data.data ?? []).map((m) => ({ id: m.id, name: m.name, nameEn: m.nameEn })),
-        );
-      } catch {
-        if (!controller.signal.aborted) {
-          setModels([]);
-          setModelsError("دریافت مدل‌های این برند ناموفق بود. دوباره تلاش کنید.");
-        }
-      } finally {
-        if (!controller.signal.aborted) setModelsLoading(false);
-      }
-    })();
-    return () => controller.abort();
-  }, [brandId, categoryId, modelsRetryKey]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -396,7 +352,7 @@ export default function NewListingPage() {
       setBrandQuery("");
       setBrandResults([]);
       setBrandOpen(false);
-      setModelId("");
+      setModelName("");
       setForm((f) => ({ ...f, brandLabel: "" }));
       setModels([]);
       setAttributes({});
@@ -419,7 +375,7 @@ export default function NewListingPage() {
     setBrandQuery("");
     setBrandResults([]);
     setBrandOpen(false);
-    setModelId("");
+    setModelName("");
     setModels([]);
     setAttributes({});
     setAttributeDefs([]);
@@ -595,7 +551,7 @@ export default function NewListingPage() {
       // server validates and persists it in the same transaction as the listing.
       const defs = attributeDefs.length > 0
         ? attributeDefs
-        : (categoryId ? getCachedAttributes(categoryId, modelId) ?? [] : []);
+        : (categoryId ? getCachedAttributes(categoryId, null) ?? [] : []);
       const attributePayload = buildAttributePayload(defs, attributes);
 
       // Location IDs are resolved and validated server-side.
@@ -622,7 +578,7 @@ export default function NewListingPage() {
         locationLongitude: ["SALE", "RENT", "AUCTION"].includes(transactionType) && location.longitude?.trim() ? Number(location.longitude) : undefined,
         brandId: brandId || undefined,
         categoryId: categoryId || undefined,
-        modelId: modelId || undefined,
+        modelName: modelName.trim() || undefined,
         serialNumber: form.serialNumber || undefined,
         sellerName: form.sellerName || undefined,
         sellerPhone: form.sellerPhone || undefined,
@@ -1010,7 +966,7 @@ export default function NewListingPage() {
                             setAttributeDefs([]);
                             setAttributesLoaded(false);
                             setAttrErrors({});
-                            setModelId("");
+                            setModelName("");
                           }}
                         />
                       </div>
@@ -1024,12 +980,12 @@ export default function NewListingPage() {
                     <SectionTitle
                       icon={<Sliders className="h-5 w-5" />}
                       title={isServiceFlow ? (isServiceOffer ? "مشخصات خدمت قابل ارائه" : "مشخصات درخواست خدمت") : "مشخصات تخصصی موضوع آگهی"}
-                      subtitle={`مشخصات متناسب با ${categoryPath.map((item) => item.name).join(" / ") || "موضوع انتخاب‌شده"}${form.brandLabel ? ` — ${form.brandLabel}` : ""}${models.find((m) => m.id === modelId)?.name ? ` ${models.find((m) => m.id === modelId)?.name}` : ""}`}
+                      subtitle={`مشخصات متناسب با ${categoryPath.map((item) => item.name).join(" / ") || "موضوع انتخاب‌شده"}${form.brandLabel ? ` — ${form.brandLabel}` : ""}${modelName.trim() ? ` ${modelName.trim()}` : ""}`}
                     />
                     <div className="mt-6">
                       <AttributeFields
                         categoryId={categoryId || null}
-                        modelId={modelId || null}
+                        modelId={null}
                         values={attributes}
                         onChange={(next) => {
                           setAttributes(next);
@@ -1072,7 +1028,7 @@ export default function NewListingPage() {
                             onChange={(e) => {
                               setBrandQuery(e.target.value);
                               setBrandId("");
-                              setModelId("");
+                              setModelName("");
                               setModels([]);
                               setAttributes({});
                               setAttributeDefs([]);
@@ -1096,6 +1052,7 @@ export default function NewListingPage() {
                               onClick={() => {
                                 setBrandId("");
                                 setBrandQuery("");
+                                setModelName("");
                                 setForm((f) => ({ ...f, brandLabel: "" }));
                                 setBrandResults([]);
                                 setBrandOpen(false);
@@ -1173,48 +1130,21 @@ export default function NewListingPage() {
                         )}
                       </div>
 
-                      {/* Model select (filtered by brand) */}
+                      {/* Model is free text; it is not constrained by the central brand catalog. */}
                       <div>
-                        <label className={labelCls}>مدل</label>
-                        <div className="relative">
-                          <select
-                            value={modelId}
-                            onChange={(e) => {
-                              setModelId(e.target.value);
-                              setAttributes({});
-                              setAttributeDefs([]);
-                              setAttributesLoaded(false);
-                              setAttrErrors({});
-                            }}
-                            disabled={!brandId || modelsLoading}
-                            className={inputCls}
-                          >
-                            <option value="">
-                              {!brandId
-                                ? "ابتدا برند را انتخاب کنید"
-                                : modelsLoading
-                                  ? "بارگذاری…"
-                                  : "بدون مدل مشخص"}
-                            </option>
-                            {models.map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.name}
-                                {m.nameEn ? ` (${m.nameEn})` : ""}
-                              </option>
-                            ))}
-                          </select>
-                          {modelsLoading && (
-                            <Loader2 className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-[#F58220]" />
-                          )}
-                        </div>
-                        {modelsError && (
-                          <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-300">
-                            <span>{modelsError}</span>
-                            <button type="button" onClick={() => setModelsRetryKey((key) => key + 1)} className="font-bold text-[#F58220] underline">
-                              تلاش مجدد
-                            </button>
-                          </div>
-                        )}
+                        <label className={labelCls}>مدل (اختیاری)</label>
+                        <input
+                          type="text"
+                          value={modelName}
+                          onChange={(e) => setModelName(e.target.value.slice(0, 120))}
+                          disabled={!brandId}
+                          maxLength={120}
+                          placeholder={brandId ? "مدل را وارد کنید؛ مثلاً PC220 یا 320D" : "ابتدا برند را انتخاب کنید"}
+                          className={inputCls}
+                        />
+                        <p className="mt-1 text-[10px] text-white/35">
+                          نام مدل آزاد است و لازم نیست از قبل در فهرست مرکزی ثبت شده باشد.
+                        </p>
                       </div>
 
                       <div>
@@ -1705,7 +1635,7 @@ export default function NewListingPage() {
                         value={categoryPath.map((item) => item.name).join(" / ") || "—"}
                       />
                       <ReviewRow label="برند" value={form.brandLabel || "—"} />
-                      <ReviewRow label="مدل" value={models.find((m) => m.id === modelId)?.name ?? "—"} />
+                      <ReviewRow label="مدل" value={modelName.trim() || "—"} />
                       <ReviewRow label="عنوان" value={form.title || "—"} />
                       <ReviewRow label="وضعیت" value={{ NEW: "نو", USED: "کارکرده", REFURBISHED: "بازسازی‌شده", FOR_PARTS: "قطعات" }[form.condition] ?? "—"} />
                       <ReviewRow label="سال ساخت" value={form.year || "—"} />
