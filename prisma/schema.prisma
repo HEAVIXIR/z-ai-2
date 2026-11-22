@@ -561,7 +561,6 @@ model Listing {
   categoryId   String?
   category     Category?      @relation(fields: [categoryId], references: [id])
   modelId      String?
-  modelName    String?
   model        ProductModel?  @relation(fields: [modelId], references: [id], onDelete: SetNull)
   sellerId     String?
   seller       User?          @relation("UserListings", fields: [sellerId], references: [id], onDelete: SetNull)

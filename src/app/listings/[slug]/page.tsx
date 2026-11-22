@@ -105,7 +105,6 @@ export default async function ListingDetailPage({
       where: { slug, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       include: {
         brand: { select: { name: true, nameEn: true, country: true } },
-        model: { select: { name: true } },
         category: { select: { name: true, slug: true, icon: true } },
         seller: { select: { id: true } },
         images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }] },
@@ -225,7 +224,6 @@ export default async function ListingDetailPage({
 
   const specs = [
     listing.brand && { icon: Tag, label: "برند", value: listing.brand.name },
-    (listing.modelName || listing.model?.name) && { icon: Tag, label: "مدل", value: listing.modelName || listing.model!.name },
     listing.year && { icon: Calendar, label: "سال ساخت", value: toFa(listing.year) },
     listing.workingHours != null && {
       icon: Gauge,

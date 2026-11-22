@@ -360,7 +360,7 @@ export async function getComparisonData(sessionId: string): Promise<ComparisonDa
         brandId: l.brandId ?? null,
         brandName: l.brand?.name ?? null,
         modelId: l.modelId ?? null,
-        modelName: l.modelName ?? l.model?.name ?? null,
+        modelName: l.model?.name ?? null,
         productId: l.productId ?? null,
         year: l.year ?? null,
         city: l.city ?? null,
