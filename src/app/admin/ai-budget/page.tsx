@@ -270,7 +270,7 @@ export default function AIBudgetPage() {
                   <div>
                     <h2 className="text-base font-black text-zinc-900">بودجه کلی هوش مصنوعی</h2>
                     <p className="text-xs text-zinc-500">
-                      سقف هزینه روزانه و ماهانه — به‌صورت خودکار هنگام گذشت پنجره بازنشانی می‌شود
+                      مبالغ رزروشده بر اساس سقف هر تسک هستند و هزینه واقعی صورتحساب Provider محسوب نمی‌شوند؛ پنجره‌ها به‌صورت خودکار بازنشانی می‌شوند
                     </p>
                   </div>
                 </div>
@@ -290,7 +290,7 @@ export default function AIBudgetPage() {
               {/* Progress bars */}
               <div className="mt-5 grid gap-5 md:grid-cols-2">
                 <BudgetBar
-                  label="مصرف روزانه"
+                  label="مبلغ رزروشده روزانه"
                   spend={budget.dailySpendUsd}
                   limit={budget.dailyLimitUsd}
                   pct={dailyPct}
@@ -299,7 +299,7 @@ export default function AIBudgetPage() {
                   tone="amber"
                 />
                 <BudgetBar
-                  label="مصرف ماهانه"
+                  label="مبلغ رزروشده ماهانه"
                   spend={budget.monthlySpendUsd}
                   limit={budget.monthlyLimitUsd}
                   pct={monthlyPct}
@@ -355,7 +355,7 @@ export default function AIBudgetPage() {
                   className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-600 transition hover:border-amber-400 hover:text-amber-600 disabled:opacity-60"
                 >
                   {resetting === "daily" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                  صفر کردن مصرف روزانه
+                  صفر کردن مبلغ رزروشده روزانه
                 </button>
                 <button
                   type="button"
@@ -367,7 +367,7 @@ export default function AIBudgetPage() {
                   className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-600 transition hover:border-orange-400 hover:text-orange-600 disabled:opacity-60"
                 >
                   {resetting === "monthly" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                  صفر کردن مصرف ماهانه
+                  صفر کردن مبلغ رزروشده ماهانه
                 </button>
               </div>
             </div>
@@ -559,7 +559,7 @@ function BudgetBar({
         />
       </div>
       <p className="mt-1.5 text-[10px] text-zinc-400">
-        بازنشانی بعدی: {fmtDate(resetAt)} — {toFa(pct.toFixed(1))}٪ مصرف شده
+        بازنشانی بعدی: {fmtDate(resetAt)} — {toFa(pct.toFixed(1))}٪ از سقف رزروشده
       </p>
     </div>
   );
