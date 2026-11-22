@@ -462,20 +462,19 @@ export async function searchBrands(
   const normQ = normalizeAliasValue(rawQ);
   const take = Math.min(50, Math.max(1, opts.take ?? 20));
 
-  // Note: SQLite `contains` is ASCII-case-insensitive but Persian
-  // letters are case-less, so we still pass the normalized query.
-  // The raw query is also OR-ed in so partial English matches
-  // (e.g. "cat" → "Caterpillar") work.
+  // PostgreSQL contains is case-sensitive unless mode is explicit.
+  // Use insensitive matching for canonical names and normalized aliases so
+  // lower-case English queries work even before an alias backfill completes.
   const where: PrismaWhere = {
     active: true,
     status: "ACTIVE",
     OR: [
-      { name: { contains: rawQ } },
-      { name: { contains: normQ } },
-      { nameEn: { contains: rawQ } },
-      { nameEn: { contains: normQ } },
-      { shortName: { contains: rawQ } },
-      { shortName: { contains: normQ } },
+      { name: { contains: rawQ, mode: "insensitive" } },
+      { name: { contains: normQ, mode: "insensitive" } },
+      { nameEn: { contains: rawQ, mode: "insensitive" } },
+      { nameEn: { contains: normQ, mode: "insensitive" } },
+      { shortName: { contains: rawQ, mode: "insensitive" } },
+      { shortName: { contains: normQ, mode: "insensitive" } },
       { aliases: { some: { normalizedValue: { contains: normQ } } } },
     ],
   };
