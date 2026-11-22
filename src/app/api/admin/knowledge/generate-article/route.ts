@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { hasPermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
+import { getAIProvider, getZAISDK } from "@/lib/ai-provider-router";
 
 /* ============================================================
    POST /api/admin/knowledge/generate-article
