@@ -810,26 +810,26 @@ async function upsertBrand(b: BrandSeed) {
   const aliases = new Set([b.name, b.nameEn, ...(b.aliases ?? [])]);
   // Aliases — upsert by [brandId, normalizedValue]
   for (const a of aliases) {
-      const norm = normalizeAlias(a);
-      if (!norm) continue;
-      const language =
-        /[a-zA-Z]/.test(a) && /[\u0600-\u06FF]/.test(a)
-          ? "mixed"
-          : /[\u0600-\u06FF]/.test(a)
+    const norm = normalizeAlias(a);
+    if (!norm) continue;
+    const language =
+      /[a-zA-Z]/.test(a) && /[\u0600-\u06FF]/.test(a)
+        ? "mixed"
+        : /[\u0600-\u06FF]/.test(a)
           ? "fa"
-          : "en";
-      await db.brandAlias.upsert({
-        where: { brandId_normalizedValue: { brandId: brand.id, normalizedValue: norm } },
-        create: {
-          brandId: brand.id,
-          value: a,
-          normalizedValue: norm,
-          language,
-          type: "COMMON",
-          confidence: 80,
-        },
-        update: {},
-      });
+        : "en";
+    await db.brandAlias.upsert({
+      where: { brandId_normalizedValue: { brandId: brand.id, normalizedValue: norm } },
+      create: {
+        brandId: brand.id,
+        value: a,
+        normalizedValue: norm,
+        language,
+        type: "COMMON",
+        confidence: 80,
+      },
+      update: {},
+    });
   }
 
   return brand;
