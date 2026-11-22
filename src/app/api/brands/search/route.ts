@@ -5,9 +5,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/brands/search?q=...&categoryId=...
+ * GET /api/brands/search?q=...
  *
- * Public, no-auth, alias-aware brand search.
+ * Public, no-auth, alias-aware global brand search. Category selection does
+ * not constrain brand identity or visibility.
  *
  * P1-18: delegates to `searchBrands` (src/lib/search.ts) which performs
  * Persian normalization (ي→ی, ك→ک, ZWNJ strip, Arabic→Persian digits,
@@ -27,8 +28,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ brands: [] });
     }
 
-    const categoryId = url.searchParams.get("categoryId")?.trim() || undefined;
-    const brands = await searchBrands(rawQ, { take: 20, categoryId });
+    // Always search the canonical global catalog; category is deliberately
+    // not a visibility filter for brands.
+    const brands = await searchBrands(rawQ, { take: 20 });
 
     // Backward-compat: the original endpoint returned `_count: { listings }`.
     // Map `listingsCount` back to that shape so existing clients

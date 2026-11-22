@@ -479,10 +479,9 @@ export async function searchBrands(
       { aliases: { some: { normalizedValue: { contains: normQ } } } },
     ],
   };
-  if (opts.categoryId) {
-    where.categories = { some: { categoryId: opts.categoryId } };
-  }
-
+  // Brand identity is global across the marketplace. Category associations
+  // remain useful for facets and recommendations, but must never hide a
+  // valid brand from the canonical brand picker.
   const brands = await db.brand.findMany({
     where: where as any,
     take,
