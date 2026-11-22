@@ -148,7 +148,7 @@ export async function PATCH(req: Request, { params }: Args) {
     const allowedFields = [
       "title", "description", "shortDesc", "priceType", "listingType",
       "condition", "province", "city", "year", "workingHours",
-      "sellerPhone", "sellerName", "brandId", "categoryId", "modelId",
+      "sellerPhone", "sellerName", "brandId", "categoryId", "modelId", "modelName",
       // P1-5/6 — canonical Location + Transaction normalization (additive)
       "transactionTypeId", "countryId", "provinceId", "cityId", "productId",
     ];
@@ -160,6 +160,16 @@ export async function PATCH(req: Request, { params }: Args) {
           data[f] = body[f];
         }
       }
+    }
+    if ("modelName" in body) {
+      if (body.modelName !== null && typeof body.modelName !== "string") {
+        return NextResponse.json({ error: "نام مدل باید متن باشد." }, { status: 400 });
+      }
+      const modelName = typeof body.modelName === "string" ? body.modelName.trim() : "";
+      if (modelName.length > 120) {
+        return NextResponse.json({ error: "نام مدل نباید بیش از ۱۲۰ نویسه باشد." }, { status: 400 });
+      }
+      data.modelName = modelName || null;
     }
     if ("price" in body) {
       data.price = parseBig(body.price);
