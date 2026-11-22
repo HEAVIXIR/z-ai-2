@@ -137,22 +137,45 @@ jobs:
             sleep 3
           done
           echo "HEAVIX_PREVIEW_ROOT_HTTP=$root_code"
-          health_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-preview-health.json" -w '%{http_code}' "$PREVIEW_URL/api/health" || true)"
+          health_code="000"
+          health_ok="false"
+          health_attempt=0
+          # Retry at the workflow boundary: each curl is a separate Worker request.
+          # Do not retry inside /api/health, whose Promise.race cannot cancel Prisma queries.
+          for attempt in {1..5}; do
+            health_attempt="$attempt"
+            health_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-preview-health.json" -w '%{http_code}' "$PREVIEW_URL/api/health" || true)"
+            health_code="${health_code:-000}"
+            if [ "$health_code" = "200" ] && node -e '
+              const fs = require("node:fs");
+              try {
+                const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                process.exit(h.status === "ok" && h.checks?.db === "up" && h.checks?.storeDb === "up" ? 0 : 1);
+              } catch { process.exit(1); }
+            ' "$RUNNER_TEMP/heavix-preview-health.json"; then
+              health_ok="true"
+              break
+            fi
+            echo "Health attempt $attempt/5 did not meet App DB + Store DB readiness (HTTP $health_code)."
+            if [ "$attempt" -lt 5 ]; then sleep 7; fi
+          done
           echo "HEAVIX_PREVIEW_HEALTH_HTTP=$health_code"
+          echo "HEAVIX_PREVIEW_HEALTH_ATTEMPTS=$health_attempt"
           if [ -s "$RUNNER_TEMP/heavix-preview-health.json" ]; then
             cat "$RUNNER_TEMP/heavix-preview-health.json"
           fi
           {
             echo "- Root HTTP: ${root_code:-000}"
             echo "- Health HTTP: ${health_code:-000}"
+            echo "- Health attempts: ${health_attempt}/5"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$root_code" != "200" ]; then
             echo "::error::Integration Preview root must return HTTP 200 (received ${root_code:-000})."
             exit 1
           fi
           echo "PASS: Integration Preview root returned HTTP 200."
-          if [ "$health_code" != "200" ]; then
-            echo "::error::Integration Preview health route must return HTTP 200 (received ${health_code:-000})."
+          if [ "$health_ok" != "true" ]; then
+            echo "::error::Integration Preview did not report both App DB and Store DB up after 5 independent health requests (last HTTP ${health_code:-000})."
             exit 1
           fi
           node <<'NODE'
@@ -166,7 +189,7 @@ jobs:
             process.exit(1);
           }
           NODE
-          echo "PASS: Integration Preview App DB and Store DB both report up."
+          echo "PASS: Integration Preview App DB and Store DB both report up after ${health_attempt} attempt(s)."
           {
             echo "- App DB: up"
             echo "- Store DB: up"
