@@ -318,7 +318,6 @@ export default function NewListingPage() {
     setForm((f) => ({ ...f, brandLabel: b.name }));
     setBrandOpen(false);
     setModelId("");
-    setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
     setModels([]);
     setAttributes({});
     setAttributeDefs([]);
@@ -398,7 +397,7 @@ export default function NewListingPage() {
       setBrandResults([]);
       setBrandOpen(false);
       setModelId("");
-      setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
+      setForm((f) => ({ ...f, brandLabel: "" }));
       setModels([]);
       setAttributes({});
       setAttributeDefs([]);
@@ -1080,7 +1079,7 @@ export default function NewListingPage() {
                               setAttributesLoaded(false);
                               setAttrErrors({});
                               // Text in this field is a search query, never a new Brand.
-                              setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
+                              setForm((f) => ({ ...f, brandLabel: "" }));
                             }}
                             onFocus={() => brandResults.length > 0 && setBrandOpen(true)}
                             placeholder="نام برند را فارسی یا انگلیسی تایپ کنید…"
@@ -1097,7 +1096,7 @@ export default function NewListingPage() {
                               onClick={() => {
                                 setBrandId("");
                                 setBrandQuery("");
-                                setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
+                                setForm((f) => ({ ...f, brandLabel: "" }));
                                 setBrandResults([]);
                                 setBrandOpen(false);
                               }}
