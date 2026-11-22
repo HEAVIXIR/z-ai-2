@@ -101,7 +101,6 @@ async function main() {
     db.brandCategory.findMany({ select: { brandId: true, categoryId: true } }),
   ]);
   const appIndustryIds = await db.applicationIndustry.findMany({ select: { id: true, key: true } });
-  const appIdByKey = new Map(appIndustryIds.map(x => [x.key, x.id]));
   const direct = new Map<string, Set<string>>();
   const categoryAppLinks = await db.categoryApplicationIndustry.findMany({
     where: { categoryId: { in: categories.map(c => c.id) } },
@@ -156,7 +155,7 @@ async function main() {
     existingBrandCategoryLinks: existingSet.size,
     proposedNewLinks: proposed.size,
     unmappedIndustryKeys: [...unmapped].sort(),
-    linksByCategorySlug: Object.fromEntries([...grouped].sort((a,b)=>a[0].localeCompare(b[0])) ,
+    linksByCategorySlug: Object.fromEntries([...grouped].sort((a,b)=>a[0].localeCompare(b[0])),
     sample,
   }, null, 2));
   if (apply && proposed.size) {
