@@ -40,8 +40,8 @@ export async function POST(req: Request) {
     if (!listing || typeof listing !== "object" || Array.isArray(listing)) return NextResponse.json({ error: "listing object is required", ok: false }, { status: 400 });
     const seller = body.seller && typeof body.seller === "object" && !Array.isArray(body.seller) ? body.seller as Record<string, unknown> : null;
     const input = { listing, seller };
-    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "MARKET_ANALYST", input, execute: async () => {
-      const result = await detectFraudSignals({ listing: listing as Record<string, unknown>, seller, userId: user.id });
+    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "MARKET_ANALYST", input, execute: async (signal) => {
+      const result = await detectFraudSignals({ listing: listing as Record<string, unknown>, seller, userId: user.id, signal });
       if (!result.success) throw new Error(result.error);
       return result.report;
     }});
@@ -54,8 +54,8 @@ export async function POST(req: Request) {
     if (!targetUserId) return NextResponse.json({ error: "userId is required", ok: false }, { status: 400 });
     const context = body.context && typeof body.context === "object" && !Array.isArray(body.context) ? body.context as Record<string, unknown> : null;
     const input = { userId: targetUserId, context };
-    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "MARKET_ANALYST", input, execute: async () => {
-      const result = await suggestNextActions({ userId: targetUserId, context });
+    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "MARKET_ANALYST", input, execute: async (signal) => {
+      const result = await suggestNextActions({ userId: targetUserId, context, signal });
       if (!result.success) throw new Error(result.error);
       return result.suggestion;
     }});

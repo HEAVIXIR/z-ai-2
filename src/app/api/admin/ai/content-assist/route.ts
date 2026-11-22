@@ -24,8 +24,8 @@ export async function POST(req: Request) {
     const keywords = Array.isArray(body.keywords) ? body.keywords.filter((x): x is string => typeof x === "string").slice(0, 12) : [];
     if (!topic) return NextResponse.json({ error: "topic is required", ok: false }, { status: 400 });
     const input = { topic: topic.slice(0, 600), keywords };
-    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "CONTENT_FACTORY", input, execute: async () => {
-      const result = await generateArticleOutline({ ...input, userId: user.id });
+    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "CONTENT_FACTORY", input, execute: async (signal) => {
+      const result = await generateArticleOutline({ ...input, userId: user.id, signal });
       if (!result.success) throw new Error(result.error);
       return result.outline;
     }});
@@ -38,8 +38,8 @@ export async function POST(req: Request) {
     const content = typeof body.content === "string" ? body.content.trim() : "";
     if (!title) return NextResponse.json({ error: "title is required", ok: false }, { status: 400 });
     const input = { title: title.slice(0, 300), content: content.slice(0, 4500) };
-    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "CONTENT_FACTORY", input, execute: async () => {
-      const result = await optimizeForSEO({ ...input, userId: user.id });
+    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "CONTENT_FACTORY", input, execute: async (signal) => {
+      const result = await optimizeForSEO({ ...input, userId: user.id, signal });
       if (!result.success) throw new Error(result.error);
       return result.seo;
     }});
@@ -51,8 +51,8 @@ export async function POST(req: Request) {
     const listing = body.listing;
     if (!listing || typeof listing !== "object" || Array.isArray(listing)) return NextResponse.json({ error: "listing object is required", ok: false }, { status: 400 });
     const input = { listing };
-    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "CONTENT_FACTORY", input, execute: async () => {
-      const result = await checkListingQuality({ listing: listing as Record<string, unknown>, userId: user.id });
+    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "CONTENT_FACTORY", input, execute: async (signal) => {
+      const result = await checkListingQuality({ listing: listing as Record<string, unknown>, userId: user.id, signal });
       if (!result.success) throw new Error(result.error);
       return result.report;
     }});

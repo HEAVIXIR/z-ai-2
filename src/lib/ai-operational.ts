@@ -312,6 +312,7 @@ export async function detectFraudSignals(input: {
   listing: Record<string, unknown>;
   seller?: Record<string, unknown> | null;
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<FraudResult> {
   const { listing, seller, userId } = input;
   try {
@@ -340,6 +341,7 @@ export async function detectFraudSignals(input: {
         { role: "system", content: FRAUD_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";
@@ -388,6 +390,7 @@ export async function detectFraudSignals(input: {
 export async function suggestNextActions(input: {
   userId: string;
   context?: Record<string, unknown> | null;
+  signal?: AbortSignal;
 }): Promise<NextActionResult> {
   const { userId, context } = input;
   try {
@@ -408,6 +411,7 @@ export async function suggestNextActions(input: {
         { role: "system", content: NEXT_ACTION_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";

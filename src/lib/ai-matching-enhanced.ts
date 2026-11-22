@@ -200,6 +200,7 @@ export async function enhanceMatchScore(input: {
   buyRequest: BuyRequestInput;
   candidateListings: CandidateListingInput[];
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<EnhancedMatchResult> {
   const { buyRequest, candidateListings, userId } = input;
   try {
@@ -226,6 +227,7 @@ export async function enhanceMatchScore(input: {
         { role: "system", content: ENHANCE_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";
@@ -289,6 +291,7 @@ export async function generateMatchExplanation(input: {
   listing: CandidateListingInput;
   matchScore?: number;
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<MatchExplanationResult> {
   const { buyRequest, listing, matchScore, userId } = input;
   try {
@@ -314,6 +317,7 @@ export async function generateMatchExplanation(input: {
         { role: "system", content: EXPLAIN_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";

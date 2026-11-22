@@ -183,6 +183,7 @@ export async function generateArticleOutline(input: {
   topic: string;
   keywords?: string[];
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<OutlineResult> {
   const { topic, keywords, userId } = input;
   try {
@@ -204,6 +205,7 @@ export async function generateArticleOutline(input: {
         { role: "system", content: OUTLINE_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";
@@ -268,6 +270,7 @@ export async function optimizeForSEO(input: {
   title: string;
   content: string;
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<SEOResult> {
   const { title, content, userId } = input;
   try {
@@ -290,6 +293,7 @@ export async function optimizeForSEO(input: {
         { role: "system", content: SEO_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";
@@ -347,6 +351,7 @@ export async function optimizeForSEO(input: {
 export async function checkListingQuality(input: {
   listing: Record<string, unknown>;
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<ListingQualityResult> {
   const { listing, userId } = input;
   try {
@@ -371,6 +376,7 @@ export async function checkListingQuality(input: {
         { role: "system", content: QUALITY_SYSTEM_PROMPT },
         { role: "user", content: JSON.stringify(compact) },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";

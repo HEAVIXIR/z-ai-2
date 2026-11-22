@@ -10,7 +10,7 @@ export async function executeAdminAIWithPolicy<T>(params: {
   userId: string;
   taskType: string;
   input: unknown;
-  execute: () => Promise<T>;
+  execute: (signal: AbortSignal) => Promise<T>;
 }): Promise<AdminAIGatewayResult<T>> {
   const inputText = JSON.stringify(params.input ?? null);
   const preflight = await preflightAIRequest({
@@ -26,11 +26,17 @@ export async function executeAdminAIWithPolicy<T>(params: {
   let success = false;
   let output: unknown = null;
   let errorText: string | null = null;
+  let timedOut = false;
+  const controller = new AbortController();
+  const timeoutMs = Math.max(1, config.timeoutMs);
+  const timeoutHandle = setTimeout(() => { timedOut = true; controller.abort(new Error("AI gateway timeout")); }, timeoutMs);
   try {
-    output = await params.execute();
+    output = await params.execute(controller.signal);
     success = true;
   } catch (err) {
-    errorText = err instanceof Error ? err.message.slice(0, 500) : "AI request failed";
+    errorText = timedOut ? "AI request timed out" : err instanceof Error ? err.message.slice(0, 500) : "AI request failed";
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 
   // Preflight atomically reserves the policy ceiling. This is reserved budget,
@@ -49,5 +55,5 @@ export async function executeAdminAIWithPolicy<T>(params: {
       userId: params.userId,
     },
   });
-  return success ? { ok: true, output: output as T } : { ok: false, statusCode: 502, error: errorText ?? "AI request failed" };
+  return success ? { ok: true, output: output as T } : { ok: false, statusCode: timedOut ? 504 : 502, error: errorText ?? "AI request failed" };
 }

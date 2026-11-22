@@ -25,8 +25,8 @@ export async function POST(req: Request) {
     const listing = body.listing as CandidateListingInput | undefined;
     if (!listing?.id || !listing.title) return NextResponse.json({ error: "listing { id, title } is required for explain mode", ok: false }, { status: 400 });
     const input = { buyRequest, listing, matchScore: typeof body.matchScore === "number" ? body.matchScore : undefined };
-    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "MARKET_ANALYST", input, execute: async () => {
-      const result = await generateMatchExplanation({ ...input, userId: user.id });
+    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "MARKET_ANALYST", input, execute: async (signal) => {
+      const result = await generateMatchExplanation({ ...input, userId: user.id, signal });
       if (!result.success) throw new Error(result.error);
       return result.explanation;
     }});
@@ -39,8 +39,8 @@ export async function POST(req: Request) {
     if (!candidateListings.length) return NextResponse.json({ error: "candidateListings[] is required for score mode", ok: false }, { status: 400 });
     if (candidateListings.length > 50) return NextResponse.json({ error: "candidateListings max 50 per call", ok: false }, { status: 400 });
     const input = { buyRequest, candidateListings };
-    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "MARKET_ANALYST", input, execute: async () => {
-      const result = await enhanceMatchScore({ ...input, userId: user.id });
+    const run = await executeAdminAIWithPolicy({ userId: user.id, taskType: "MARKET_ANALYST", input, execute: async (signal) => {
+      const result = await enhanceMatchScore({ ...input, userId: user.id, signal });
       if (!result.success) throw new Error(result.error);
       return result.matches;
     }});
