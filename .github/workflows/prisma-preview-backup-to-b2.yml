@@ -429,7 +429,13 @@ jobs:
 
           # Independently prove the backup/seed connection is the same Preview DB.
           [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
-          observed="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
+          CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
+          test -n "$CID"
+          run_preview_sql() {
+            local sql="$1"
+            docker exec -e "HEAVIX_PREVIEW_DATABASE_URL=$MAIN_PREVIEW_DATABASE_URL" -e "HEAVIX_PREVIEW_SQL=$sql" -e PGSSLMODE=verify-full "$CID" bash -ceu 'psql --dbname="$HEAVIX_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$HEAVIX_PREVIEW_SQL"'
+          }
+          observed="$(run_preview_sql "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
           expected="7701427422680793119|$HEAVIX_APP_PREVIEW_DATABASE_OID"
           test "$observed" = "$expected"
           echo "PASS: seed connection matches the pinned Preview cluster and database OID."
@@ -515,30 +521,22 @@ jobs:
 
           # Fail closed unless this is the only unapplied migration. This prevents
           # migrate deploy from accidentally applying unrelated pending migrations.
-          node <<'NODE'
-          const fs = require("node:fs");
-          const path = require("node:path");
-          const { execFileSync } = require("node:child_process");
-          const target = "20261122203000_listing_model_name";
-          const dirs = fs.readdirSync("prisma/migrations", { withFileTypes: true })
-            .filter((entry) => entry.isDirectory() && fs.existsSync(path.join("prisma/migrations", entry.name, "migration.sql")))
-            .map((entry) => entry.name);
-          const raw = execFileSync("psql", [
-            process.env.MAIN_PREVIEW_DATABASE_URL, "-XAtq", "-v", "ON_ERROR_STOP=1",
-            "-c", 'SELECT migration_name FROM public."_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL'
-          ], { encoding: "utf8" });
-          const applied = new Set(raw.split(/\r?\n/).map((value) => value.trim()).filter(Boolean));
-          const pending = dirs.filter((name) => !applied.has(name));
-          if (pending.length && (pending.length !== 1 || pending[0] !== target)) {
-            throw new Error("Refusing migration: pending migrations are not limited to the approved Listing.modelName migration: " + pending.join(", "));
-          }
-          process.stdout.write(pending.length ? "PASS: only approved Listing.modelName migration is pending.\n" : "PASS: migration is already applied; no pending migrations.\n");
-          NODE
+          target="20261122203000_listing_model_name"
+          all_migrations="$(find prisma/migrations -mindepth 2 -maxdepth 2 -type f -name migration.sql -printf '%h\\n' | sed 's#^prisma/migrations/##' | sort)"
+          applied_migrations="$(run_preview_sql 'SELECT migration_name FROM public."_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL')"
+          mapfile -t pending_migrations < <(comm -23 <(printf '%s\\n' "$all_migrations") <(printf '%s\\n' "$applied_migrations" | sort))
+          if (( ${#pending_migrations[@]} > 0 )); then
+            test "${#pending_migrations[@]}" -eq 1
+            test "${pending_migrations[0]}" = "$target"
+            echo "PASS: only the approved Listing.modelName migration is pending."
+          else
+            echo "PASS: migration is already applied; no pending migrations."
+          fi
 
           DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx prisma migrate deploy --schema=prisma/schema.prisma
-          column_count="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='modelName'")"
+          column_count="$(run_preview_sql "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='modelName'")"
           test "$column_count" = "1"
-          migration_count="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.\"_prisma_migrations\" WHERE migration_name='20261122203000_listing_model_name' AND finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          migration_count="$(run_preview_sql "SELECT count(*) FROM public.\"_prisma_migrations\" WHERE migration_name='20261122203000_listing_model_name' AND finished_at IS NOT NULL AND rolled_back_at IS NULL")"
           test "$migration_count" = "1"
 
           {
