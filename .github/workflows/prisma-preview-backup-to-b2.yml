@@ -382,8 +382,8 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-      - name: Set up Bun for Preview RBAC seed
-        if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED'
+      - name: Set up Bun for Preview catalog seeds
+        if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED' || inputs.brand_seed == 'RUN_PREVIEW_BRAND_SEEDS'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
