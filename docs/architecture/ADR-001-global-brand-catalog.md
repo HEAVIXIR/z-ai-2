@@ -27,7 +27,7 @@ Therefore HEAVIX adopts a global Brand entity and keeps category metadata as a s
 3. Admin/authorized owner workflows may add, verify, merge, deactivate, and enrich canonical brands.
 4. Models are separate from brands. The user may type a model name even when no ProductModel row exists. The typed model text is saved on the listing; it must not create a canonical model automatically.
 5. BrandIndustry, BrandCategory, and BrandDomain are descriptive/curation metadata. Missing relations must not block brand search or listing creation.
-6. Brand aliases must be normalized consistently for Persian and English search (Arabic/Persian Yeh and Kaf, ZWNJ, Arabic/Persian digits, case-folding, punctuation/spacing).
+6. Brand aliases must be normalized consistently for Persian and English search (Arabic/Persian Yeh and Kaf, ZWNJ, Arabic/Persian digits, Arabic diacritics/tatweel, case-folding and spacing).
 
 ## Seed policy
 

@@ -18,6 +18,11 @@ export function normalizeAliasValue(s: string): string {
     .toLowerCase()
     .replace(/ي/g, "ی")
     .replace(/ك/g, "ک")
+    // Arabic/Persian digits are semantically identical for model/brand aliases.
+    .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+    // Ignore Arabic vowel marks and tatweel used in inconsistent spellings.
+    .replace(/[\u064b-\u065f\u0670\u0640]/g, "")
     .replace(/[\u200c\u200d]/g, "")
     .replace(/\s+/g, " ")
     .trim();
