@@ -276,13 +276,16 @@ describe("Scraper authorization, source safety, and preflight ordering", () => {
     expect(src).toContain("isAllowedSourceUrl");
   });
 
-  it("Store discovery remains constrained by an explicit host allowlist and manual imports are distinct", () => {
+  it("Store discovery remains constrained and manual imports use bounded parsing without AI preflight", () => {
     const src = readSource("admin/store/ai-scraper/route.ts");
     expect(src).toContain("HEAVIX_STORE_SCRAPER_ALLOWED_HOSTS");
     expect(src).toContain('const isManualImport = body.action === "import" || body.action === "bulk-import"');
+    expect(src).toContain('import { readBoundedJson } from "@/lib/read-bounded-json"');
+    expect(src).toContain("readBoundedJson<Record<string, any>>(req, 1_000_000)");
     expect(src).not.toContain("HEAVIX_STORE_SCRAPER_ENABLED");
     expect(src.indexOf("getCurrentUser()")).toBeLessThan(src.indexOf("checkCsrf(req)"));
     expect(src.indexOf("checkCsrf(req)")).toBeLessThan(src.indexOf("preflightAIRequest("));
+    expect(src.indexOf("if (isManualImport)")).toBeLessThan(src.indexOf("preflightAIRequest("));
     expect(src).toContain("isAllowedStoreSourceUrl");
   });
 });
