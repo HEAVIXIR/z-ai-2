@@ -44,7 +44,13 @@
       "HEAVIX_APP_PREVIEW_DATABASE_OID",
       "HEAVIX_STORE_PREVIEW_DATABASE_OID",
       "B2_KEY_ID",
-      "B2_APPLICATION_KEY"
+      "B2_APPLICATION_KEY",
+      // AI provider — required for AI features (search enhance,
+      // listing builder, content assistant, matching enhance,
+      // operational signals, gateway, scraper). Fail-closed
+      // when absent. See src/lib/ai-provider.ts.
+      "ZAI_BASE_URL",
+      "ZAI_API_KEY"
     ]
   }
 }
