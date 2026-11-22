@@ -447,7 +447,8 @@ describe("H.3 follow-up hardening: WANTED attribute transport and server enforce
 
   it("validates brands against the global registry and accepts a free-text model", () => {
     const route = read("src/app/api/wanted/route.ts");
-    expect(route).toContain("requestedBrandId ? db.brand.findUnique");
+    expect(route).toContain("db.brand.findUnique({");
+    expect(route).toContain("const requestedBrandId = brandId ? String(brandId) : null;");
     expect(route).toContain('!brandRow || !brandRow.active || brandRow.status !== "ACTIVE"');
     expect(route).toContain("requestedModelName.length > 120");
     expect(route).toContain("modelName: requestedModelName || null");

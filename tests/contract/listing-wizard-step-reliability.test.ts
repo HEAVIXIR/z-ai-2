@@ -65,7 +65,7 @@ describe("Listing wizard seven-step source contract", () => {
     expect(wizard).not.toContain("modelsError");
     expect(wizard).not.toContain("setModelsRetryKey");
     expect(wizard).toContain("brandAbort.current?.abort()");
-    expect(wizard).toContain("controller.signal.aborted");
+    expect(wizard).toContain("ctrl.signal.aborted");
   });
 
   it("uses canonical location APIs and authenticated staged media upload", () => {
