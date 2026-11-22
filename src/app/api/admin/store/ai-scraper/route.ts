@@ -646,6 +646,16 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const isManualImport = body.action === "import" || body.action === "bulk-import";
 
+  // Manual catalog imports are deterministic database operations, not AI tasks.
+  // They must not consume SCRAPER quota/budget or require an active AI policy.
+  // Keep an explicit payload bound because this path intentionally skips AI preflight.
+  if (isManualImport) {
+    if (JSON.stringify(body).length > 1_000_000) {
+      return NextResponse.json({ ok: false, error: "درخواست واردسازی بیش از حد بزرگ است." }, { status: 413 });
+    }
+    return _doPost(body, user, new AbortController());
+  }
+
   // Discovery requires an explicit host allowlist; no global activation flag is used.
   // Manual imports remain available, while discovery fails closed before AI budget preflight
   // if no source hosts are configured. Every result/page is still checked by the safe transport.
