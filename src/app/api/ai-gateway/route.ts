@@ -159,7 +159,8 @@ export async function POST(req: NextRequest) {
 
   // ── Route to the appropriate AI handler ─────────────────────
   let result: any = null;
-  let model = policy.model === "default" ? "z-ai-default" : policy.model;
+  let model = policy.model === "default" ? "default" : policy.model;
+  let requestModel = policy.model;
   let success = true;
   let errorMsg: string | null = null;
 
@@ -173,7 +174,8 @@ export async function POST(req: NextRequest) {
     const getProviderClient = () => {
       if (!providerResult) providerResult = getAIProvider();
       if (!providerResult.ok) throw new Error(providerResult.reason);
-      model = policy.model === "default" ? `${providerResult.provider}:${providerResult.model}` : `${providerResult.provider}:${policy.model}`;
+      requestModel = policy.model === "default" ? providerResult.model : policy.model;
+      model = `${providerResult.provider}:${requestModel}`;
       return providerResult.client;
     };
 
@@ -183,7 +185,7 @@ export async function POST(req: NextRequest) {
         const zai = getProviderClient();
         const query = String(input?.query || "");
         const llmRes = await zai.chat.completions.create({
-          model: policy.model === "default" ? providerResult!.ok ? providerResult!.model : "default" : policy.model,
+          model: requestModel,
           max_tokens: policy.maxOutputTokens,
           messages: [
             {
@@ -205,6 +207,8 @@ export async function POST(req: NextRequest) {
         const zai = getProviderClient();
         const desc = String(input?.description || "");
         const llmRes = await zai.chat.completions.create({
+          model: requestModel,
+          max_tokens: policy.maxOutputTokens,
           messages: [
             {
               role: "system",
@@ -254,6 +258,8 @@ export async function POST(req: NextRequest) {
         const zai = getProviderClient();
         const text = String(input?.text || "");
         const llmRes = await zai.chat.completions.create({
+          model: requestModel,
+          max_tokens: policy.maxOutputTokens,
           messages: [
             {
               role: "system",
