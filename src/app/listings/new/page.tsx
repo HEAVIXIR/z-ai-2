@@ -319,7 +319,6 @@ export default function NewListingPage() {
     setForm((f) => ({ ...f, brandLabel: b.name, modelName: "" }));
     setBrandOpen(false);
     setModelId("");
-    setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
     setModels([]);
     setAttributes({});
     setAttributeDefs([]);

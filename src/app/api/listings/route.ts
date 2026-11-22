@@ -529,7 +529,7 @@ export async function POST(req: Request) {
     }
 
     const submittedModelName = typeof body.modelName === "string"
-      ? body.modelName.trim().replace(/\\s+/g, " ").slice(0, 120)
+      ? body.modelName.trim().replace(/\s+/g, " ").slice(0, 120)
       : "";
     if (submittedModelName && !body.brandId) {
       return NextResponse.json({ error: "برای ثبت مدل ابتدا باید یک برند معتبر انتخاب کنید." }, { status: 400 });
