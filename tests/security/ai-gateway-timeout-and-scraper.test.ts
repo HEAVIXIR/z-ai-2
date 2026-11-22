@@ -425,6 +425,21 @@ describe("STEP 11.43 Behavioral: scraper routes respect preflight denial", () =>
     const { db } = await import("@/lib/db");
     expect(db.aIGatewayLog.create).not.toHaveBeenCalled();
   });
+
+  it("admin/store/ai-scraper: rejects oversized manual import before AI preflight", async () => {
+    mockCurrentUser = { id: "admin-1" };
+    const { POST } = await import("@/app/api/admin/store/ai-scraper/route");
+    const oversized = JSON.stringify({ action: "import", part: { name: "x".repeat(1_000_100) } });
+    const req = new Request("http://localhost/api/admin/store/ai-scraper", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "http://localhost:3000" },
+      body: oversized,
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(413);
+    expect(mockPreflightAIRequest).not.toHaveBeenCalled();
+    expect(mockRecordAICost).not.toHaveBeenCalled();
+  });
 });
 
 // ════════════════════════════════════════════════════════════
