@@ -15,6 +15,7 @@
     "NODE_ENV": "production",
     "AI_PROVIDER": "zai",
     "ZAI_MODEL": "glm-4.6-flash",
+    "AI_REQUEST_TIMEOUT_MS": "120000",
     "HEAVIX_BACKUP_EXECUTION_ENABLED": "false",
     "B2_BUCKET_NAME": "heavix-dev-assets",
     "B2_MEDIA_PREFIX": "heavix-media/",
@@ -27,6 +28,9 @@
     "vars": {
       "HEAVIX_ENV": "preview",
       "NODE_ENV": "production",
+      "AI_PROVIDER": "zai",
+      "ZAI_MODEL": "glm-4.6-flash",
+      "AI_REQUEST_TIMEOUT_MS": "120000",
       "HEAVIX_BACKUP_EXECUTION_ENABLED": "false",
       "B2_BUCKET_NAME": "heavix-dev-assets",
       "B2_MEDIA_PREFIX": "heavix-media/",
