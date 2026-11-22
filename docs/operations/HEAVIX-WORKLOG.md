@@ -1268,3 +1268,18 @@ The B2 media infrastructure is robust:
 
 ### Invariants held
 - No Main merge, no Production deploy, no DNS change, no schema migration, no DB write, no Store Preview change, no backup/restore dispatch. PR #340 (Draft) + PR #347 open/unmerged. No paid services. Token not leaked.
+
+
+## 2026-11-22 — No-cost Store manual import bypass (source fix; CI not yet verified)
+
+- Branch: `integration/preview-readiness-workerd-2026-11-15`. Starting checkpoint PR #340 head observed: `cde838bfe9f7935c1c2faea8328093a3757c0d5b`.
+- Source audit confirmed Store `import` / `bulk-import` actions were marked manual and skipped `recordAICost`, but still executed `preflightAIRequest(taskType: SCRAPER)`. That preflight applies AI policy/quota and can deny a deterministic manual DB import when AI budget/quota is exhausted; manual imports should not depend on AI policy/provider.
+- Implemented early dispatch for `import` and `bulk-import` before AI preflight, using the existing authenticated + `store.manage` + CSRF checks and the existing audited importer. Manual imports no longer call AI preflight, record AI cost, or create AIGatewayLog rows.
+- Added bounded JSON parsing for the route (hard byte ceiling 1,000,000) via `readBoundedJson`; malformed/oversized payloads fail closed. Provider discovery remains allowlist-gated and continues through AI preflight/timeout/cost controls.
+- Added tests for single and bulk manual imports succeeding while mocked AI preflight denies, and for no AI preflight/cost/gateway logging. Updated source contract to pin bounded parsing and manual bypass order.
+- Commits: `c4ad4ca11b23c544af73acaaadf7f863fa3e9022` (initial manual bypass), `5fbb4b4115df7ee4f4bc93bf1b582280543cf424` (behavior tests), `a1fd27978b3f971c4247a5951410c3e0230624df` (bounded parsing), `bfc15c1aab3a64dfe9a1f5009858de87bce572a9` (bounded parsing contract).
+- Source re-read on Integration confirms bounded parser and early manual-import branch; test file re-read confirms both manual-import tests present.
+- CI exact-head status: **NOT VERIFIED**. GitHub workflow-run connector returned an empty run list for the latest test commit; no local test environment was available. Do not claim tests/CI passed until the Actions run is observed.
+- Marketplace scraper currently exposes provider-backed discovery/import only; its legacy action interface rejects actions with HTTP 410. A no-ZAI manual import path remains to implement.
+- Safety: no Preview/Production deployment, database migration/seed/write outside code, paid-provider invocation, Cloudflare Build, PR merge, DNS change, or Worker activation.
+- Next action: implement a separate, explicit no-ZAI manual Marketplace import path with admin authorization, CSRF, bounded payload, validated canonical category/transaction, pending moderation status, provenance, and audit; add tests proving it does not initialize ZAI or consume AI quota. Then verify exact-SHA CI. Preview schema/migration approval remains a separate blocker.
