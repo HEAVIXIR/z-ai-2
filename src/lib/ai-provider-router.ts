@@ -38,7 +38,10 @@ import ZAI from "z-ai-web-dev-sdk";
 export type ZAISDK = {
   [key: string]: any;
   chat: { completions: { create: (request: any) => Promise<any> } };
-  images: { generations: { create: (request: any) => Promise<any> } };
+  images: {
+    generations: { create: (request: any) => Promise<any> };
+    search: { create: (request: any) => Promise<any> };
+  };
   video: { generations: { create: (request: any) => Promise<any> } };
   async: { result: { query: (taskId: string) => Promise<any> } };
   functions: { [key: string]: any };
