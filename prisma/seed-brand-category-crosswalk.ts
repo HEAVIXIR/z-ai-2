@@ -12,7 +12,7 @@
  * category can return relevant brands. No generic marketplace/service roots.
  */
 import { PrismaClient } from "@prisma/client";
-import { crosswalkBrandIndustry, computeCategoryIndustries, type CategoryNode } from "../src/lib/brand-category-crosswalk";
+import { crosswalkBrandIndustry, computeCategoryIndustries } from "../src/lib/brand-category-crosswalk";
 
 const db = new PrismaClient();
 
