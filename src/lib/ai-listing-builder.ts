@@ -142,7 +142,7 @@ export async function analyzeListing(input: {
   userId?: string | null;
   signal?: AbortSignal;
 }): Promise<ListingAnalysisResult> {
-  const { title, description, images, price, userId } = input;
+  const { title, description, images, price, userId, signal } = input;
   try {
     const titleStr = String(title ?? "").trim();
     if (!titleStr) {
