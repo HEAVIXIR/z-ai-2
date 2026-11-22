@@ -54,8 +54,8 @@ export type ListingAnalysis = {
 };
 
 export type ListingAnalysisResult =
-  | { success: true; analysis: ListingAnalysis | null }
-  | { success: false; error: string; analysis: null };
+  | { success: true; analysis: ListingAnalysis | null; tokensUsed?: number | null }
+  | { success: false; error: string; analysis: null; tokensUsed?: number | null };
 
 export type ImprovedListingContent = {
   source: "AI_SUGGESTED";
@@ -140,6 +140,7 @@ export async function analyzeListing(input: {
   images?: string[];
   price?: number | string | null;
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<ListingAnalysisResult> {
   const { title, description, images, price, userId } = input;
   try {
@@ -164,12 +165,16 @@ export async function analyzeListing(input: {
         { role: "user", content: userPrompt },
       ],
       thinking: { type: "disabled" },
+      signal,
     });
+    const tokensUsed = Number.isFinite(completion?.usage?.total_tokens)
+      ? completion.usage!.total_tokens!
+      : null;
     const raw = completion?.choices?.[0]?.message?.content || "";
     const parsed = safeParseJson(raw);
 
     if (!parsed || typeof parsed !== "object") {
-      return { success: true, analysis: null };
+      return { success: true, analysis: null, tokensUsed };
     }
 
     const p = parsed as Record<string, any>;
@@ -236,7 +241,7 @@ export async function analyzeListing(input: {
       /* best-effort audit — never throw */
     });
 
-    return { success: true, analysis };
+    return { success: true, analysis, tokensUsed };
   } catch (err: any) {
     return {
       success: false,
