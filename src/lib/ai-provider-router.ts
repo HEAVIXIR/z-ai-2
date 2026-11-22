@@ -35,7 +35,14 @@ import ZAI from "z-ai-web-dev-sdk";
 
 // Re-export the SDK type so call sites can reference it without
 // importing the SDK directly.
-export type ZAISDK = InstanceType<typeof ZAI>;
+export type ZAISDK = {
+  [key: string]: any;
+  chat: { completions: { create: (request: any) => Promise<any> } };
+  images: { generations: { create: (request: any) => Promise<any> } };
+  video: { generations: { create: (request: any) => Promise<any> } };
+  async: { result: { query: (taskId: string) => Promise<any> } };
+  functions: { [key: string]: any };
+};
 
 export type AIProviderKey = "zai" | "openai" | "gemini" | "anthropic";
 export type AIChatMessage = { role: "system" | "user" | "assistant"; content: string };
