@@ -61,26 +61,14 @@ export async function getTaskPolicy(taskType: string) {
     const row = await db.aITaskPolicy.findUnique({
       where: { taskType },
     });
-    // AI Scraper is a core admin collection tool. A missing or stale policy
-    // row must never make the feature unusable after deployment. Keep its
-    // policy defaults in code as a safe fallback; authentication and the
-    // explicit ai.execute permission are still enforced by the route.
-    if (taskType === "SCRAPER") {
-      const defaults = {
-        taskType: "SCRAPER",
-        allowedRoles: "ADMIN",
-        hourlyLimit: 10000,
-        dailyLimit: 100000,
-        maxInputChars: 20000,
-        maxOutputTokens: 6000,
-        model: "default",
-        timeoutMs: 120000,
-        costCeilingUsd: 0,
-        active: true,
-      };
-      return row ? { ...row, ...defaults } : defaults;
-    }
+    // Scraper requests are billable provider operations. Never synthesize
+    // an unbudgeted fallback policy: require an active database policy with
+    // a strictly positive reservation ceiling, just like every other task.
     if (!row || !row.active) return null;
+    if (taskType === "SCRAPER" && (!Number.isFinite(row.costCeilingUsd) || row.costCeilingUsd <= 0)) {
+      console.error("[ai-policy] SCRAPER denied: positive cost ceiling is required");
+      return null;
+    }
     return row;
   } catch (err) {
     console.error("[ai-policy] getTaskPolicy failed:", err);
@@ -160,10 +148,6 @@ export async function checkAIQuota(
   taskType: string,
   policy: { hourlyLimit: number; dailyLimit: number },
 ): Promise<AIPolicyCheckResult> {
-  // The admin scraper is an operator tool; it does not use per-user
-  // hourly/daily call quotas. Provider billing is still tracked by the
-  // shared global AI budget below.
-  if (taskType === "SCRAPER") return { ok: true };
   try {
     const now = new Date();
     const hourAgo = new Date(now.getTime() - HOUR_MS);
