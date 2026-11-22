@@ -59,22 +59,10 @@ async function _doPost(
   // replaces the lazy `import("z-ai-web-dev-sdk") + ZAI.create()`
   // pattern, which fails on Cloudflare Workers because the SDK
   // reads `.z-ai-config` from disk.
-  let zai: { chat: { completions: { create: (req: unknown) => Promise<unknown> } } } | null = null;
-  try {
-    const { getAIProvider } = await import("@/lib/ai-provider-router");
-    const provider = getAIProvider();
-    if (!provider.ok) {
-      throw new Error(provider.reason);
-    }
-    zai = provider.client;
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+  const provider = getAIProvider();
+  if (!provider.ok) {
     return NextResponse.json(
-      {
-        error:
-          "سرویس هوش مصنوعی در دسترس نیست. لطفاً بعداً تلاش کنید.",
-        detail: msg,
-      },
+      { error: "سرویس هوش مصنوعی در دسترس نیست. لطفاً بعداً تلاش کنید.", detail: provider.reason },
       { status: 502 },
     );
   }
@@ -96,7 +84,7 @@ Topic: """${topic}"""`;
   let content = "";
 
   try {
-    const completion = await zai.chat.completions.create({
+    const completion = await provider.client.chat.completions.create({
       messages: [
         { role: "system", content: prompt },
         { role: "user", content: topic },
@@ -141,7 +129,9 @@ Topic: """${topic}"""`;
   if (generateImage) {
     try {
       const imagePrompt = buildCoverPrompt(topic, title);
-      const imgResp = await zai.images.generations.create({
+      const zaiSdk = getZAISDK();
+      if (!zaiSdk.ok) throw new Error(zaiSdk.reason);
+      const imgResp = await zaiSdk.sdk.images.generations.create({
         prompt: imagePrompt,
         size: "1344x768",
         signal: controller.signal,
