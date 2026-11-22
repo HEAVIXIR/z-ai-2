@@ -32,14 +32,14 @@ on:
         description: Type SEED_PREVIEW_BRANDS_ONLY only when explicitly approving the Preview brand catalog seed
         required: false
         type: string
-      listing_model_name_migration:
-        description: Optional additive nullable Listing.modelName migration on App Preview only
+      model_name_migration:
+        description: Optional additive nullable Listing.modelName and BuyRequest.modelName migrations on App Preview only
         required: true
         type: choice
         default: SKIP
-        options: [SKIP, RUN_PREVIEW_LISTING_MODEL_NAME_MIGRATION]
-      listing_model_name_migration_confirm:
-        description: Type MIGRATE_PREVIEW_LISTING_MODEL_NAME_ONLY to approve the additive App Preview migration
+        options: [SKIP, RUN_PREVIEW_MODEL_NAME_MIGRATIONS]
+      model_name_migration_confirm:
+        description: Type MIGRATE_PREVIEW_MODEL_NAMES_ONLY to approve both additive App Preview migrations
         required: false
         type: string
 
@@ -393,7 +393,7 @@ jobs:
           retention-days: 3
 
       - name: Set up Bun for Preview catalog and schema operations
-        if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED' || inputs.brand_seed == 'RUN_PREVIEW_BRAND_SEEDS' || inputs.listing_model_name_migration == 'RUN_PREVIEW_LISTING_MODEL_NAME_MIGRATION'
+        if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED' || inputs.brand_seed == 'RUN_PREVIEW_BRAND_SEEDS' || inputs.model_name_migration == 'RUN_PREVIEW_MODEL_NAME_MIGRATIONS'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.4"
@@ -480,19 +480,19 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Apply additive Listing.modelName migration on App Preview
-        if: inputs.listing_model_name_migration == 'RUN_PREVIEW_LISTING_MODEL_NAME_MIGRATION'
+      - name: Apply additive Listing.modelName and BuyRequest.modelName migrations on App Preview
+        if: inputs.model_name_migration == 'RUN_PREVIEW_MODEL_NAME_MIGRATIONS'
         shell: bash
         env:
           MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
           HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
-          MIGRATION_CONFIRM: ${{ inputs.listing_model_name_migration_confirm }}
+          MIGRATION_CONFIRM: ${{ inputs.model_name_migration_confirm }}
           PGSSLMODE: verify-full
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$MIGRATION_CONFIRM" = "MIGRATE_PREVIEW_LISTING_MODEL_NAME_ONLY"
+          test "$MIGRATION_CONFIRM" = "MIGRATE_PREVIEW_MODEL_NAMES_ONLY"
           test -s "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
           grep -Fxq "backup_sha=$GITHUB_SHA" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
           grep -Fxq "backup_run_id=$GITHUB_RUN_ID" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
@@ -525,49 +525,47 @@ jobs:
           bun install --frozen-lockfile
           bunx prisma generate --schema=prisma/schema.prisma
 
-          # Fail closed unless this is the only unapplied migration. This prevents
-          # migrate deploy from accidentally applying unrelated pending migrations.
-          target="20261122203000_listing_model_name"
+          # Fail closed: only the two explicitly reviewed nullable model-name migrations may be pending.
           all_migrations="$(find prisma/migrations -mindepth 2 -maxdepth 2 -type f -name migration.sql -printf '%h\n' | sed 's#^prisma/migrations/##' | sort)"
           applied_migrations="$(run_preview_sql 'SELECT migration_name FROM public."_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL')"
           mapfile -t pending_migrations < <(comm -23 <(printf '%s\n' "$all_migrations") <(printf '%s\n' "$applied_migrations" | sort))
-          if (( ${#pending_migrations[@]} > 0 )); then
-            test "${#pending_migrations[@]}" -eq 1
-            test "${pending_migrations[0]}" = "$target"
-            echo "PASS: only the approved Listing.modelName migration is pending."
-          else
-            echo "PASS: migration is already applied; no pending migrations."
-          fi
+          for pending in "${pending_migrations[@]}"; do
+            case "$pending" in
+              20261122203000_listing_model_name|20261123120000_buy_request_model_name) ;;
+              *) echo "FAIL: unrelated pending migration: $pending"; exit 1 ;;
+            esac
+          done
+          echo "PASS: pending migrations are limited to the two approved nullable model-name columns."
 
           DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx prisma migrate deploy --schema=prisma/schema.prisma
-          column_count="$(run_preview_sql "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='modelName'")"
-          test "$column_count" = "1"
-          migration_count="$(run_preview_sql "SELECT count(*) FROM public.\"_prisma_migrations\" WHERE migration_name='20261122203000_listing_model_name' AND finished_at IS NOT NULL AND rolled_back_at IS NULL")"
-          test "$migration_count" = "1"
+          column_count="$(run_preview_sql "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND ((table_name='Listing' AND column_name='modelName') OR (table_name='BuyRequest' AND column_name='modelName'))")"
+          test "$column_count" = "2"
+          migration_count="$(run_preview_sql "SELECT count(*) FROM public.\"_prisma_migrations\" WHERE migration_name IN ('20261122203000_listing_model_name','20261123120000_buy_request_model_name') AND finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$migration_count" = "2"
 
           {
-            echo "## App Preview Listing.modelName migration"
+            echo "## App Preview model-name migrations"
             echo
             echo "- Exact Integration commit: $GITHUB_SHA"
             echo "- Paired encrypted backup and disposable restore: passed in this run"
             echo "- Worker identity guard and direct App Preview cluster/OID: passed"
-            echo "- Migration: 20261122203000_listing_model_name"
-            echo "- Schema change: nullable text column; existing listings unchanged"
+            echo "- Migrations: 20261122203000_listing_model_name, 20261123120000_buy_request_model_name"
+            echo "- Schema change: nullable text columns; existing listings and buy requests unchanged"
             echo "- Store DB and Production: untouched"
           } >> "$GITHUB_STEP_SUMMARY"
           mkdir -p "$RUNNER_TEMP/heavix-preview-model-migration-evidence"
           {
-            echo "format=heavix-preview-listing-model-name-migration-v1"
+            echo "format=heavix-preview-model-name-migrations-v1"
             echo "migration_sha=$GITHUB_SHA"
             echo "backup_run_id=$GITHUB_RUN_ID"
-            echo "migration=20261122203000_listing_model_name"
-            echo "column_present=$column_count"
-            echo "migration_record_present=$migration_count"
+            echo "migrations=20261122203000_listing_model_name,20261123120000_buy_request_model_name"
+            echo "model_name_columns_present=$column_count"
+            echo "migration_records_present=$migration_count"
             echo "worker_app_db_identity_guard=passed"
           } > "$RUNNER_TEMP/heavix-preview-model-migration-evidence/evidence.txt"
 
-      - name: Upload App Preview Listing.modelName migration evidence
-        if: inputs.listing_model_name_migration == 'RUN_PREVIEW_LISTING_MODEL_NAME_MIGRATION'
+      - name: Upload App Preview model-name migration evidence
+        if: inputs.model_name_migration == 'RUN_PREVIEW_MODEL_NAME_MIGRATIONS'
         uses: actions/upload-artifact@v4
         with:
           name: heavix-preview-listing-model-name-migration-evidence
