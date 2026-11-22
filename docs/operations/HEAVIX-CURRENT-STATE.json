@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-18T00:15:00.000Z",
+  "updated_at_utc": "2026-11-22T06:16:58Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "integration/preview-readiness-workerd-2026-11-15",
   "branch_base_main_sha": "b4b6b4624ebed2ae3bdad023eb1532dbedad7001",
@@ -226,11 +226,10 @@
     "Store DB is down in the latest Integration-preview health result."
   ],
   "next_action": [
-    "Add code/tests separating no-cost manual scraper import from provider-backed AI discovery; prove no AI budget reservation/cost for manual Store imports and implement equivalent no-ZAI Marketplace manual import.",
-    "Reconcile historical Gmail OAuth2 verification config with secure Preview binding names and verify delivery without exposing secret values.",
-    "Resolve taxonomy source conflicts and catalog bootstrap plan; do not seed until exact App/Store Preview identity, migration history, backup and explicit additive-seed gates pass.",
-    "Run authenticated owner/admin and listing-wizard acceptance after email configuration and catalog bootstrap gates pass.",
-    "Refresh exact Integration HEAD/CI before any deployment; keep canonical stable Preview, Production and DNS untouched."
+    "Implement a separate no-ZAI manual Marketplace import path. It must be explicit, admin-authorized, CSRF-protected, bounded, taxonomy/transaction validated, pending moderation, provenance-backed, audited, and must not initialize ZAI or consume AI quota.",
+    "Verify exact-SHA CI for the latest Store manual-import fix; prior connector response returned no workflow runs, so test status remains NOT VERIFIED.",
+    "Continue the P0 listing lifecycle/server validation audit after manual import path; do not infer Preview acceptance from CI.",
+    "Keep Preview DB migration/seed/deployment behind the protected backup, restore, exact identity, and reviewer gates; Production and DNS untouched."
   ],
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/340",
   "latest_exact_head_ci_run": {
@@ -789,7 +788,7 @@
     "review_package_status": "Not yet consolidated into one release-candidate PR; recovery core and scraper review remain separate while conflicts and acceptance gates are resolved.",
     "scraper_ci": "SUCCESS on exact head cd8ef0e; Vercel runtime/admin acceptance remains blocked by Deployment Protection and rate limit.",
     "selected_integration_branch": "integration/preview-readiness-workerd-2026-11-15",
-    "selected_integration_head": "4d7c791ffd62e6f0ceea5cc920af12663f854f49",
+    "selected_integration_head": "bfc15c1aab3a64dfe9a1f5009858de87bce572a9",
     "tracking_pr": 340,
     "tracking_pr_direction": "Integration branch to main (Draft only; not merged).",
     "exact_head_ci_run": 44147305639,
@@ -799,7 +798,10 @@
     "cpu_gate": "BLOCKED: confirmed CPU-limit failures on Integration-preview login and admin SSR; plan/CPU budget decision required.",
     "app_db_identity": "NOT VERIFIED",
     "store_db_identity": "NOT VERIFIED; latest preview health storeDb=down",
-    "canonical_worker_code": "STALE: active version #22 ETag unchanged from version #19 (2026-11-11)."
+    "canonical_worker_code": "STALE: active version #22 ETag unchanged from version #19 (2026-11-11).",
+    "latest_ci_status": "NOT VERIFIED on bfc15c1aab3a64dfe9a1f5009858de87bce572a9",
+    "latest_opennext_status": "NOT VERIFIED on bfc15c1aab3a64dfe9a1f5009858de87bce572a9",
+    "latest_code_commit": "bfc15c1aab3a64dfe9a1f5009858de87bce572a9"
   },
   "latest_opennext_proof_run": {
     "id": 44189645381,
@@ -863,5 +865,21 @@
     },
     "canonical_worker_login_events": "No canonical-version POST /api/auth/login event was found in the seven-day query result.",
     "plan_status": "Free-plan compatibility is explicitly stated by the repository revert; current billing plan was not independently returned by Cloudflare API."
+  },
+  "latest_execution_checkpoint": {
+    "date": "2026-11-22",
+    "branch": "integration/preview-readiness-workerd-2026-11-15",
+    "starting_pr340_head": "cde838bfe9f7935c1c2faea8328093a3757c0d5b",
+    "code_commits": [
+      "c4ad4ca11b23c544af73acaaadf7f863fa3e9022",
+      "5fbb4b4115df7ee4f4bc93bf1b582280543cf424",
+      "a1fd27978b3f971c4247a5951410c3e0230624df",
+      "bfc15c1aab3a64dfe9a1f5009858de87bce572a9"
+    ],
+    "summary": "Store single and bulk manual imports now bypass AI preflight/quota/cost/logging while retaining auth, permission, CSRF, bounded parsing and audit.",
+    "source_verification": "Integration source and tests fetched after commits; both manual import tests and early bypass present.",
+    "test_execution": "NOT VERIFIED locally; GitHub workflow connector returned no runs for latest commit.",
+    "safety": "No database, deployment, seed, paid provider, Cloudflare build, PR merge, DNS or Worker activation.",
+    "next_action": "Implement no-ZAI manual Marketplace import path; validate authorization, CSRF, bounded input, canonical taxonomy, pending moderation, provenance/audit, and tests."
   }
 }
