@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
+import { getAIProvider, getZAISDK } from "@/lib/ai-provider-router";
 import fs from "fs/promises";
 import path from "path";
 import { hasPermission } from "@/lib/rbac";
@@ -116,9 +116,9 @@ async function _doPost(
 
   // Generate video using AI (image-to-video)
   try {
-    const __provider = getAIProvider();
-    if (!__provider.ok) { throw new Error(__provider.reason); }
-    const zai = __provider.client;
+    const zaiSdk = getZAISDK();
+    if (!zaiSdk.ok) { throw new Error(zaiSdk.reason); }
+    const zai = zaiSdk.sdk;
 
     // Read image and convert to base64
     let imageBase64: string | undefined;
