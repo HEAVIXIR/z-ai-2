@@ -1,4 +1,4 @@
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 
@@ -319,7 +319,9 @@ export async function detectFraudSignals(input: {
       return { success: false, error: "listing is required", report: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const compact: Record<string, unknown> = { ...listing };
     if (typeof compact.description === "string") {
       compact.description = compact.description.slice(0, 1500);
@@ -393,7 +395,9 @@ export async function suggestNextActions(input: {
       return { success: false, error: "userId is required", suggestion: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       userId,
       context: context ?? null,

@@ -47,12 +47,14 @@ async function _doPost(
     userPrompt ||
     buildCoverPrompt(article.title, article.excerpt, article.tags);
 
-  // Lazy-load ZAI
+  // Resolve ZAI SDK via the central router (no .z-ai-config file
+  // needed — required for Cloudflare Workers compatibility).
   let base64: string | null = null;
   try {
-    const ZAIModule = await import("z-ai-web-dev-sdk");
-    const ZAI = (ZAIModule as any).default ?? ZAIModule;
-    const zai = await ZAI.create();
+    const { getZAISDK } = await import("@/lib/ai-provider-router");
+    const __sdkResult = getZAISDK();
+    if (!__sdkResult.ok) { throw new Error(__sdkResult.reason); }
+    const zai = __sdkResult.sdk;
     const resp = await zai.images.generations.create({
       prompt,
       size: "1344x768",

@@ -55,12 +55,18 @@ async function _doPost(
     : "GUIDE";
   const generateImage = body?.generateImage !== false; // default true
 
-  // Lazy-load ZAI so module imports cleanly when SDK not used.
-  let zai: any = null;
+  // Resolve the AI provider via the central router. This
+  // replaces the lazy `import("z-ai-web-dev-sdk") + ZAI.create()`
+  // pattern, which fails on Cloudflare Workers because the SDK
+  // reads `.z-ai-config` from disk.
+  let zai: { chat: { completions: { create: (req: unknown) => Promise<unknown> } } } | null = null;
   try {
-    const ZAIModule = await import("z-ai-web-dev-sdk");
-    const ZAI = (ZAIModule as any).default ?? ZAIModule;
-    zai = await ZAI.create();
+    const { getAIProvider } = await import("@/lib/ai-provider-router");
+    const provider = getAIProvider();
+    if (!provider.ok) {
+      throw new Error(provider.reason);
+    }
+    zai = provider.client;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(

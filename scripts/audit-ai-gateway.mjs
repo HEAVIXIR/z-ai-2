@@ -14,6 +14,10 @@ if (args.has("--help")) {
 // it must be reviewed for policy, budget, timeout, audit, and output controls.
 const approvedProviderFiles = new Set([
   path.normalize("src/app/api/ai-gateway/route.ts"),
+  // The central provider router is the single approved entry
+  // point for the z-ai-web-dev-sdk import. All other modules
+  // must route through it via getAIProvider() or getZAISDK().
+  path.normalize("src/lib/ai-provider-router.ts"),
 ]);
 const roots = [
   { dir: path.resolve("src/app/api"), kind: "route" },
@@ -45,8 +49,13 @@ async function walk(dir, kind) {
     const relative = path.normalize(path.relative(process.cwd(), absolute));
     if (approvedProviderFiles.has(relative)) continue;
     const source = await readFile(absolute, "utf8");
+    // Strip comments before scanning — references to z-ai-web-dev-sdk
+    // inside // or /* */ comments are documentation, not actual imports.
+    const stripped = source
+      .replace(/\/\*[\s\S]*?\*\//g, "") // block comments
+      .replace(/\/\/.*$/gm, "");          // line comments
     const matches = providerPatterns
-      .map((pattern, index) => (pattern.test(source) ? index : -1))
+      .map((pattern, index) => (pattern.test(stripped) ? index : -1))
       .filter((index) => index !== -1);
     if (matches.length) findings.set(relative, matches);
   }
@@ -56,7 +65,8 @@ for (const root of roots) await walk(root.dir, root.kind);
 const sorted = [...findings.keys()].sort();
 console.log("AI provider boundary audit (heuristic; review findings manually).");
 console.log("Scope: API route handlers and src/lib TypeScript modules.");
-console.log("Approved direct provider entry point: src/app/api/ai-gateway/route.ts");
+console.log("Approved direct provider entry points:");
+for (const f of approvedProviderFiles) console.log(` - ${f}`);
 console.log(`Direct provider SDK candidates outside the allowlist: ${sorted.length}`);
 for (const file of sorted) console.log(` - ${file}`);
 

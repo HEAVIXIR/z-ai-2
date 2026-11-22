@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
+import { getAIProvider } from "@/lib/ai-provider-router";
 /* ============================================================
    STEP 11.43 — Timeout Hardening + Scraper Gateway Migration
    ------------------------------------------------------------
@@ -129,9 +130,12 @@ vi.mock("@/lib/api-helpers", () => ({
 vi.mock("@/lib/search", () => ({
   searchListings: vi.fn(async () => ({ results: [], total: 0 })),
 }));
-vi.mock("z-ai-web-dev-sdk", () => ({
-  default: {
-    create: vi.fn(async () => ({
+vi.mock("@/lib/ai-provider-router", () => ({
+  getAIProvider: vi.fn(() => ({
+    ok: true as const,
+    provider: "zai" as const,
+    model: "test-model",
+    client: {
       chat: {
         completions: {
           create: vi.fn(async () => ({
@@ -139,15 +143,9 @@ vi.mock("z-ai-web-dev-sdk", () => ({
           })),
         },
       },
-      functions: {
-        invoke: vi.fn(async () => ({ results: [] })),
-      },
-      images: {
-        search: { create: vi.fn(async () => ({ results: [] })) },
-        generations: { create: vi.fn(async () => ({ data: [] })) },
-      },
-    })),
-  },
+    },
+  })),
+  getZAISDK: vi.fn(() => ({ ok: false as const, reason: "non-chat operations not mocked in this test" })),
 }));
 
 beforeEach(() => {

@@ -1,4 +1,4 @@
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { logAudit } from "@/lib/audit";
 
 // SERVER-ONLY — imports z-ai-web-dev-sdk + Prisma.
@@ -182,7 +182,9 @@ export async function understandQuery(input: {
       return { success: false, error: "query is required", understanding: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const completion = await zai.chat.completions.create({
       messages: [
         { role: "system", content: UNDERSTAND_SYSTEM_PROMPT },
@@ -256,7 +258,9 @@ export async function getZeroResultRecovery(input: {
       return { success: false, error: "query is required", recovery: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const completion = await zai.chat.completions.create({
       messages: [
         { role: "system", content: ZERO_RECOVERY_SYSTEM_PROMPT },

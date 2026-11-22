@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
-import ZAI from "z-ai-web-dev-sdk";
-
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 /* ============================================================
    GET /api/ai-sales-agent (Priority #39)
    AI classifies seller's leads and suggests responses.
@@ -84,7 +83,9 @@ export async function GET() {
   let classification: any = { highPriority: [], mediumPriority: [], lowPriority: [], suggestions: [] };
 
   try {
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     // AI receives only seller-owned, non-identifying lead context.
     // Buyer phone numbers and free-text notes are excluded because notes
     // may contain contact details or other personal information.

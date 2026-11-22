@@ -1,54 +1,73 @@
 /**
- * HEAVIX — ZAI Provider Health Check
+ * HEAVIX — AI Provider Health Check
  * ----------------------------------------------------------------
  * GET /api/admin/ai/health
  *
  * Admin-only diagnostic that confirms:
  *   1. Provider is configured     (env vars present)
- *   2. Endpoint is valid          (URL shape /v1)
+ *   2. Endpoint is valid          (URL parses, /v1 suffix for ZAI)
  *   3. Authentication works       (provider returns 2xx for a
  *                                  trivial request, or 401/403
  *                                  for bad key)
  *   4. Model is available         (chat completions endpoint
- *                                  accepts a request)
+ *                                  accepts the request and
+ *                                  returns a model name)
  *   5. A safe minimal request succeeds
  *
  * This endpoint is NON-BILLABLE by design:
- *   - It does NOT call the gateway with a real prompt.
- *   - It sends a single chat-completion request with `max_tokens: 1`
- *     and `thinking: disabled`. If the provider counts tokens, the
- *     cost is one token — but we do not assume the provider is
- *     reachable. The endpoint reports whatever it sees.
- *   - The endpoint does NOT issue real image/video/audio calls.
+ *   - It sends a single chat-completion request with
+ *     `max_tokens: 1` and `thinking: disabled`. The provider
+ *     may ignore `max_tokens` (ZAI does when the field is not
+ *     in its native schema) — but the request is still one
+ *     short chat turn, not a real prompt.
+ *   - It does NOT issue real image/video/audio calls.
+ *   - It runs ONLY when an admin explicitly invokes it. There
+ *     is no automatic recurring probe — that would consume
+ *     quota/budget without operator awareness.
  *
- * The endpoint is gated by admin auth. It is NOT callable by
- * anonymous users. It is NOT a public-facing health probe —
- * the existing /api/health route is the public probe.
+ * The endpoint is gated by admin auth. Anonymous users get 401.
  *
- * Output:
- *   200 OK with body:
- *     {
- *       ok: boolean,
- *       checks: {
- *         configured: { ok, reason? },
- *         endpointShape: { ok, reason? },
- *         auth: { ok, reason?, status? },
- *         model: { ok, reason?, status? },
- *         minimalRequest: { ok, reason?, status?, model?, latencyMs? }
- *       },
- *       config: { baseUrl, hasApiKey, hasToken, chatId?, userId? },
- *       timestamp: ISO-8601
- *     }
+ * Output (200 OK — even on provider failure, so the admin sees
+ * the structured diagnosis):
+ *   {
+ *     ok: boolean,
+ *     checks: {
+ *       configured:     { ok, reason? },
+ *       endpointShape:  { ok, reason? },
+ *       auth:           { ok, reason?, status? },
+ *       model:          { ok, reason?, status?, model? },
+ *       minimalRequest: { ok, reason?, status?, model?, latencyMs? }
+ *     },
+ *     config: { provider, baseUrl, model, hasApiKey, timeoutMs },
+ *     timestamp: ISO-8601
+ *   }
+ *
+ * Failure handling:
+ *   - Missing credentials → returns ok=false with
+ *     checks.configured.ok=false. Does NOT attempt a live probe.
+ *   - Provider 401/403 → checks.auth.ok=false,
+ *     reason="Authentication failed — check <PROVIDER>_API_KEY".
+ *   - Provider 404 → checks.model.ok=false,
+ *     reason="Endpoint or model not found".
+ *   - Provider 429 → checks.model.ok=false,
+ *     reason="Rate-limited by provider".
+ *   - Timeout → checks.minimalRequest.ok=false,
+ *     reason="Request timed out after <N>ms".
+ *   - Network error → checks.minimalRequest.ok=false,
+ *     reason="Network error: <message>".
+ *   - NO paid-provider fallback is attempted. The selected
+ *     provider is the only one probed.
  */
 
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/authorization";
 import {
-  getZAIProvider,
-  getZAIProviderConfigPublic,
-  type ZAIProviderConfigPublic,
-} from "@/lib/ai-provider";
+  getAIProvider,
+  getAIProviderConfigPublic,
+  AIProviderError,
+  type AIProviderConfigPublic,
+} from "@/lib/ai-provider-router";
 import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -71,7 +90,7 @@ type HealthBody = {
     model: CheckResult;
     minimalRequest: CheckResult;
   };
-  config: ZAIProviderConfigPublic;
+  config: AIProviderConfigPublic;
   timestamp: string;
 };
 
@@ -86,7 +105,7 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const config = getZAIProviderConfigPublic();
+  const config = getAIProviderConfigPublic();
   const timestamp = new Date().toISOString();
 
   // ── Check 1: configured ────────────────────────────────
@@ -95,20 +114,25 @@ export async function GET() {
     : {
         ok: false,
         reason: !config.baseUrl
-          ? "ZAI_BASE_URL is not set"
-          : "ZAI_API_KEY is not set",
+          ? `${config.provider.toUpperCase()}_BASE_URL is not set`
+          : `${config.provider.toUpperCase()}_API_KEY is not set`,
       };
 
   // ── Check 2: endpoint shape ────────────────────────────
+  // ZAI requires /v1 suffix (the SDK appends /chat/completions).
+  // OpenAI/Gemini/Anthropic defaults are known-good; custom URLs
+  // are validated by URL parsing in the router already.
   const endpointShape: CheckResult = config.baseUrl
-    ? (/^https?:\/\/[^\s]+\/v\d+$/i.test(config.baseUrl)
-        ? { ok: true }
-        : { ok: false, reason: `${config.baseUrl} does not end with /v1` })
-    : { ok: false, reason: "ZAI_BASE_URL unset" };
+    ? (config.provider === "zai"
+        ? (/^https?:\/\/[^\s]+\/v\d+$/i.test(config.baseUrl)
+            ? { ok: true }
+            : { ok: false, reason: `${config.baseUrl} does not end with /v1 (ZAI requires this)` })
+        : { ok: true })
+    : { ok: false, reason: "Provider base URL unset" };
 
   // Short-circuit: if config is missing, we cannot run the live
-  // checks. Return the partial result so the admin can see
-  // exactly what is missing without triggering a provider call.
+  // checks. Return the partial result so the admin sees exactly
+  // what is missing without triggering a provider call.
   if (!configured.ok || !endpointShape.ok) {
     const body: HealthBody = {
       ok: false,
@@ -127,24 +151,21 @@ export async function GET() {
       actorType: "USER",
       action: "ai.health.check",
       entityType: "ai_provider",
-      entityId: "zai",
+      entityId: config.provider,
       reason: "configuration incomplete",
-    }).catch(() => {/* audit is best-effort */});
+    }).catch(() => { /* audit is best-effort */ });
     return NextResponse.json(body, { status: 200 });
   }
 
   // ── Checks 3-5: live provider probe ────────────────────
-  // We construct the provider directly via the adapter. The
-  // adapter does NOT call ZAI.create() (which would touch the
-  // filesystem), so this works on Cloudflare Workers.
-  const provider = getZAIProvider();
+  const provider = getAIProvider();
   if (!provider.ok) {
     const body: HealthBody = {
       ok: false,
       checks: {
         configured,
         endpointShape,
-        auth: { ok: false, reason: provider.error },
+        auth: { ok: false, reason: provider.reason },
         model: { ok: false, reason: "skipped — provider construction failed" },
         minimalRequest: { ok: false, reason: "skipped — provider construction failed" },
       },
@@ -155,40 +176,33 @@ export async function GET() {
   }
 
   // Minimal chat-completion request. We deliberately do NOT
-  // pass a `model` field — the SDK forwards whatever the caller
-  // sets, and the provider applies its default model when
-  // omitted. This is the cheapest possible probe: one system
-  // message, one short user message, max_tokens omitted
-  // (provider decides), thinking disabled (no reasoning cost).
+  // pass a real prompt — "ping" is the cheapest possible user
+  // message. max_tokens: 1 caps the response when the provider
+  // honors it. thinking: disabled avoids reasoning-token cost
+  // on providers that support it (ZAI does).
   const startedAt = Date.now();
   try {
-    const completion = await provider.zai.chat.completions.create({
+    const completion = await provider.client.chat.completions.create({
       messages: [
         { role: "system", content: "Reply with exactly: OK" },
         { role: "user", content: "ping" },
       ],
       thinking: { type: "disabled" },
-      // The SDK's CreateChatCompletionBody type allows arbitrary
-      // extra keys via `[key: string]: any`. We use this to cap
-      // the response cheaply when the provider supports it. The
-      // provider may ignore unknown fields.
       max_tokens: 1,
-    } as Parameters<typeof provider.zai.chat.completions.create>[0] & { max_tokens: number });
+    });
 
     const latencyMs = Date.now() - startedAt;
+    const ok = !!completion?.choices?.length;
+    const modelReturned = completion?.model;
 
-    // SDK returns either a JSON object (non-streaming) or a
-    // ReadableStream (streaming). We did not request streaming,
-    // so we expect a JSON object with `choices`.
-    const ok = !!(completion as { choices?: unknown })?.choices;
     const auth: CheckResult = { ok: true, status: 200 };
     const model: CheckResult = {
       ok: true,
       status: 200,
-      model: (completion as { model?: string })?.model,
+      model: modelReturned,
     };
     const minimalRequest: CheckResult = ok
-      ? { ok: true, status: 200, latencyMs, model: (completion as { model?: string })?.model }
+      ? { ok: true, status: 200, latencyMs, model: modelReturned }
       : { ok: false, status: 200, reason: "Provider returned 200 but no choices[] in response" };
 
     const body: HealthBody = {
@@ -208,40 +222,33 @@ export async function GET() {
       actorType: "USER",
       action: "ai.health.check",
       entityType: "ai_provider",
-      entityId: "zai",
+      entityId: config.provider,
       reason: ok ? "provider reachable" : "provider responded without choices",
-      after: { latencyMs, model: minimalRequest.model },
-    }).catch(() => {/* audit is best-effort */});
+      after: { latencyMs, model: modelReturned },
+    }).catch(() => { /* audit is best-effort */ });
     return NextResponse.json(body, { status: 200 });
   } catch (e) {
     const latencyMs = Date.now() - startedAt;
-    const err = e as { message?: string; status?: number };
-    const status = err?.status;
-    const message = err?.message ?? String(e);
+    const isProviderError = e instanceof AIProviderError;
+    const kind = isProviderError ? (e as AIProviderError).kind : "PROVIDER_ERROR";
+    const status = isProviderError ? (e as AIProviderError).status : undefined;
+    const message = e instanceof Error ? e.message : String(e);
 
     // Classify the failure into auth / model / minimalRequest.
-    // A 401/403 from the provider means auth failed. A 404 means
-    // the endpoint/model path is wrong. A 429 means rate-limited.
-    // Anything else is treated as a provider-side issue.
-    const isAuth = status === 401 || status === 403 ||
-      /unauthorized|forbidden|auth/i.test(message);
-    const isRateLimit = status === 429 || /rate.?limit/i.test(message);
-    const isNotFound = status === 404 || /not.found/i.test(message);
-
-    const auth: CheckResult = isAuth
-      ? { ok: false, status, reason: "Authentication failed — check ZAI_API_KEY" }
+    const auth: CheckResult = kind === "AUTH_FAILED"
+      ? { ok: false, status, reason: `Authentication failed — check ${config.provider.toUpperCase()}_API_KEY` }
       : { ok: true, status: 200 };
-    const model: CheckResult = isNotFound
+    const model: CheckResult = kind === "NOT_FOUND"
       ? { ok: false, status, reason: "Endpoint or model not found" }
-      : isRateLimit
+      : kind === "RATE_LIMITED"
         ? { ok: false, status, reason: "Rate-limited by provider" }
         : { ok: false, status, reason: message };
-    const minimalRequest: CheckResult = {
-      ok: false,
-      status,
-      reason: message,
-      latencyMs,
-    };
+    const minimalRequest: CheckResult = (() => {
+      if (kind === "TIMEOUT") return { ok: false, reason: `Request timed out after ${config.timeoutMs}ms`, latencyMs };
+      if (kind === "ABORTED") return { ok: false, reason: "Request aborted", latencyMs };
+      if (kind === "NETWORK_ERROR") return { ok: false, reason: `Network error: ${message}`, latencyMs };
+      return { ok: false, status, reason: message, latencyMs };
+    })();
 
     const body: HealthBody = {
       ok: false,
@@ -260,10 +267,10 @@ export async function GET() {
       actorType: "USER",
       action: "ai.health.check",
       entityType: "ai_provider",
-      entityId: "zai",
+      entityId: config.provider,
       reason: `provider probe failed: ${message}`,
-      after: { latencyMs, status },
-    }).catch(() => {/* audit is best-effort */});
+      after: { latencyMs, status, kind },
+    }).catch(() => { /* audit is best-effort */ });
     return NextResponse.json(body, { status: 200 });
   }
 }

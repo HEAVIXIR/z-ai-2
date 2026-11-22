@@ -57,8 +57,8 @@ vi.mock("@/lib/api-helpers", () => ({
   parseBig: vi.fn(),
   parseNumber: vi.fn(),
 }));
-vi.mock("z-ai-web-dev-sdk", () => {
-  const mockZAI = {
+vi.mock("@/lib/ai-provider-router", () => {
+  const mockClient = {
     chat: {
       completions: {
         create: vi.fn(async () => ({
@@ -67,7 +67,15 @@ vi.mock("z-ai-web-dev-sdk", () => {
       },
     },
   };
-  return { default: { create: vi.fn(async () => mockZAI) } };
+  return {
+    getAIProvider: vi.fn(() => ({
+      ok: true as const,
+      provider: "zai" as const,
+      model: "test-model",
+      client: mockClient,
+    })),
+    getZAISDK: vi.fn(() => ({ ok: false as const, reason: "not mocked" })),
+  };
 });
 
 beforeEach(() => {

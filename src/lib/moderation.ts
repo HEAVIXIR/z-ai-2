@@ -100,13 +100,17 @@ export async function moderateListing(
       };
     }
 
-    // Lazy-load ZAI so the module imports cleanly even if the SDK
-    // is never used (e.g. tests that mock the LLM).
+    // Resolve ZAI SDK via the central router. Non-chat moderation
+    // uses zai.chat.completions.create, so we could use
+    // getAIProvider() — but moderation historically uses the raw
+    // SDK. We keep that pattern via getZAISDK() so credentials stay
+    // centralized while preserving the exact SDK surface.
     let zai: any = null;
     try {
-      const ZAIModule = await import("z-ai-web-dev-sdk");
-      const ZAI = (ZAIModule as any).default ?? ZAIModule;
-      zai = await ZAI.create();
+      const { getZAISDK } = await import("@/lib/ai-provider-router");
+      const r = getZAISDK();
+      if (!r.ok) { throw new Error(r.reason); }
+      zai = r.sdk;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       // SAFE-DEFAULT — surface as REVIEW so the operator can look.

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { checkCsrf } from "@/lib/csrf";
 import { readBoundedJson } from "@/lib/read-bounded-json";
 import {
@@ -77,7 +77,9 @@ export async function POST(req: Request) {
   const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
 
   try {
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const sys = `You are HEAVIX listing builder. From a free-text description (often Persian) of a heavy-machinery sale ad, extract structured JSON with these keys (omit if not present):
 {
   "title": "concise listing title in Persian",

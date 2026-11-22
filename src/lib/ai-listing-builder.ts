@@ -1,4 +1,4 @@
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { logAudit } from "@/lib/audit";
 
 // SERVER-ONLY — this module imports z-ai-web-dev-sdk + Prisma and
@@ -148,7 +148,9 @@ export async function analyzeListing(input: {
       return { success: false, error: "title is required", analysis: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       title: titleStr,
       description: (description ?? "").slice(0, 4000) || null,
@@ -273,7 +275,9 @@ export async function improveListingContent(input: {
       return { success: false, error: "title is required", improved: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       title: titleStr,
       description: (description ?? "").slice(0, 4000) || null,

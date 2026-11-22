@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
+import { getAIProvider } from "@/lib/ai-provider-router";
 /* ============================================================
    STEP 11.44 — AI Gateway Phase 3: 6 admin AI routes migration
    ------------------------------------------------------------
@@ -132,9 +133,12 @@ vi.mock("@/lib/rate-limit-presets", () => ({
   UPLOAD: { label: "upload", limit: 20, windowMs: 3600000, scope: "ip" },
   AI: { label: "ai", limit: 30, windowMs: 3600000, scope: "user" },
 }));
-vi.mock("z-ai-web-dev-sdk", () => ({
-  default: {
-    create: vi.fn(async () => ({
+vi.mock("@/lib/ai-provider-router", () => ({
+  getAIProvider: vi.fn(() => ({
+    ok: true as const,
+    provider: "zai" as const,
+    model: "test-model",
+    client: {
       chat: {
         completions: {
           create: vi.fn(async () => ({
@@ -142,33 +146,9 @@ vi.mock("z-ai-web-dev-sdk", () => ({
           })),
         },
       },
-      images: {
-        search: {
-          create: vi.fn(async () => ({
-            results: [{ original_url: "http://example.com/logo.png", caption: "Logo", source: "example.com" }],
-          })),
-        },
-        generations: {
-          create: vi.fn(async () => ({
-            data: [{ base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC" }],
-          })),
-        },
-      },
-      video: {
-        generations: {
-          create: vi.fn(async () => ({ id: "task-1" })),
-        },
-      },
-      async: {
-        result: {
-          query: vi.fn(async () => ({ task_status: "SUCCESS", video_result: [{ url: "http://example.com/video.mp4" }] })),
-        },
-      },
-      functions: {
-        invoke: vi.fn(async () => ({ results: [] })),
-      },
-    })),
-  },
+    },
+  })),
+  getZAISDK: vi.fn(() => ({ ok: false as const, reason: "non-chat operations not mocked in this test" })),
 }));
 
 beforeEach(() => {

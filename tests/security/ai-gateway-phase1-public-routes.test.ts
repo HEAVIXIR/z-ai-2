@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
+import { getAIProvider } from "@/lib/ai-provider-router";
 /* ============================================================
    STEP 11.42 — AI Gateway Phase 1: 5 public AI routes migration
    ------------------------------------------------------------
@@ -80,9 +81,12 @@ vi.mock("@/lib/api-helpers", () => ({
   parseNumber: vi.fn((v: any) => (v ? Number(v) : null)),
   parseBig: vi.fn(),
 }));
-vi.mock("z-ai-web-dev-sdk", () => ({
-  default: {
-    create: vi.fn(async () => ({
+vi.mock("@/lib/ai-provider-router", () => ({
+  getAIProvider: vi.fn(() => ({
+    ok: true as const,
+    provider: "zai" as const,
+    model: "test-model",
+    client: {
       chat: {
         completions: {
           create: vi.fn(async () => ({
@@ -90,8 +94,9 @@ vi.mock("z-ai-web-dev-sdk", () => ({
           })),
         },
       },
-    })),
-  },
+    },
+  })),
+  getZAISDK: vi.fn(() => ({ ok: false as const, reason: "non-chat operations not mocked in this test" })),
 }));
 
 beforeEach(() => {

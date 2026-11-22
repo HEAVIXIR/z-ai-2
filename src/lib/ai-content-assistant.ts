@@ -1,4 +1,4 @@
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { logAudit } from "@/lib/audit";
 
 // SERVER-ONLY — imports z-ai-web-dev-sdk.
@@ -191,7 +191,9 @@ export async function generateArticleOutline(input: {
       return { success: false, error: "topic is required", outline: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       topic: t.slice(0, 600),
       keywords: Array.isArray(keywords) ? keywords.slice(0, 12) : [],
@@ -275,7 +277,9 @@ export async function optimizeForSEO(input: {
       return { success: false, error: "title is required", seo: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       title: t.slice(0, 300),
       content: c.slice(0, 6000),
@@ -350,7 +354,9 @@ export async function checkListingQuality(input: {
       return { success: false, error: "listing is required", report: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     // Truncate long description fields so the prompt window stays small.
     const compact: Record<string, unknown> = { ...listing };
     if (typeof compact.description === "string") {

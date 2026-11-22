@@ -5,7 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { slugify, parseBig } from "@/lib/api-helpers";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { logAudit } from "@/lib/audit";
 import { fetchAllowedSourcePage, isAllowedSourceUrl } from "@/lib/server/safe-source-fetch";
 
@@ -176,7 +176,9 @@ async function scrapeUrl(zai: any, url: string, signal?: AbortSignal): Promise<S
 }
 
 async function getZai(signal?: AbortSignal) {
-  const zai = await ZAI.create();
+  const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
   // STEP 11.43: inject AbortController signal into every chat.completions.create
   // call without refactoring the helpers that take `zai: any` as a parameter.
   if (signal) {

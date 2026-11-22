@@ -1,4 +1,4 @@
-import ZAI from "z-ai-web-dev-sdk";
+import { getZAISDK } from "@/lib/ai-provider-router";
 import fs from "fs";
 import path from "path";
 import { db } from "@/lib/db";
@@ -206,7 +206,9 @@ export async function generateSocialReel(opts: {
     );
 
     // 4. Create video generation task (image-to-video)
-    const zai = await ZAI.create();
+    const __sdkResult = getZAISDK();
+    if (!__sdkResult.ok) { throw new Error(__sdkResult.reason); }
+    const zai = __sdkResult.sdk;
     console.log("[SocialReel] creating video task, prompt:", finalPrompt.slice(0, 80) + "...");
 
     const task: any = await zai.video.generations.create({

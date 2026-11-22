@@ -1,4 +1,4 @@
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { logAudit } from "@/lib/audit";
 
 // SERVER-ONLY — imports z-ai-web-dev-sdk.
@@ -213,7 +213,9 @@ export async function enhanceMatchScore(input: {
     // Cap candidates so we don't blow the prompt window.
     const capped = candidateListings.slice(0, 25);
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       buyRequest: compactBuyRequest(buyRequest),
       candidates: capped.map(compactListing),
@@ -298,7 +300,9 @@ export async function generateMatchExplanation(input: {
       };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       buyRequest: compactBuyRequest(buyRequest),
       listing: compactListing(listing),
