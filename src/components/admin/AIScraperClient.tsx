@@ -39,6 +39,34 @@ export default function AIScraperClient() {
   const [bulkImporting, setBulkImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [manualListing, setManualListing] = useState({
+    title: "", description: "", categoryId: "", transactionTypeId: "",
+    serviceTypeId: "", price: "", province: "", city: "", year: "", workingHours: "",
+    sellerName: "", sellerPhone: "",
+  });
+  const [manualSubmitting, setManualSubmitting] = useState(false);
+  const [manualMessage, setManualMessage] = useState<string | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const updateManual = (key: keyof typeof manualListing, value: string) =>
+    setManualListing(prev => ({ ...prev, [key]: value }));
+  const submitManualListing = async () => {
+    if (!manualListing.title.trim() || !manualListing.categoryId || !manualListing.transactionTypeId) {
+      setManualError("عنوان، دسته‌بندی و نوع معامله الزامی است.");
+      return;
+    }
+    setManualSubmitting(true); setManualError(null); setManualMessage(null);
+    try {
+      const res = await fetch("/api/admin/listings/manual", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(manualListing),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "ثبت دستی ناموفق بود.");
+      setManualMessage("آگهی دستی ثبت شد و برای بررسی مدیر در وضعیت Pending قرار گرفت؛ منتشر نشده است.");
+      setManualListing({ title: "", description: "", categoryId: "", transactionTypeId: "", serviceTypeId: "", price: "", province: "", city: "", year: "", workingHours: "", sellerName: "", sellerPhone: "" });
+    } catch (e: any) { setManualError(e?.message ?? "ثبت دستی ناموفق بود."); }
+    finally { setManualSubmitting(false); }
+  };
   useEffect(() => {
     let cancelled = false;
     Promise.all([
@@ -146,6 +174,34 @@ export default function AIScraperClient() {
           <h1 className="flex items-center gap-2 text-2xl font-black text-zinc-900"><Sparkles className="h-6 w-6 text-[#F58220]" />استخراج هوشمند آگهی از وب</h1>
           <p className="mt-1 text-sm text-zinc-500">جستجو و استخراج اطلاعات آگهی‌های واقعی از دیوار و شیپور، سپس تطبیق و ورود به صف بررسی مدیر</p>
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <Plus className="h-5 w-5 text-emerald-700" />
+          <h2 className="text-lg font-black text-zinc-900">ثبت دستی آگهی — بدون AI و بدون هزینه</h2>
+        </div>
+        <p className="mb-4 text-sm text-zinc-600">این مسیر کاملاً مستقل از ZAI، اسکرپر، سهمیه و پیکربندی AI است. آگهی پس از ثبت منتشر نمی‌شود و برای بررسی مدیر می‌رود.</p>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <label className="block text-xs font-bold text-zinc-700">عنوان آگهی<input value={manualListing.title} onChange={e => updateManual("title", e.target.value)} maxLength={200} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" placeholder="عنوان آگهی" /></label>
+          <label className="block text-xs font-bold text-zinc-700">دسته‌بندی<select value={manualListing.categoryId} onChange={e => updateManual("categoryId", e.target.value)} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal"><option value="">انتخاب دسته</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+          <label className="block text-xs font-bold text-zinc-700">نوع معامله<select value={manualListing.transactionTypeId} onChange={e => updateManual("transactionTypeId", e.target.value)} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal"><option value="">انتخاب نوع معامله</option>{transactionTypes.map(t => <option key={t.id} value={t.id}>{t.nameFa}</option>)}</select></label>
+          <label className="block text-xs font-bold text-zinc-700">نوع خدمت (در صورت نیاز)<select value={manualListing.serviceTypeId} onChange={e => updateManual("serviceTypeId", e.target.value)} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal"><option value="">انتخاب خدمت</option>{serviceTypes.map(t => <option key={t.id} value={t.id}>{t.nameFa}</option>)}</select></label>
+          <label className="block text-xs font-bold text-zinc-700">قیمت (تومان)<input value={manualListing.price} onChange={e => updateManual("price", e.target.value)} inputMode="numeric" className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" placeholder="خالی = توافقی" /></label>
+          <label className="block text-xs font-bold text-zinc-700">استان<input value={manualListing.province} onChange={e => updateManual("province", e.target.value)} maxLength={100} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700">شهر<input value={manualListing.city} onChange={e => updateManual("city", e.target.value)} maxLength={100} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700">سال ساخت<input value={manualListing.year} onChange={e => updateManual("year", e.target.value)} inputMode="numeric" className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700">کارکرد (ساعت)<input value={manualListing.workingHours} onChange={e => updateManual("workingHours", e.target.value)} inputMode="numeric" className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700">نام فروشنده<input value={manualListing.sellerName} onChange={e => updateManual("sellerName", e.target.value)} maxLength={120} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700">شماره تماس<input value={manualListing.sellerPhone} onChange={e => updateManual("sellerPhone", e.target.value)} maxLength={40} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700 md:col-span-2 xl:col-span-3">توضیحات<textarea value={manualListing.description} onChange={e => updateManual("description", e.target.value)} maxLength={6000} rows={4} className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-normal" placeholder="توضیحات و مشخصات دستگاه" /></label>
+        </div>
+        {manualError && <p className="mt-3 text-sm font-semibold text-red-700">{manualError}</p>}
+        {manualMessage && <p className="mt-3 text-sm font-semibold text-emerald-700">{manualMessage}</p>}
+        <button type="button" onClick={submitManualListing} disabled={manualSubmitting} className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-bold text-white disabled:opacity-50">
+          {manualSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          {manualSubmitting ? "در حال ثبت..." : "ثبت دستی و ارسال به بررسی"}
+        </button>
       </div>
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">

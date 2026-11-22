@@ -214,10 +214,8 @@ async function main() {
     await db.aITaskPolicy.upsert({
       where: { taskType: p.taskType },
       create: { ...p, active: true },
-      update: {
-        // Re-assert active state (admin may have toggled it; we do
-        // NOT clobber the other fields — admin tweaks survive).
-        // (Intentionally empty update means: do nothing on conflict.)
+      update: p.taskType === "SCRAPER" ? { costCeilingUsd: 0 } : {
+        // Existing policy fields remain admin-tunable. SCRAPER cost is a hard zero-cost contract.
       },
     });
   }
