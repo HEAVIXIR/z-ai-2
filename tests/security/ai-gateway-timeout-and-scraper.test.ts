@@ -49,26 +49,29 @@ vi.mock("@/lib/auth-helpers/require-admin", () => ({
     error: null,
   }),
 }));
+const mockPreflightAIRequest = vi.fn(async () =>
+  mockPreflightOk
+    ? {
+        ok: true as const,
+        policy: {
+          model: "default",
+          costCeilingUsd: 0.1,
+          timeoutMs: 30000,
+          hourlyLimit: 5,
+          dailyLimit: 20,
+          maxInputChars: 5000,
+          allowedRoles: "ADMIN",
+          active: true,
+        },
+        budget: {},
+        actorId: "admin-1",
+      }
+    : { ok: false as const, statusCode: 429, reason: "سهمیه شما تمام شده." },
+);
+const mockRecordAICost = vi.fn(async () => {});
 vi.mock("@/lib/ai-policy", () => ({
-  preflightAIRequest: async () =>
-    mockPreflightOk
-      ? {
-          ok: true,
-          policy: {
-            model: "default",
-            costCeilingUsd: 0.1,
-            timeoutMs: 30000,
-            hourlyLimit: 5,
-            dailyLimit: 20,
-            maxInputChars: 5000,
-            allowedRoles: "ADMIN",
-            active: true,
-          },
-          budget: {},
-          actorId: "admin-1",
-        }
-      : { ok: false, statusCode: 429, reason: "سهمیه شما تمام شده." },
-  recordAICost: vi.fn(async () => {}),
+  preflightAIRequest: mockPreflightAIRequest,
+  recordAICost: mockRecordAICost,
 }));
 vi.mock("@/lib/db", () => ({
   db: {
@@ -148,6 +151,7 @@ vi.mock("z-ai-web-dev-sdk", () => ({
 }));
 
 beforeEach(() => {
+  vi.clearAllMocks();
   mockCurrentUser = null;
   mockPreflightOk = true;
   // Enable provider routes only in mocked tests; no real provider call is made.
@@ -384,21 +388,39 @@ describe("STEP 11.43 Behavioral: scraper routes respect preflight denial", () =>
     expect(lastCall.data.taskType).toBe("SCRAPER");
   });
 
-  it("admin/store/ai-scraper: preflight ok → AIGatewayLog.create called with SCRAPER", async () => {
+  it("admin/store/ai-scraper: manual import bypasses AI quota, budget, and gateway logging", async () => {
     mockCurrentUser = { id: "admin-1" };
-    mockPreflightOk = true;
+    // Even when the AI preflight would deny discovery, deterministic manual import must work.
+    mockPreflightOk = false;
     const { POST } = await import("@/app/api/admin/store/ai-scraper/route");
-    // Use import action with a simple body
-    await POST(
+    const res = await POST(
       makePostReq("http://localhost/api/admin/store/ai-scraper", {
         action: "import",
         part: { name: "فیلتر روغن تویوتا" },
       }),
     );
+    expect(res.status).toBe(200);
+    expect(mockPreflightAIRequest).not.toHaveBeenCalled();
+    expect(mockRecordAICost).not.toHaveBeenCalled();
     const { db } = await import("@/lib/db");
-    expect(db.aIGatewayLog.create).toHaveBeenCalled();
-    const lastCall = (db.aIGatewayLog.create as any).mock.calls.at(-1)?.[0];
-    expect(lastCall.data.taskType).toBe("SCRAPER");
+    expect(db.aIGatewayLog.create).not.toHaveBeenCalled();
+  });
+
+  it("admin/store/ai-scraper: bulk manual import bypasses AI preflight", async () => {
+    mockCurrentUser = { id: "admin-1" };
+    mockPreflightOk = false;
+    const { POST } = await import("@/app/api/admin/store/ai-scraper/route");
+    const res = await POST(
+      makePostReq("http://localhost/api/admin/store/ai-scraper", {
+        action: "bulk-import",
+        parts: [{ name: "فیلتر اول" }, { name: "فیلتر دوم" }],
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockPreflightAIRequest).not.toHaveBeenCalled();
+    expect(mockRecordAICost).not.toHaveBeenCalled();
+    const { db } = await import("@/lib/db");
+    expect(db.aIGatewayLog.create).not.toHaveBeenCalled();
   });
 });
 
