@@ -240,7 +240,7 @@ export default async function AIControlPlanePage() {
                     <th className="px-3 py-3 text-center font-bold">وضعیت</th>
                     <th className="px-3 py-3 text-center font-bold">تأخیر</th>
                     <th className="px-3 py-3 text-center font-bold">توکن</th>
-                    <th className="px-3 py-3 text-center font-bold">هزینه</th>
+                    <th className="px-3 py-3 text-center font-bold">سقف رزروشده (تخمینی)</th>
                     <th className="px-3 py-3 text-center font-bold">تاریخ</th>
                   </tr>
                 </thead>
@@ -272,7 +272,7 @@ export default async function AIControlPlanePage() {
                         {l.tokensUsed != null ? toFa(l.tokensUsed) : "—"}
                       </td>
                       <td className="px-3 py-3 text-center text-xs text-zinc-500">
-                        {l.cost != null ? `$${toFa(l.cost.toFixed(4))}` : "—"}
+                        {l.cost != null ? `${toFa(l.cost.toFixed(4))}` : "—"}
                       </td>
                       <td
                         className="px-3 py-3 text-center text-[11px] text-zinc-500"
