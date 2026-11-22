@@ -161,6 +161,7 @@ export async function POST(req: NextRequest) {
   let result: any = null;
   let model = policy.model === "default" ? "default" : policy.model;
   let requestModel = policy.model;
+  let tokensUsed: number | null = null;
   let success = true;
   let errorMsg: string | null = null;
 
@@ -176,7 +177,21 @@ export async function POST(req: NextRequest) {
       if (!providerResult.ok) throw new Error(providerResult.reason);
       requestModel = policy.model === "default" ? providerResult.model : policy.model;
       model = `${providerResult.provider}:${requestModel}`;
-      return providerResult.client;
+      const client = providerResult.client;
+      return {
+        chat: {
+          completions: {
+            create: async (request: Parameters<typeof client.chat.completions.create>[0]) => {
+              const response = await client.chat.completions.create(request);
+              tokensUsed = Number.isFinite(response.usage?.total_tokens)
+                ? response.usage!.total_tokens!
+                : null;
+              if (response.model) model = `${providerResult!.provider}:${response.model}`;
+              return response;
+            },
+          },
+        },
+      };
     };
 
     switch (task) {
@@ -377,6 +392,7 @@ export async function POST(req: NextRequest) {
         input: JSON.stringify(input).substring(0, 500),
         output: JSON.stringify(result).substring(0, 500),
         latencyMs,
+        tokensUsed,
         cost: recordedCost || null,
         success,
         error: errorMsg,
