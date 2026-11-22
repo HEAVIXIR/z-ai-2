@@ -27,6 +27,7 @@
    Run:  bunx tsx prisma/seed-brands-b.ts
 */
 import { PrismaClient } from "@prisma/client";
+import { normalizeAliasValue } from "../src/lib/brand-alias";
 
 const db = new PrismaClient();
 
@@ -39,15 +40,7 @@ const slugifyEn = (s: string) =>
     .replace(/^-+|-+$/g, "")
     .replace(/-{2,}/g, "-");
 
-const normalizeAlias = (s: string) =>
-  s
-    .trim()
-    .toLowerCase()
-    .replace(/ي/g, "ی")
-    .replace(/ك/g, "ک")
-    .replace(/[\u200c\u200d]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+const normalizeAlias = normalizeAliasValue;
 
 type BrandSeed = {
   name: string;
@@ -1255,9 +1248,12 @@ async function upsertBrand(b: BrandSeed) {
     });
   }
 
+  // Canonical Persian + English names are searchable aliases too.
+  // This guarantees case-insensitive Latin search through normalizedValue,
+  // even when the underlying PostgreSQL nameEn column is case-sensitive.
+  const aliases = new Set([b.name, b.nameEn, ...(b.aliases ?? [])]);
   // Aliases — upsert by [brandId, normalizedValue]
-  if (b.aliases) {
-    for (const a of b.aliases) {
+  for (const a of aliases) {
       const norm = normalizeAlias(a);
       if (!norm) continue;
       const language =
@@ -1278,7 +1274,6 @@ async function upsertBrand(b: BrandSeed) {
         },
         update: {},
       });
-    }
   }
 
   return brand;
