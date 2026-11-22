@@ -161,7 +161,7 @@ export default function AIBudgetPage() {
         setDailyLimit(String(json.budget?.dailyLimitUsd ?? 10));
         setMonthlyLimit(String(json.budget?.monthlyLimitUsd ?? 200));
         setBudgetActive(Boolean(json.budget?.active));
-        showToast(opts?.resetDaily ? "مصرف روزانه صفر شد" : opts?.resetMonthly ? "مصرف ماهانه صفر شد" : "بودجه ذخیره شد");
+        showToast(opts?.resetDaily ? "مبلغ رزروشده روزانه صفر شد" : opts?.resetMonthly ? "مبلغ رزروشده ماهانه صفر شد" : "بودجه ذخیره شد");
       } else {
         showToast(json.error || "خطا در ذخیره بودجه");
       }
