@@ -83,7 +83,7 @@ async function main() {
     existingBrandCategoryLinks: existingSet.size,
     proposedNewLinks: proposed.size,
     unmappedIndustryKeys: [...unmapped].sort(),
-    linksByCategorySlug: Object.fromEntries([...grouped].sort((a,b)=>a[0].localeCompare(b[0])),
+    linksByCategorySlug: Object.fromEntries([...grouped].sort((a,b)=>a[0].localeCompare(b[0]))),
     sample,
   }, null, 2));
   if (apply && proposed.size) {
