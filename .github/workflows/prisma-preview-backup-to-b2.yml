@@ -605,7 +605,13 @@ jobs:
           ' "$RUNNER_TEMP/preview-health-brand-seed.json"
           [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
           (( HEAVIX_APP_PREVIEW_DATABASE_OID <= 4294967295 ))
-          observed="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
+          CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
+          test -n "$CID"
+          run_preview_sql() {
+            local sql="$1"
+            docker exec -e "HEAVIX_PREVIEW_DATABASE_URL=$MAIN_PREVIEW_DATABASE_URL" -e "HEAVIX_PREVIEW_SQL=$sql" -e PGSSLMODE=verify-full "$CID" bash -ceu 'psql --dbname="$HEAVIX_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$HEAVIX_PREVIEW_SQL"'
+          }
+          observed="$(run_preview_sql "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
           expected="7701427422680793119|$HEAVIX_APP_PREVIEW_DATABASE_OID"
           test "$observed" = "$expected"
           echo "PASS: direct seed connection matches the pinned App Preview cluster and database OID."
@@ -613,7 +619,7 @@ jobs:
           # The seed scripts are additive/idempotent: no deletes, no destructive
           # category rewrite, and no changes to existing curated identity unless
           # a seed row explicitly opts into refreshIdentity (none are enabled by this workflow).
-          before="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM public.\"Brand\")::text || '|' || (SELECT count(*) FROM public.\"BrandAlias\")::text || '|' || (SELECT count(*) FROM public.\"BrandIndustry\")::text")"
+          before="$(run_preview_sql "SELECT (SELECT count(*) FROM public.\"Brand\")::text || '|' || (SELECT count(*) FROM public.\"BrandAlias\")::text || '|' || (SELECT count(*) FROM public.\"BrandIndustry\")::text")"
           IFS='|' read -r brands_before aliases_before industries_before <<< "$before"
           [[ "$brands_before" =~ ^[0-9]+$ && "$aliases_before" =~ ^[0-9]+$ && "$industries_before" =~ ^[0-9]+$ ]]
 
@@ -623,7 +629,7 @@ jobs:
           HEAVIX_ENV=preview DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-brands-a.ts --apply
           HEAVIX_ENV=preview DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-brands-b.ts --apply
 
-          after="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM public.\"Brand\")::text || '|' || (SELECT count(*) FROM public.\"BrandAlias\")::text || '|' || (SELECT count(*) FROM public.\"BrandIndustry\")::text || '|' || (SELECT count(*) FROM public.\"Brand\" WHERE active = true AND status = 'ACTIVE')::text || '|' || (SELECT count(DISTINCT lower(\"nameEn\")) FROM public.\"Brand\" WHERE \"nameEn\" IS NOT NULL)::text")"
+          after="$(run_preview_sql "SELECT (SELECT count(*) FROM public.\"Brand\")::text || '|' || (SELECT count(*) FROM public.\"BrandAlias\")::text || '|' || (SELECT count(*) FROM public.\"BrandIndustry\")::text || '|' || (SELECT count(*) FROM public.\"Brand\" WHERE active = true AND status = 'ACTIVE')::text || '|' || (SELECT count(DISTINCT lower(\"nameEn\")) FROM public.\"Brand\" WHERE \"nameEn\" IS NOT NULL)::text")"
           IFS='|' read -r brands_after aliases_after industries_after active_brands distinct_name_en <<< "$after"
           [[ "$brands_after" =~ ^[0-9]+$ && "$aliases_after" =~ ^[0-9]+$ && "$industries_after" =~ ^[0-9]+$ ]]
           [[ "$active_brands" =~ ^[0-9]+$ && "$distinct_name_en" =~ ^[0-9]+$ ]]
