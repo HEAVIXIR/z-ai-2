@@ -670,6 +670,7 @@ model BuyRequest {
   categoryId      String?
   brandId         String?
   modelId         String?
+  modelName       String? // User-entered model text; independent of ProductModel catalog
   serviceTypeId   String?
   intent          String?          // canonical demand intent (SALE/RENT/SALE_AND_RENT/SERVICE_REQUEST)
   // DB-enforced owner-scoped idempotency: the composite unique key lets

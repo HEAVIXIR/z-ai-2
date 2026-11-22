@@ -103,6 +103,7 @@ export async function GET(req: Request) {
           categoryId: true,
           brandId: true,
           modelId: true,
+          modelName: true,
           serviceTypeId: true,
           intent: true,
           // H.3 resolved taxonomy names (single round-trip).
@@ -139,7 +140,7 @@ export async function GET(req: Request) {
           intent: r.intent,
           categoryName: r.categoryRef?.name ?? null,
           brandName: r.brandRef?.name ?? null,
-          modelName: r.modelRef?.name ?? null,
+          modelName: r.modelName ?? r.modelRef?.name ?? null,
           serviceTypeName: r.serviceTypeRef?.nameFa ?? null,
           images: r.images,
         })),
@@ -279,6 +280,7 @@ export async function POST(req: Request) {
       categoryId,
       brandId,
       modelId,
+      modelName,
       attributeValues,
       intent,
       transactionType,
@@ -453,6 +455,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "انتخاب دسته‌بندی برای ثبت درخواست الزامی است." }, { status: 400 });
     }
     const requestedBrandId = brandId ? String(brandId) : null;
+    if (modelName !== undefined && modelName !== null && typeof modelName !== "string") {
+      return NextResponse.json({ error: "نام مدل باید متن باشد." }, { status: 400 });
+    }
+    const requestedModelName = typeof modelName === "string" ? modelName.trim() : "";
+    if (requestedModelName.length > 120) {
+      return NextResponse.json({ error: "نام مدل نباید بیش از ۱۲۰ نویسه باشد." }, { status: 400 });
+    }
     const requestedModelId = modelId ? String(modelId) : null;
     const requestedServiceTypeId = serviceTypeId ? String(serviceTypeId) : null;
 
@@ -465,7 +474,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "نوع خدمت فقط برای تقاضای خدمات مجاز است." }, { status: 400 });
     }
 
-    const [categoryRow, brandRow, modelRow, serviceTypeRow, brandCategoryRow] = await Promise.all([
+    const [categoryRow, brandRow, modelRow, serviceTypeRow] = await Promise.all([
       requestedCategoryId
         ? db.category.findUnique({
             where: { id: requestedCategoryId },
@@ -488,12 +497,6 @@ export async function POST(req: Request) {
         ? db.serviceType.findFirst({
             where: { id: requestedServiceTypeId, active: true },
             select: { id: true, key: true },
-          })
-        : Promise.resolve(null),
-      requestedCategoryId && requestedBrandId
-        ? db.brandCategory.findUnique({
-            where: { brandId_categoryId: { brandId: requestedBrandId, categoryId: requestedCategoryId } },
-            select: { id: true },
           })
         : Promise.resolve(null),
     ]);
@@ -522,9 +525,6 @@ export async function POST(req: Request) {
     if (requestedBrandId && (!brandRow || !brandRow.active || brandRow.status !== "ACTIVE")) {
       return NextResponse.json({ error: "برند انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
     }
-    if (requestedCategoryId && requestedBrandId && !brandCategoryRow) {
-      return NextResponse.json({ error: "برند انتخاب‌شده به این دسته‌بندی متصل نیست." }, { status: 400 });
-    }
     if (requestedModelId) {
       if (!modelRow || modelRow.status !== "ACTIVE") {
         return NextResponse.json({ error: "مدل انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
@@ -534,15 +534,6 @@ export async function POST(req: Request) {
       if (requestedBrandId && modelRow.brandId !== requestedBrandId) {
         return NextResponse.json(
           { error: "مدل انتخاب‌شده متعلق به برند انتخاب‌شده نیست." },
-          { status: 400 },
-        );
-      }
-      // The wizard's model selector is category-scoped through
-      // ProductModel.categoryId; require the exact same canonical category
-      // at the API boundary rather than accepting an unlinked model.
-      if (requestedCategoryId && modelRow.categoryId !== requestedCategoryId) {
-        return NextResponse.json(
-          { error: "مدل انتخاب‌شده با دسته‌بندی انتخاب‌شده سازگار نیست." },
           { status: 400 },
         );
       }
@@ -582,6 +573,7 @@ export async function POST(req: Request) {
       categoryId: requestedCategoryId,
       brandId: brandId as string | null | undefined,
       modelId: modelId as string | null | undefined,
+      modelName: requestedModelName || null,
       attributeValues: attributeValues as unknown[] | null | undefined,
       images: stagedAssets,
       intent: intentStr,

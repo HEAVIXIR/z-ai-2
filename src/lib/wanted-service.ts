@@ -220,6 +220,7 @@ export async function createWanted(params: {
   requesterName?: string | null;
   requesterPhone?: string | null;
   modelId?: string | null;
+  modelName?: string | null;
   serviceTypeId?: string | null;
   attributeValues?: unknown[] | null;
   images?: Array<{ assetId: string; url: string; alt?: string | null }>;
@@ -253,6 +254,7 @@ export async function createWanted(params: {
     requesterName = null,
     requesterPhone = null,
     modelId = null,
+    modelName = null,
     serviceTypeId = null,
     attributeValues = null,
     images = [],
@@ -267,6 +269,7 @@ export async function createWanted(params: {
   if (title.length > 200) {
     throw new WantedServiceError(400, "عنوان نباید بیش از ۲۰۰ حرف باشد");
   }
+  const normalizedModelName = modelName ? String(modelName).trim().slice(0, 120) : null;
   if (!userId) {
     throw new WantedServiceError(400, "userId الزامی است");
   }
@@ -392,6 +395,7 @@ export async function createWanted(params: {
           categoryId: categoryId ?? null,
           brandId: brandId ?? null,
           modelId: modelId ?? null,
+          modelName: normalizedModelName || null,
           serviceTypeId: serviceTypeId ?? null,
           intent: resolvedIntent,
           idempotencyKey: idempotencyKey ?? null,
@@ -628,6 +632,7 @@ export async function listWanted(params: {
         categoryId: true,
         brandId: true,
         modelId: true,
+        modelName: true,
         serviceTypeId: true,
         intent: true,
         // H.3 resolved taxonomy names.
@@ -665,7 +670,7 @@ export async function listWanted(params: {
       intent: r.intent,
       categoryName: r.categoryRef?.name ?? null,
       brandName: r.brandRef?.name ?? null,
-      modelName: r.modelRef?.name ?? null,
+      modelName: r.modelName ?? r.modelRef?.name ?? null,
       serviceTypeName: r.serviceTypeRef?.nameFa ?? null,
       images: r.images,
     })),
@@ -756,6 +761,7 @@ export async function getWanted(id: string): Promise<{
       categoryId: true,
       brandId: true,
       modelId: true,
+      modelName: true,
       serviceTypeId: true,
       intent: true,
       // H.3 resolved taxonomy names (single round-trip via the FK relations).
@@ -824,7 +830,7 @@ export async function getWanted(id: string): Promise<{
     intent: request.intent,
     categoryName: request.categoryRef?.name ?? null,
     brandName: request.brandRef?.name ?? null,
-    modelName: request.modelRef?.name ?? null,
+    modelName: request.modelName ?? request.modelRef?.name ?? null,
     serviceTypeName: request.serviceTypeRef?.nameFa ?? null,
     images: request.images,
     attributeValues: request.attributeValues.map((av) => ({
