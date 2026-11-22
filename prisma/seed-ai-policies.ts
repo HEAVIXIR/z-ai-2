@@ -97,7 +97,8 @@ const POLICIES: PolicySeed[] = [
     maxOutputTokens: 3000,
     model: "default",
     timeoutMs: 60000,
-    costCeilingUsd: 0,
+    // Positive reservation prevents this billable task from bypassing the global AI budget.
+    costCeilingUsd: 0.05,
   },
   {
     taskType: "MODERATION",
@@ -214,8 +215,16 @@ async function main() {
     await db.aITaskPolicy.upsert({
       where: { taskType: p.taskType },
       create: { ...p, active: true },
-      update: p.taskType === "SCRAPER" ? { costCeilingUsd: 0 } : {},
+      update: {},
     });
+  }
+  // Repair only legacy zero-ceiling SCRAPER rows; preserve positive admin-tuned values.
+  const repairedScraperPolicy = await db.aITaskPolicy.updateMany({
+    where: { taskType: "SCRAPER", costCeilingUsd: 0 },
+    data: { costCeilingUsd: 0.05 },
+  });
+  if (repairedScraperPolicy.count > 0) {
+    console.log(`  ✓ Repaired ${repairedScraperPolicy.count} zero-ceiling SCRAPER policy row(s)`);
   }
   console.log(`  ✓ ${POLICIES.length} AI task policies ensured`);
 
