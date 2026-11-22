@@ -528,11 +528,20 @@ export async function POST(req: Request) {
       }
     }
 
+    const submittedModelName = typeof body.modelName === "string"
+      ? body.modelName.trim().replace(/\\s+/g, " ").slice(0, 120)
+      : "";
+    if (submittedModelName && !body.brandId) {
+      return NextResponse.json({ error: "برای ثبت مدل ابتدا باید یک برند معتبر انتخاب کنید." }, { status: 400 });
+    }
+    let resolvedModelName: string | null = submittedModelName || null;
+
     if (body.modelId) {
       const model = await db.productModel.findUnique({
         where: { id: String(body.modelId) },
         select: {
           id: true,
+          name: true,
           brandId: true,
           categoryId: true,
           status: true,
@@ -542,6 +551,7 @@ export async function POST(req: Request) {
       if (!model || model.status !== "ACTIVE") {
         return NextResponse.json({ error: "مدل انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
       }
+      resolvedModelName = model.name;
       if (!body.brandId || model.brandId !== String(body.brandId)) {
         return NextResponse.json({ error: "مدل انتخاب‌شده به برند انتخابی تعلق ندارد." }, { status: 400 });
       }
@@ -917,6 +927,7 @@ export async function POST(req: Request) {
       brandId: body.brandId || null,
       categoryId: body.categoryId || null,
       modelId: body.modelId || null,
+      modelName: resolvedModelName,
       sellerId: user.id, // W-03 FIX: from authenticated session only (never null, never from body)
       companyId,
       // A pending moderation record is not published and its lifetime has

@@ -175,6 +175,7 @@ export default function NewListingPage() {
   }, [transactionType]);
   const [form, setForm] = useState({
     brandLabel: "",
+    modelName: "",
     title: "",
     shortDesc: "",
     description: "",
@@ -315,9 +316,10 @@ export default function NewListingPage() {
   const pickBrand = (b: BrandSuggestion) => {
     setBrandId(b.id);
     setBrandQuery(b.name);
-    setForm((f) => ({ ...f, brandLabel: b.name }));
+    setForm((f) => ({ ...f, brandLabel: b.name, modelName: "" }));
     setBrandOpen(false);
     setModelId("");
+    setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
     setModels([]);
     setAttributes({});
     setAttributeDefs([]);
@@ -397,6 +399,7 @@ export default function NewListingPage() {
       setBrandResults([]);
       setBrandOpen(false);
       setModelId("");
+      setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
       setModels([]);
       setAttributes({});
       setAttributeDefs([]);
@@ -622,6 +625,7 @@ export default function NewListingPage() {
         brandId: brandId || undefined,
         categoryId: categoryId || undefined,
         modelId: modelId || undefined,
+        modelName: form.modelName.trim() || undefined,
         serialNumber: form.serialNumber || undefined,
         sellerName: form.sellerName || undefined,
         sellerPhone: form.sellerPhone || undefined,
@@ -1072,12 +1076,12 @@ export default function NewListingPage() {
                               setBrandQuery(e.target.value);
                               setBrandId("");
                               setModelId("");
+                              setForm((f) => ({ ...f, brandLabel: e.target.value, modelName: "" }));
                               setModels([]);
                               setAttributes({});
                               setAttributeDefs([]);
                               setAttributesLoaded(false);
                               setAttrErrors({});
-                              setForm((f) => ({ ...f, brandLabel: e.target.value }));
                             }}
                             onFocus={() => brandResults.length > 0 && setBrandOpen(true)}
                             placeholder="نام برند را فارسی یا انگلیسی تایپ کنید…"
@@ -1094,7 +1098,7 @@ export default function NewListingPage() {
                               onClick={() => {
                                 setBrandId("");
                                 setBrandQuery("");
-                                setForm((f) => ({ ...f, brandLabel: "" }));
+                                setForm((f) => ({ ...f, brandLabel: "", modelName: "" }));
                                 setBrandResults([]);
                                 setBrandOpen(false);
                               }}
@@ -1125,7 +1129,7 @@ export default function NewListingPage() {
                           <div className="absolute z-50 mt-2 max-h-72 w-full overflow-y-auto rounded-2xl border border-white/10 bg-[#0f0f0f] shadow-[0_25px_60px_rgba(0,0,0,.6)]">
                             {brandResults.length === 0 ? (
                               <div className="p-4 text-center text-xs text-white/50">
-                                نتیجه‌ای یافت نشد. می‌توانید نام دلخواه را وارد کنید و ادامه دهید.
+                                برندی با این نام پیدا نشد. لطفاً املای فارسی یا انگلیسی را تغییر دهید؛ برای افزودن برند جدید با پشتیبانی تماس بگیرید.
                               </div>
                             ) : (
                               <ul className="py-1">
@@ -1171,40 +1175,51 @@ export default function NewListingPage() {
                         )}
                       </div>
 
-                      {/* Model select (filtered by brand) */}
+                      {/* Free-text model with optional canonical suggestions */}
                       <div>
                         <label className={labelCls}>مدل</label>
                         <div className="relative">
-                          <select
-                            value={modelId}
+                          <input
+                            type="text"
+                            value={form.modelName}
                             onChange={(e) => {
-                              setModelId(e.target.value);
+                              const value = e.target.value;
+                              const normalized = value.trim().toLocaleLowerCase();
+                              const match = models.find((m) =>
+                                [m.name, m.nameEn].some((candidate) =>
+                                  candidate?.trim().toLocaleLowerCase() === normalized && normalized.length > 0,
+                                ),
+                              );
+                              setModelId(match?.id ?? "");
+                              set("modelName", value);
                               setAttributes({});
                               setAttributeDefs([]);
                               setAttributesLoaded(false);
                               setAttrErrors({});
                             }}
-                            disabled={!brandId || modelsLoading}
+                            disabled={!brandId}
+                            list="heavix-model-suggestions"
+                            placeholder={brandId ? "مدل را وارد کنید؛ می‌توانید از پیشنهادها هم انتخاب کنید" : "ابتدا برند را انتخاب کنید"}
                             className={inputCls}
-                          >
-                            <option value="">
-                              {!brandId
-                                ? "ابتدا برند را انتخاب کنید"
-                                : modelsLoading
-                                  ? "بارگذاری…"
-                                  : "بدون مدل مشخص"}
-                            </option>
+                            maxLength={120}
+                            autoComplete="off"
+                            aria-label="نام مدل"
+                          />
+                          <datalist id="heavix-model-suggestions">
                             {models.map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.name}
-                                {m.nameEn ? ` (${m.nameEn})` : ""}
-                              </option>
+                              <option key={m.id} value={m.name} />
                             ))}
-                          </select>
+                            {models.filter((m) => m.nameEn).map((m) => (
+                              <option key={`${m.id}-en`} value={m.nameEn!} />
+                            ))}
+                          </datalist>
                           {modelsLoading && (
                             <Loader2 className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-[#F58220]" />
                           )}
                         </div>
+                        <p className="mt-1 text-[10px] text-white/35">
+                          نام مدل را آزادانه وارد کنید؛ اگر در فهرست موجود باشد، پیشنهاد داده می‌شود.
+                        </p>
                         {modelsError && (
                           <div role="alert" className="mt-2 flex flex-wrap items-center gap-2 text-xs text-red-300">
                             <span>{modelsError}</span>
@@ -1703,7 +1718,7 @@ export default function NewListingPage() {
                         value={categoryPath.map((item) => item.name).join(" / ") || "—"}
                       />
                       <ReviewRow label="برند" value={form.brandLabel || "—"} />
-                      <ReviewRow label="مدل" value={models.find((m) => m.id === modelId)?.name ?? "—"} />
+                      <ReviewRow label="مدل" value={form.modelName.trim() || models.find((m) => m.id === modelId)?.name || "—"} />
                       <ReviewRow label="عنوان" value={form.title || "—"} />
                       <ReviewRow label="وضعیت" value={{ NEW: "نو", USED: "کارکرده", REFURBISHED: "بازسازی‌شده", FOR_PARTS: "قطعات" }[form.condition] ?? "—"} />
                       <ReviewRow label="سال ساخت" value={form.year || "—"} />
