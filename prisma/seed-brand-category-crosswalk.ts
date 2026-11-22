@@ -12,10 +12,9 @@
  * category can return relevant brands. No generic marketplace/service roots.
  */
 import { PrismaClient } from "@prisma/client";
+import { crosswalkBrandIndustry, computeCategoryIndustries, type CategoryNode } from "../src/lib/brand-category-crosswalk";
 
 const db = new PrismaClient();
-
-import { crosswalkBrandIndustry, computeCategoryIndustries, type CategoryNode } from "../src/lib/brand-category-crosswalk";
 
 async function main() {
   const preview = process.env.HEAVIX_ENV === "preview";
@@ -30,7 +29,6 @@ async function main() {
     db.brandIndustry.findMany({ select: { brandId: true, industry: true } }),
     db.brandCategory.findMany({ select: { brandId: true, categoryId: true } }),
   ]);
-  const appIndustryIds = await db.applicationIndustry.findMany({ select: { id: true, key: true } });
   const direct = new Map<string, Set<string>>();
   const categoryAppLinks = await db.categoryApplicationIndustry.findMany({
     where: { categoryId: { in: categories.map(c => c.id) } },
