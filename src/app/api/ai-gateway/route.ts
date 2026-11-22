@@ -11,7 +11,7 @@ import {
 } from "@/lib/ai-policy";
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider } from "@/lib/ai-provider-router";
 import { readBoundedJson } from "@/lib/read-bounded-json";
 
 import {
@@ -169,13 +169,22 @@ export async function POST(req: NextRequest) {
   const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
 
   try {
-    const zai = await ZAI.create();
+    let providerResult: ReturnType<typeof getAIProvider> | null = null;
+    const getProviderClient = () => {
+      if (!providerResult) providerResult = getAIProvider();
+      if (!providerResult.ok) throw new Error(providerResult.reason);
+      model = policy.model === "default" ? `${providerResult.provider}:${providerResult.model}` : `${providerResult.provider}:${policy.model}`;
+      return providerResult.client;
+    };
 
     switch (task) {
       case "SEARCH":
       case "SEMANTIC_SEARCH": {
+        const zai = getProviderClient();
         const query = String(input?.query || "");
         const llmRes = await zai.chat.completions.create({
+          model: policy.model === "default" ? providerResult!.ok ? providerResult!.model : "default" : policy.model,
+          max_tokens: policy.maxOutputTokens,
           messages: [
             {
               role: "system",
@@ -193,6 +202,7 @@ export async function POST(req: NextRequest) {
       }
 
       case "LISTING_BUILDER": {
+        const zai = getProviderClient();
         const desc = String(input?.description || "");
         const llmRes = await zai.chat.completions.create({
           messages: [
@@ -241,6 +251,7 @@ export async function POST(req: NextRequest) {
       }
 
       case "MODERATION": {
+        const zai = getProviderClient();
         const text = String(input?.text || "");
         const llmRes = await zai.chat.completions.create({
           messages: [
