@@ -79,6 +79,6 @@ export async function POST(req: Request) {
     price, priceType: price ? "FIXED" : "NEGOTIABLE", condition, year, workingHours, province, city, sellerName, sellerPhone, sourceUrl,
     sourceSite, adminNotes: "MANUAL_ENTRY", status: "PENDING", publishedAt: null, verified: false, featured: false, showInLatest: false,
   } });
-  await logAudit({ actorId: auth.user.id, actorType: "ADMIN", action: "admin.listings.create", entityType: "Listing", entityId: listing.id, after: { slug: listing.slug, title: listing.title, sourceSite, status: listing.status, sourceUrl }, reason: "manual admin listing entry" });
+  await logAudit({ actorId: auth.user.id, actorType: "ADMIN", action: "marketplace.listing.create", entityType: "Listing", entityId: listing.id, after: { slug: listing.slug, title: listing.title, sourceSite, status: listing.status, sourceUrl }, reason: "manual admin listing entry" });
   return NextResponse.json({ ok: true, id: listing.id, slug: listing.slug, status: listing.status, sourceSite }, { status: 201 });
 }
