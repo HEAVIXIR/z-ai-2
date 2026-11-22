@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { getAIProvider } from "@/lib/ai-provider-router";
 
 /* ============================================================
    HEAVIX — Moderation Loop (P1-3)
@@ -100,25 +101,15 @@ export async function moderateListing(
       };
     }
 
-    // Resolve ZAI SDK via the central router. Non-chat moderation
-    // uses zai.chat.completions.create, so we could use
-    // getAIProvider() — but moderation historically uses the raw
-    // SDK. We keep that pattern via getZAISDK() so credentials stay
-    // centralized while preserving the exact SDK surface.
-    let zai: any = null;
-    try {
-      const { getZAISDK } = await import("@/lib/ai-provider-router");
-      const r = getZAISDK();
-      if (!r.ok) { throw new Error(r.reason); }
-      zai = r.sdk;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // SAFE-DEFAULT — surface as REVIEW so the operator can look.
+    // Moderation uses the central chat router so provider selection
+    // and no-fallback policy apply consistently to every AI task.
+    const provider = getAIProvider();
+    if (!provider.ok) {
       return {
         riskScore: 0.5,
         flaggedIssues: ["AI_UNAVAILABLE"],
         recommendation: "REVIEW",
-        rationale: `AI service unavailable: ${msg}`,
+        rationale: `AI service unavailable: ${provider.reason}`,
       };
     }
 
@@ -166,7 +157,8 @@ Seller: ${listing.sellerName ?? "?"} / ${listing.sellerPhone ?? "?"}
 Created at: ${listing.createdAt.toISOString()}
 """`;
 
-    const completion = await zai.chat.completions.create({
+    const completion = await provider.client.chat.completions.create({
+      model: provider.model,
       messages: [
         { role: "system", content: prompt },
         { role: "user", content: "Moderate this listing." },
