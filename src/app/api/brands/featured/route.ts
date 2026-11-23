@@ -36,9 +36,8 @@ export async function GET(req: Request) {
     const displayIds = displayBrands.filter((d) => d.showOnHomepage).map((d) => d.brandId);
     const featuredIds = featuredBrands.filter((b) => !explicitDisplayIds.has(b.id)).map((b) => b.id);
     const allIds = new Set<string>([...displayIds, ...featuredIds]);
-    if (allIds.size === 0) {
-      // Fallback: take the 20 brands with the most PUBLISHED listings
-      // so the ticker is never empty on a fresh install.
+    if (allIds.size === 0 && displayBrands.length === 0 && featuredBrands.length === 0) {
+      // Fallback only on a fresh install with no explicit curation or featured flags.
       const top = await db.brand.findMany({
         where: { active: true, status: "ACTIVE" },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -58,6 +57,9 @@ export async function GET(req: Request) {
           listingCount: b._count.listings,
         })),
       });
+    }
+    if (allIds.size === 0) {
+      return NextResponse.json({ brands: [] });
     }
 
     const brands = await db.brand.findMany({
