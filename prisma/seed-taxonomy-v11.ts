@@ -1,6 +1,6 @@
 /* HEAVIX Taxonomy Seed V1.1 — HBR §3-§19
    Idempotent seed that populates:
-   - 6 TransactionTypes (§18)
+   - 7 TransactionTypes (§18)
    - 9  ServiceTypes (§19)
    - 16 ApplicationIndustries (§17)
    - Full Category tree V1.1 (§3-§16): 14 roots (7 CATALOG + 4 MARKETPLACE + 2 SERVICE + 1 FALLBACK)
@@ -755,7 +755,10 @@ async function upsertCat(c: CatSeed, parentId?: string, parentPath?: string, lev
       await db.categoryApplicationIndustry.upsert({
         where: { categoryId_applicationIndustryId: { categoryId: cat.id, applicationIndustryId: ind.id } },
         create: { categoryId: cat.id, applicationIndustryId: ind.id },
-        update: {},
+        // Reactivate and canonicalize the newly introduced supply-side service type.
+      update: t.key === "SERVICE_OFFER"
+        ? { nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder, active: true }
+        : {},
       });
     }
   }
@@ -971,10 +974,7 @@ async function main() {
     await db.transactionType.upsert({
       where: { key: t.key },
       create: t,
-      // Reactivate only the newly introduced supply-side service type if a dormant row exists.
-      update: t.key === "SERVICE_OFFER"
-        ? { nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder, active: true }
-        : {},
+      update: {},
     });
   }
 
