@@ -27,7 +27,7 @@ export async function GET() {
     const s = await db.siteSettings.findUnique({ where: { id: "main" } });
 
     const brands = await db.brand.findMany({
-      where: { active: true },
+      where: { active: true, status: "ACTIVE" },
       orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
       select: {
         id: true,
@@ -176,7 +176,7 @@ export async function PUT(req: Request) {
       // Upsert BrandDisplay rows for each selected brand with showOnHomepage=true.
       // Only select brands that actually exist + are active.
       const existing = await db.brand.findMany({
-        where: { id: { in: Array.from(selectedIds) }, active: true },
+        where: { id: { in: Array.from(selectedIds) }, active: true, status: "ACTIVE" },
         select: { id: true },
       });
       for (const b of existing) {
