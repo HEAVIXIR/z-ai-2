@@ -3519,6 +3519,24 @@ async function main() {
     throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
   }
 
+  // Fail closed unless the exact dedicated App Preview database is proven.
+  const expectedSystem = process.env.HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER;
+  const expectedOid = process.env.HEAVIX_EXPECTED_PREVIEW_DATABASE_OID;
+  if (!expectedSystem || !expectedOid || !/^[1-9][0-9]{0,9}$/.test(expectedOid)) {
+    throw new Error("Preview database identity secrets are required; no writes performed.");
+  }
+  const identity = await db.$queryRaw<Array<{
+    database_name: string; database_oid: string; system_identifier: string;
+  }>>`SELECT current_database() AS database_name,
+           (SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid,
+           (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
+  const actual = identity[0];
+  if (!actual || actual.database_name !== "postgres" ||
+      actual.database_oid !== expectedOid || actual.system_identifier !== expectedSystem) {
+    throw new Error("Exact Preview database identity mismatch; no writes performed.");
+  }
+  console.log("PASS: exact App Preview database identity verified.");
+
   const coverageRootSlugs = ["machinery", "vehicles", "attachments", "agriculture", "industrial-equipment", "parts"];
   const coverageRoots = await db.category.findMany({
     where: { slug: { in: coverageRootSlugs }, active: true, layer: "CATALOG" },
