@@ -41,7 +41,6 @@ describe("Cloudflare Preview CSRF origin allowlist", () => {
     vi.stubEnv("NEXTAUTH_URL", "");
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "");
     vi.stubEnv("HEAVIX_PREVIEW_URL", "");
-    vi.stubEnv("HEAVIX_PREVIEW_ORIGIN", PREVIEW_ORIGIN);
     vi.stubEnv("VERCEL_URL", "");
     vi.stubEnv("VERCEL_BRANCH_URL", "");
     vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "");
