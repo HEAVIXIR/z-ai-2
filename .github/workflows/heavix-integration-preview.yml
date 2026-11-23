@@ -236,9 +236,12 @@ jobs:
             hasNestedExcavator: Boolean(hasExcavator),
           };
           console.log(JSON.stringify(checks, null, 2));
-          if (rootCount !== 14 || checks.transactionTypes !== 6 || checks.serviceTypes !== 9 || checks.applicationIndustries !== 16 || checks.machineryL1 < 12 || !hasExcavator) {
+          if (rootCount !== 14 || checks.transactionTypes < 6 || checks.transactionTypes > 7 || checks.serviceTypes !== 9 || checks.applicationIndustries !== 16 || checks.machineryL1 < 12 || !hasExcavator) {
             console.error("Integration Preview taxonomy contract failed.");
             process.exit(1);
+          }
+          if (checks.transactionTypes === 6) {
+            console.warn("SERVICE_OFFER is not present in the Preview DB yet; the additive taxonomy seed has not been applied.");
           }
           NODE
           detail_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-excavator-category.json" -w '%{http_code}' "$PREVIEW_URL/api/taxonomy/categories/cat-excavator" || true)"
@@ -281,7 +284,7 @@ jobs:
           echo "PASS: Integration Preview exposes the 14-root taxonomy, 6–7 transaction types, 9 service types, 16 application industries, and nested machinery categories."
           {
             echo "- Taxonomy API HTTP: ${taxonomy_code:-000}"
-            echo "- Taxonomy contract: 14 roots / 6 transactions / 9 services / 16 industries"
+            echo "- Taxonomy contract: 14 roots / 6–7 transactions / 9 services / 16 industries"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish Preview URL in job summary
