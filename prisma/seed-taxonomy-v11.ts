@@ -784,11 +784,107 @@ async function main() {
   if (process.env.HEAVIX_ENV !== "preview") {
     throw new Error("Refusing to seed: HEAVIX_ENV must be preview. No writes performed.");
   }
+
+  const locationsOnly = process.argv.includes("--locations-only");
+  const transactionTypesOnly = process.argv.includes("--transaction-types-only");
+  if (locationsOnly && transactionTypesOnly) {
+    throw new Error("Choose only one isolated seed mode.");
+  }
+
+  // Owner-authorized, narrowly scoped Iran location catalog path. The source
+  // manifest retains its original license metadata; this operational override
+  // does not alter or misrepresent that metadata.
+  async function assertExactPreviewDatabase() {
+    const expectedSystem = process.env.HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER;
+    const expectedOid = process.env.HEAVIX_EXPECTED_PREVIEW_DATABASE_OID;
+    if (!expectedSystem || !expectedOid || !/^[1-9][0-9]{0,9}$/.test(expectedOid)) {
+      throw new Error("Preview database identity secrets are required; no writes performed.");
+    }
+    const identity = await db.$queryRaw<Array<{
+      database_name: string; database_oid: string; system_identifier: string;
+    }>>`SELECT current_database() AS database_name,
+             (SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid,
+             (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
+    const actual = identity[0];
+    if (!actual || actual.database_name !== "postgres" ||
+        actual.database_oid !== expectedOid || actual.system_identifier !== expectedSystem) {
+      throw new Error("Exact Preview database identity mismatch; no writes performed.");
+    }
+    console.log("PASS: exact App Preview database identity verified.");
+  }
+
+  if (locationsOnly || transactionTypesOnly) {
+    await assertExactPreviewDatabase();
+  }
+
+  if (transactionTypesOnly) {
+    for (const t of TRANSACTIONS) {
+      await db.transactionType.upsert({
+        where: { key: t.key },
+        create: t,
+        update: t.key === "SERVICE_OFFER"
+          ? { nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder, active: true }
+          : {},
+      });
+    }
+    const active = await db.transactionType.findMany({
+      where: { active: true, key: { in: TRANSACTIONS.map((t) => t.key) } },
+      select: { key: true },
+    });
+    const missing = TRANSACTIONS.map((t) => t.key).filter((key) => !active.some((row) => row.key === key));
+    if (missing.length) throw new Error("Transaction type verification failed: " + missing.join(", "));
+    console.log("TRANSACTION TYPES VERIFIED: " + JSON.stringify(active.map((row) => row.key).sort()));
+    return;
+  }
+
+  if (locationsOnly) {
+    if (IRAN_LOCATION_DATA.countries.length !== 1 ||
+        IRAN_LOCATION_DATA.countries[0]?.sourceCode !== "IR" ||
+        IRAN_PROVINCES.length !== 31 ||
+        IRAN_LOCATION_DATA.metadata.distinctCityCount !== 1479) {
+      throw new Error("Iran location source integrity/count preflight failed; no writes performed.");
+    }
+    const iran = await db.country.upsert({
+      where: { name: "ایران" },
+      create: { name: "ایران", nameEn: "Iran", code: "IR", phoneCode: "+98", sortOrder: 1 },
+      update: { nameEn: "Iran", code: "IR", phoneCode: "+98", sortOrder: 1 },
+    });
+    let totalCities = 0;
+    for (let p = 0; p < IRAN_PROVINCES.length; p++) {
+      const pr = IRAN_PROVINCES[p];
+      const prov = await db.province.upsert({
+        where: { countryId_name: { countryId: iran.id, name: pr.name } },
+        create: { countryId: iran.id, name: pr.name, sourceCode: pr.sourceCode, sortOrder: p + 1 },
+        update: { sourceCode: pr.sourceCode, sortOrder: p + 1 },
+      });
+      for (const city of pr.cities) {
+        await db.city.upsert({
+          where: { provinceId_name: { provinceId: prov.id, name: city.name } },
+          create: { provinceId: prov.id, name: city.name, sourceCode: city.sourceCode, sortOrder: city.sortOrder },
+          update: { sourceCode: city.sourceCode, sortOrder: city.sortOrder },
+        });
+        totalCities++;
+      }
+    }
+    if (totalCities !== IRAN_LOCATION_DATA.metadata.distinctCityCount) {
+      throw new Error(`Location seed count mismatch: expected ${IRAN_LOCATION_DATA.metadata.distinctCityCount}, processed ${totalCities}`);
+    }
+    const [countryCount, provinceCount, cityCount] = await Promise.all([
+      db.country.count({ where: { code: "IR" } }),
+      db.province.count({ where: { countryId: iran.id } }),
+      db.city.count({ where: { province: { countryId: iran.id } } }),
+    ]);
+    if (countryCount !== 1 || provinceCount !== 31 || cityCount !== 1479) {
+      throw new Error(`Location verification failed: ${JSON.stringify({ countryCount, provinceCount, cityCount })}`);
+    }
+    console.log("IRAN LOCATION CATALOG VERIFIED: " + JSON.stringify({ countryCount, provinceCount, cityCount }));
+    return;
+  }
   // Isolated modes avoid touching unrelated taxonomy dimensions or locations.
   const categoriesOnly = process.argv.includes("--categories-only");
   const serviceTypesOnly = process.argv.includes("--service-types-only");
   const applicationIndustriesOnly = process.argv.includes("--application-industries-only");
-  if (!categoriesOnly && !serviceTypesOnly && !applicationIndustriesOnly && (
+  if (!locationsOnly && !categoriesOnly && !serviceTypesOnly && !applicationIndustriesOnly && (
     IRAN_LOCATION_MANIFEST.rightsReviewStatus !== "APPROVED" ||
     IRAN_LOCATION_MANIFEST.commercialUseAllowed !== true
   )) {
