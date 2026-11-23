@@ -217,6 +217,7 @@ export default function NewListingPage() {
   const [brandLoading, setBrandLoading] = useState(false);
   const [brandError, setBrandError] = useState<string | null>(null);
   const [brandRetryKey, setBrandRetryKey] = useState(0);
+  const [brandBrowseKey, setBrandBrowseKey] = useState(0);
   const [brandOpen, setBrandOpen] = useState(false);
   const brandAbort = useRef<AbortController | null>(null);
   const brandWrapRef = useRef<HTMLDivElement>(null);
@@ -255,7 +256,7 @@ export default function NewListingPage() {
   // ── Debounced alias-aware brand search with visible retry state ──
   useEffect(() => {
     const q = brandQuery.trim();
-    if (!q) {
+    if (!q && brandBrowseKey === 0) {
       setBrandResults([]);
       setBrandLoading(false);
       setBrandError(null);
@@ -269,8 +270,12 @@ export default function NewListingPage() {
       const ctrl = new AbortController();
       brandAbort.current = ctrl;
       try {
-        const res = await fetch(`/api/brands/search?q=${encodeURIComponent(q)}`, {
+        const searchUrl = q
+          ? `/api/brands/search?q=${encodeURIComponent(q)}`
+          : "/api/brands/search";
+        const res = await fetch(searchUrl, {
           signal: ctrl.signal,
+          cache: "no-store",
         });
         if (!res.ok) throw new Error("brand search failed");
         const data = (await res.json()) as { brands: BrandSuggestion[] };
@@ -291,7 +296,7 @@ export default function NewListingPage() {
       clearTimeout(t);
       brandAbort.current?.abort();
     };
-  }, [brandQuery, brandRetryKey]);
+  }, [brandQuery, brandRetryKey, brandBrowseKey]);
 
   // ── Close brand dropdown on outside click ──
   useEffect(() => {
@@ -1032,7 +1037,10 @@ export default function NewListingPage() {
                               // Text in this field is a search query, never a new Brand.
                               setForm((f) => ({ ...f, brandLabel: "" }));
                             }}
-                            onFocus={() => setBrandOpen(true)}
+                            onFocus={() => {
+                              setBrandOpen(true);
+                              if (!brandQuery.trim()) setBrandBrowseKey((key) => key + 1);
+                            }}
                             placeholder="نام برند را فارسی یا انگلیسی تایپ کنید…"
                             className={`${inputCls} pr-9`}
                             aria-label="جستجوی برند"
@@ -1077,13 +1085,13 @@ export default function NewListingPage() {
 
                         {brandOpen && (
                           <div className="absolute z-50 mt-2 max-h-72 w-full overflow-y-auto rounded-2xl border border-white/10 bg-[#0f0f0f] shadow-[0_25px_60px_rgba(0,0,0,.6)]">
-                            {!brandQuery.trim() ? (
-                              <div className="p-4 text-center text-xs text-white/50">
-                                برای نمایش برندها، نام برند را فارسی یا انگلیسی تایپ کنید. برند جدید فقط توسط مدیریت به فهرست مرکزی افزوده می‌شود.
-                              </div>
+                            {!brandQuery.trim() && brandLoading ? (
+                              <div className="p-4 text-center text-xs text-white/50">در حال دریافت برندهای پیشنهادی…</div>
                             ) : brandResults.length === 0 ? (
                               <div className="p-4 text-center text-xs text-white/50">
-                                برندی پیدا نشد. املای فارسی یا انگلیسی را بررسی کنید؛ برای افزودن برند جدید باید مدیر آن را به فهرست مرکزی اضافه کند.
+                                {brandQuery.trim()
+                                  ? "برندی پیدا نشد. املای فارسی یا انگلیسی را بررسی کنید؛ برای افزودن برند جدید باید مدیر آن را به فهرست مرکزی اضافه کند."
+                                  : "هنوز برندی برای پیشنهاد وجود ندارد. نام برند را جستجو کنید."}
                               </div>
                             ) : (
                               <ul className="py-1">
