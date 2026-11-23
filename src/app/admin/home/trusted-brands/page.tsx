@@ -1,4 +1,5 @@
 "use client";
+import BrandManagementNav from "@/components/admin/BrandManagementNav";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Award, Loader2, Save, CheckCircle2, Search, Star } from "lucide-react";
@@ -165,6 +166,7 @@ export default function AdminTrustedBrandsPage() {
 
   return (
     <div className="space-y-6">
+      <BrandManagementNav active="homepage" />
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-black text-zinc-900">
           <Award className="h-6 w-6 text-[#F58220]" />
