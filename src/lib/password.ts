@@ -104,7 +104,7 @@ export async function verifyPassword(
 
   if (isLegacyBcryptHash(hash)) {
     const runtimeAllowsLegacy =
-      typeof process === "undefined" ||
+      typeof process !== "undefined" &&
       process.env.HEAVIX_AUTH_ALLOW_LEGACY_BCRYPT !== "false";
     const allowLegacyBcrypt = options.allowLegacyBcrypt ?? runtimeAllowsLegacy;
     if (!allowLegacyBcrypt) return false;
