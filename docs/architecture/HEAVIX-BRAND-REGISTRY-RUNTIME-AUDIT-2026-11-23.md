@@ -105,13 +105,13 @@ The code changes are isolated in a draft PR against Integration. CI must pass be
 
 The empty-query picker behavior is a UI/API correction only. It cannot display real brand options if the database connected to the Preview Worker has no canonical Brand rows. The Phase A/B source inventory (630 rows, 605 unique slugs) is not live data and must not be presented as proof of a populated Preview database. Before seeding, run the exact-target read-only inventory and paired backup gate; then reconcile duplicate slugs, aliases, family membership, and parent-brand links additively. The seed helper's default `update: {}` intentionally preserves identity fields, but also means missing relation assignments need a separately reviewed reconciliation step.
 
-### 7.2 Admin navigation is shared, not yet reduced to one destination
+### 7.2 Admin navigation is consolidated into one destination
 
-The shared `BrandManagementNav` still contains three destinations: canonical Brands, Brand Families/relationships, and Homepage display curation. This PR makes them visibly part of one management center and fixes the main entry route, but it does **not** yet meet the stricter requirement of one top-level Brand Management destination with a single consolidated workspace. That hub/navigation consolidation remains follow-up work; do not describe the three destinations as fully unified yet.
+The sidebar now exposes one `مدیریت برندها` entry at `/admin/brands`. The hub provides three task areas—canonical Brand records, BrandFamily/parent-child relationships, and homepage curation—without exposing three separate sidebar destinations. Legacy persisted navigation rows are suppressed by the read-only navigation API; they are not deleted or rewritten. Existing direct URLs remain available from the hub.
 
-### 7.3 Homepage legacy section remains in the layout catalogue
+### 7.3 Homepage duplicate section is hidden without deleting stored configuration
 
-The canonical homepage renderer suppresses the legacy `brands` section and renders `trusted-brands` as the single public brand display. However, `DEFAULT_HOME_SECTIONS` still defines `trusted-brands` as active and `brands` as inactive. This explains why the layout editor can still show two brand-related rows even though the public renderer suppresses the old one. A safe follow-up should hide/deprecate the legacy row in the editor and map old configuration to the canonical key without deleting user configuration or changing database rows in an unreviewed way.
+`trusted-brands` is the single canonical homepage brand section. The legacy `brands` row is filtered from the merged section catalogue used by both public composition and the layout editor, so the editor no longer presents one active and one inactive brand section. The persisted legacy database row is left untouched for auditability; no database mutation is required.
 
 ### 7.4 Transaction taxonomy must not be conflated with brand work
 
