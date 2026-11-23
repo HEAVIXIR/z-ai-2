@@ -153,11 +153,24 @@ export default function BrandControlCenter({ brandId }: { brandId: string }) {
         const ind = await indRes.json();
         const fam = await famRes.json();
         const bl = await brandListRes.json();
-        setBrand(b.brand ?? b);
+        const loadedBrand = b.brand ?? b;
+        setBrand(loadedBrand);
         setAllCategories(Array.isArray(c) ? c : c.categories ?? []);
         setIndustries(ind.industries ?? []);
         setFamilies(fam.families ?? []);
         setBrandOptions((bl.brands ?? []).filter((x: any) => x.id !== brandId));
+        // HARDENING: extract logo source from persisted BrandMedia.
+        // The title field stores "Logo from <SOURCE>" (AI_SEARCH or MANUAL).
+        // Legacy logos without a BrandMedia record show as null (unknown).
+        const logoMedia = (loadedBrand.media ?? []).find(
+          (m: any) => m.type === "LOGO",
+        );
+        if (logoMedia?.title) {
+          const match = logoMedia.title.match(/Logo from (\w+)/);
+          setLogoSource(match?.[1] ?? null);
+        } else {
+          setLogoSource(null);
+        }
       } catch {
         setError("بارگذاری اطلاعات برند ناموفق بود.");
       } finally {
@@ -480,6 +493,13 @@ function IdentityTab({
         foundedYear: form.foundedYear === "" ? null : Number(form.foundedYear),
         sortOrder: Number(form.sortOrder) || 0,
       });
+      // HARDENING: after a successful Identity tab save where the
+      // admin typed a logo URL manually, the logo source is MANUAL.
+      // This only runs AFTER save() succeeds — editing the URL text
+      // field alone does NOT change logoSource.
+      if (form.logoUrl) {
+        setLogoSource("MANUAL");
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (e: any) {
@@ -627,7 +647,7 @@ function IdentityTab({
         </div>
         <div>
           <label className={labelCls}>لوگو (URL)</label>
-          <input value={form.logoUrl} onChange={(e) => { setField("logoUrl", e.target.value); setLogoSource("MANUAL"); }} className={inputCls} dir="ltr" />
+          <input value={form.logoUrl} onChange={(e) => setField("logoUrl", e.target.value)} className={inputCls} dir="ltr" />
           {/* Logo source indicator — independent from verification status */}
           {form.logoUrl && (
             <div className="mt-1 flex items-center gap-2 text-[10px]">

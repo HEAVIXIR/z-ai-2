@@ -90,15 +90,25 @@ export async function PUT(
     // 2. Persist BrandMedia record — NO silent error swallowing.
     //    Strategy:
     //      a) Try upsert (works if @@unique([brandId, type]) exists)
-    //      b) If upsert fails with a "unique constraint not found" error
-    //         (Prisma error P2009 or similar field-not-found), fall back
-    //         to deleteMany + create INSIDE a transaction so the old
-    //         logo row is preserved if the create fails.
-    //      c) If upsert fails with ANY OTHER error (connection lost,
-    //         timeout, etc.), propagate it — do NOT delete the old row.
+    //      b) If upsert fails, ONLY fall back to deleteMany+create when
+    //         we can PROVE the error is about the compound unique
+    //         constraint `brandId_type` not existing on the BrandMedia
+    //         table. The precise Prisma signal for this is:
+    //           - code P2004 AND message contains "brandId_type"
+    //         (P2004 = "A unique constraint in the database was violated"
+    //          — but when the compound field name itself is unknown,
+    //          Prisma reports the field in the message.)
+    //         We do NOT blanket-match P2009 (unknown argument) or P2021
+    //         (table missing) because those can indicate unrelated
+    //         structural errors.
+    //      c) For ALL OTHER errors (connection P1001, timeout P2028,
+    //         table-missing P2021, unknown-arg P2009, etc.): propagate
+    //         as HTTP 500. The old logo row is NEVER deleted.
+    //      d) When the fallback DOES run, it uses db.$transaction() so
+    //         deleteMany + create are atomic — if create fails, the
+    //         delete is rolled back and the old logo survives.
     let mediaId: string | null = null;
     try {
-      // Try upsert first (works if @@unique([brandId, type]) exists)
       const media = await db.brandMedia.upsert({
         where: { brandId_type: { brandId: id, type: "LOGO" } },
         create: {
@@ -114,27 +124,25 @@ export async function PUT(
       });
       mediaId = media.id;
     } catch (upsertErr: any) {
-      // Only fall back to deleteMany+create if the error is specifically
-      // about the missing unique constraint (compound field not found).
-      // Prisma returns P2009 ("Unknown argument") or P2021 ("The table
-      // does not have a unique constraint") for this case.
       const code = upsertErr?.code ?? "";
       const msg = String(upsertErr?.message ?? "");
-      const isMissingConstraint =
-        code === "P2009" ||
-        code === "P2021" ||
-        /brandId_type|unknown.*argument|does not have.*unique/i.test(msg);
 
-      if (!isMissingConstraint) {
-        // This is a real DB error (connection, timeout, constraint
-        // violation, etc.) — do NOT delete the old logo row.
-        // Propagate the error to the caller.
+      // STRICT match: only fall back when Prisma explicitly complains
+      // about the compound unique constraint field `brandId_type`.
+      // This is the ONLY case where upsert cannot work because the
+      // schema lacks @@unique([brandId, type]).
+      const isCompoundFieldMissing =
+        msg.includes("brandId_type") &&
+        (code === "P2004" || code === "P2009" || /unknown.*field|unknown.*argument/i.test(msg));
+
+      if (!isCompoundFieldMissing) {
+        // Connection error, timeout, table missing, constraint violation,
+        // or any other error — do NOT touch the old logo row.
         throw upsertErr;
       }
 
-      // Missing constraint: use a transaction so deleteMany + create
-      // are atomic. If create fails, the delete is rolled back and
-      // the old logo row survives.
+      // Proven missing compound constraint: safe to use fallback.
+      // Transaction ensures atomicity.
       const result = await db.$transaction(async (tx) => {
         await tx.brandMedia.deleteMany({
           where: { brandId: id, type: "LOGO" },
