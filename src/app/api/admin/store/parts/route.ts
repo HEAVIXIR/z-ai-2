@@ -179,8 +179,10 @@ export async function POST(req: Request) {
   const contactForPrice = body.contactForPrice === true;
   const priceUsd = boundedNumber(body.priceUsd, { optional: contactForPrice });
   const oldPriceUsd = boundedNumber(body.oldPriceUsd, { optional: true });
-  const stock = boundedNumber(body.stock, { optional: true, integer: true }) ?? 0;
-  const lowStockThreshold = boundedNumber(body.lowStockThreshold, { optional: true, integer: true }) ?? 5;
+  const parsedStock = boundedNumber(body.stock, { optional: true, integer: true });
+  const parsedLowStockThreshold = boundedNumber(body.lowStockThreshold, { optional: true, integer: true });
+  const stock = parsedStock ?? 0;
+  const lowStockThreshold = parsedLowStockThreshold ?? 5;
   const images = boundedStringArray(body.images, 20, 2000);
   const compatibleCars = boundedStringArray(body.compatibleCars, 100, 160);
   const active = body.active === undefined ? true : body.active;
@@ -195,7 +197,7 @@ export async function POST(req: Request) {
   if (body.contactForPrice !== undefined && typeof body.contactForPrice !== "boolean") {
     return NextResponse.json({ success: false, error: "وضعیت قیمت نامعتبر است." }, { status: 400 });
   }
-  if (priceUsd === undefined || oldPriceUsd === undefined || stock === undefined || lowStockThreshold === undefined) {
+  if (priceUsd === undefined || oldPriceUsd === undefined || parsedStock === undefined || parsedLowStockThreshold === undefined) {
     return NextResponse.json({ success: false, error: "قیمت یا موجودی باید عدد معتبر و غیرمنفی باشد." }, { status: 400 });
   }
   if (stock > MAX_PART_STOCK || lowStockThreshold > MAX_PART_STOCK) {
