@@ -25,7 +25,7 @@ describe("searchBrands global catalog contract", () => {
     expect(args.where).not.toHaveProperty("categories");
     expect(args.where).not.toHaveProperty("categoryId");
     expect(args.where.active).toBe(true);
-    expect(args.where.status).toBe("ACTIVE");
+    expect(args.where.status).toEqual({ notIn: ["PENDING_REVIEW", "PENDING", "DRAFT", "INACTIVE", "ARCHIVED"] });
   });
 
   it("matches English brand names case-insensitively", async () => {

@@ -15,8 +15,10 @@ describe("HEAVIX global brand registry integration", () => {
     expect(wizard).toContain('const searchUrl = q');
     expect(wizard).toContain('"/api/brands/search"');
     expect(wizard).toContain('setModelName(e.target.value.slice(0, 120))');
-    expect(wizard).toContain("برند میراثی");
-    expect(wizard).toContain("برند تاریخی");
+    expect(wizard).toContain("BRAND_STATUS_LABELS[r.status].label");
+    const statusLabels = read("src/lib/brand-labels.ts");
+    expect(statusLabels).toContain('LEGACY: { label: "میراثی"');
+    expect(statusLabels).toContain('HISTORICAL: { label: "تاریخی"');
   });
 
   it("searches the global catalog without category coupling and preserves active legacy brands", () => {
