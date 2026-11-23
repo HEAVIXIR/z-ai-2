@@ -7,11 +7,13 @@ const seed = readFileSync(resolve(process.cwd(), "prisma/seed-ai-policies.ts"), 
 
 describe("AI scraper zero-spend policy contract", () => {
   it("keeps the seeded SCRAPER task inactive with a zero cost ceiling", () => {
-    expect(seed).toContain('taskType: "SCRAPER"');
-    expect(seed).toContain("costCeilingUsd: 0,");
+    const scraperStart = seed.indexOf('taskType: "SCRAPER"');
+    const scraperSeed = seed.slice(scraperStart, scraperStart + 400);
+    expect(scraperStart).toBeGreaterThanOrEqual(0);
+    expect(scraperSeed).toContain("costCeilingUsd: 0,");
+    expect(scraperSeed).not.toContain("costCeilingUsd: 0.05");
     expect(seed).toContain("create: { ...p, active: !scraperDisabledByDefault }");
     expect(seed).toContain('update: scraperDisabledByDefault ? { active: false, costCeilingUsd: 0 } : {}');
-    expect(seed).not.toContain("costCeilingUsd: 0.05");
   });
 
   it("fails closed for missing, inactive or zero-cost SCRAPER policies", () => {
