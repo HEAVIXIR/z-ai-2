@@ -51,6 +51,13 @@ describe("HEAVIX global brand registry integration", () => {
     const ticker = read("src/components/home/TrustedBrandsSection.tsx");
     expect(ticker).toContain('href={`/brands/${encodeURIComponent(brand.slug)}`}');
     expect(ticker).toContain('href="/brands"');
+    const curation = read("src/app/api/admin/home/trusted-brands/route.ts");
+    const featuredFeed = read("src/app/api/brands/featured/route.ts");
+    expect(curation).toContain("showOnHomepage: b.display?.showOnHomepage ?? b.featured");
+    expect(curation).toContain("const legacyFeatured = await db.brand.findMany");
+    expect(curation).toContain("create: { brandId: brand.id, showOnHomepage: false }");
+    expect(featuredFeed).toContain("displayBrands.length === 0 && featuredBrands.length === 0");
+    expect(featuredFeed).toContain('return NextResponse.json({ brands: [] });');
   });
 
   it("protects family and homepage brand mutations with CSRF checks", () => {
