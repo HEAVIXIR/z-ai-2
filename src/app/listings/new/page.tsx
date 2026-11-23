@@ -143,11 +143,11 @@ export default function NewListingPage() {
   const [wanted, setWanted] = useState({
     // Demand intent: what the buyer wants to do. SALE = buy (خرید),
     // RENT = rent (اجاره), SALE_AND_RENT = flexible (خرید/اجاره),
-    // SERVICE_REQUEST = service demand (خدمات). Stored in
-    // BuyRequest.transaction and read by the matching engine to narrow
-    // supply candidates to compatible types. Default buy intent matches
-    // the historical WANTED behavior.
-    intent: "SALE" as "SALE" | "RENT" | "SALE_AND_RENT" | "SERVICE_REQUEST",
+    // Service demand is a separate top-level SERVICE_REQUEST transaction,
+    // not a WANTED sub-intent. WANTED remains the demand-side equipment flow;
+    // its legacy RENT option is preserved until the canonical rental-request
+    // migration is completed.
+    intent: "SALE" as "SALE" | "RENT" | "SALE_AND_RENT",
     quantity: "1",
     budgetMin: "",
     budgetMax: "",
@@ -332,23 +332,17 @@ export default function NewListingPage() {
   const isAuction = transactionType === "AUCTION";
   const isServiceRequest = transactionType === "SERVICE_REQUEST";
   const isServiceOffer = transactionType === "SERVICE_OFFER";
-  // When the wizard's WANTED flow picks intent=SERVICE_REQUEST, the demand
-  // is a service demand and must use the SERVICE taxonomy (serviceRoots),
-  // service-type fields, and service-step labels — NOT the marketplace
-  // roots that the WANTED listing-type label would otherwise select.
-  const isWantedServiceRequest = transactionType === "WANTED" && wanted.intent === "SERVICE_REQUEST";
-  const isServiceFlow = isServiceRequest || isServiceOffer || isWantedServiceRequest;
+  // Service demand and supply are their own top-level transaction types.
+  // They must never be nested under WANTED, which is reserved for equipment demand.
+  const isServiceFlow = isServiceRequest || isServiceOffer;
   const isRequestFlow = isRequestTransactionType(transactionType);
   // Category identifies the underlying asset/service; SALE, RENT, AUCTION and WANTED are transaction intents.
   // Therefore every non-service flow selects from the canonical CATALOG tree, never the empty/vertical RENT root.
   const categoryRoots = isServiceFlow ? serviceRoots : catalogRoots;
 
-  // P0 #1: when the WANTED intent changes, the category taxonomy may
-  // change (SERVICE_REQUEST → serviceRoots; buy/rent intent → catalogRoots).
-  // If the user already picked a category at Step 2 with a different
-  // intent, the category is now mismatched. Clear categoryId + related
-  // state so the user re-selects with the correct taxonomy roots.
-  const handleWantedIntentChange = (nextIntent: "SALE" | "RENT" | "SALE_AND_RENT" | "SERVICE_REQUEST") => {
+  // When the WANTED intent changes between buy and rent, clear any previously
+  // selected catalog category so the user reselects against the right context.
+  const handleWantedIntentChange = (nextIntent: "SALE" | "RENT" | "SALE_AND_RENT") => {
     if (wanted.intent === nextIntent) return;
     setWanted((v) => ({ ...v, intent: nextIntent }));
     // Only clear if a category was already chosen (avoid spurious clears
@@ -446,16 +440,10 @@ export default function NewListingPage() {
     if (step === 6) {
       if (imagesUploading) return false;
       if (isServiceFlow) {
-        // H.2.3 (P1 fix): WANTED + intent=SERVICE_REQUEST is a service-flow
-        // demand, but it MUST still satisfy the WANTED quantity / budget /
-        // deadline checks. Previously the `isServiceFlow` branch short-
-        // circuited to `Boolean(serviceTypeId)` and never reached the
-        // WANTED-specific block below, so a buyer could advance to the
-        // review step with an inverted/negative budget or an expired
-        // deadline. The server is the safety net, but the wizard must fail
-        // closed at the step that collects those fields.
+        // Service requests require a selected service type and still satisfy
+        // the request quantity / budget / deadline checks collected below.
         if (!serviceTypeId) return false;
-        if (isWantedServiceRequest || isServiceRequest) {
+        if (isServiceRequest) {
           const wq = Number(wanted.quantity);
           const wmin = wanted.budgetMin ? BigInt(wanted.budgetMin.replace(/[^\d]/g, "")) : null;
           const wmax = wanted.budgetMax ? BigInt(wanted.budgetMax.replace(/[^\d]/g, "")) : null;
@@ -910,7 +898,6 @@ export default function NewListingPage() {
                             { v: "SALE", l: "خرید" },
                             { v: "RENT", l: "اجاره" },
                             { v: "SALE_AND_RENT", l: "خرید/اجاره" },
-                            { v: "SERVICE_REQUEST", l: "خدمات" },
                           ] as const).map((t) => (
                             <button
                               key={t.v}
@@ -922,7 +909,7 @@ export default function NewListingPage() {
                             </button>
                           ))}
                         </div>
-                        <p className="mt-2 text-xs text-white/45">نوع تقاضا تعیین می‌کند این درخواست با کدام آگهی‌های عرضه تطبیق داده شود (خرید ← فروش/مزایده، اجاره ← اجاره، خدمات ← ارائه خدمت). این انتخاب باید پیش از انتخاب دسته‌بندی انجام شود.</p>
+                        <p className="mt-2 text-xs text-white/45">نوع تقاضا تعیین می‌کند درخواست تجهیزات با کدام آگهی‌های عرضه تطبیق داده شود (خرید ← فروش/مزایده، اجاره ← اجاره). درخواست خدمت از کارت مستقل «درخواست خدمت» ثبت می‌شود.</p>
                       </div>
                     )}
 
@@ -1311,8 +1298,7 @@ export default function NewListingPage() {
                                 {isServiceRequest ? "خدمات" : wanted.intent === "SALE" ? "خرید"
                                   : wanted.intent === "RENT" ? "اجاره"
                                   : wanted.intent === "SALE_AND_RENT" ? "خرید/اجاره"
-                                  : wanted.intent === "SERVICE_REQUEST" ? "خدمات"
-                                  : "—"}
+                                                          : "—"}
                               </div>
                             </div>
                             <div>
@@ -1731,7 +1717,6 @@ export default function NewListingPage() {
                             isServiceRequest ? "خدمات" : wanted.intent === "SALE" ? "خرید"
                             : wanted.intent === "RENT" ? "اجاره"
                             : wanted.intent === "SALE_AND_RENT" ? "خرید/اجاره"
-                            : wanted.intent === "SERVICE_REQUEST" ? "خدمات"
                             : wanted.intent
                           }
                         />

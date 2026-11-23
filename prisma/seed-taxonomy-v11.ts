@@ -1,6 +1,6 @@
 /* HEAVIX Taxonomy Seed V1.1 — HBR §3-§19
    Idempotent seed that populates:
-   - 6 TransactionTypes (§18)
+   - 7 TransactionTypes (§18)
    - 9  ServiceTypes (§19)
    - 16 ApplicationIndustries (§17)
    - Full Category tree V1.1 (§3-§16): 14 roots (7 CATALOG + 4 MARKETPLACE + 2 SERVICE + 1 FALLBACK)
@@ -20,7 +20,7 @@ import { PrismaClient } from "@prisma/client";
 const db = new PrismaClient();
 
 // ════════════════════════════════════════════════════════════
-// 1. TRANSACTION TYPES — HBR §18 (6)
+// 1. TRANSACTION TYPES — HBR §18 (7)
 // ════════════════════════════════════════════════════════════
 const TRANSACTIONS = [
   { key: "SALE",            nameFa: "فروش",            nameEn: "Sale",             icon: "tag",        sortOrder: 1 },
@@ -29,6 +29,7 @@ const TRANSACTIONS = [
   { key: "QUOTE",           nameFa: "پیشنهاد قیمت",    nameEn: "Quote",            icon: "file-text",  sortOrder: 4 },
   { key: "AUCTION",         nameFa: "مزایده",          nameEn: "Auction",          icon: "gavel",      sortOrder: 5 },
   { key: "SERVICE_REQUEST", nameFa: "درخواست خدمت",    nameEn: "Service Request",  icon: "wrench",     sortOrder: 6 },
+  { key: "SERVICE_OFFER",   nameFa: "ارائه خدمت",      nameEn: "Service Offer",    icon: "handshake",  sortOrder: 7 },
 ];
 
 // ════════════════════════════════════════════════════════════
@@ -967,7 +968,8 @@ async function main() {
     await db.transactionType.upsert({
       where: { key: t.key },
       create: t,
-      update: {},
+      // Ensure the new service-supply flow is selectable if a dormant row already exists.
+      update: t.key === "SERVICE_OFFER" ? { active: true } : {},
     });
   }
 

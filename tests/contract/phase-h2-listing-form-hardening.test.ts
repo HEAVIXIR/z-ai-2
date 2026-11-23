@@ -18,18 +18,18 @@ const read = (file: string) =>
  * Each block names the directive section it satisfies.
  */
 describe("PHASE H.2 — listing-form hardening contracts", () => {
-  // ── H.2.3: P1 WANTED SERVICE_REQUEST client-validation ordering ──
-  describe("H.2.3: WANTED+SERVICE_REQUEST canProceed no longer short-circuits", () => {
-    it("the isServiceFlow branch requires serviceTypeId AND, for WANTED+SERVICE_REQUEST, the quantity/budget/deadline checks", () => {
+  // ── H.2.3: service request is a top-level flow, not a WANTED sub-intent ──
+  describe("H.2.3: SERVICE_REQUEST is independent from WANTED demand", () => {
+    it("keeps service type and request constraints on the dedicated service flow", () => {
       const wizard = read("src/app/listings/new/page.tsx");
-      // The old buggy line is gone.
       expect(wizard).not.toContain("if (isServiceFlow) return Boolean(serviceTypeId);");
-      // The corrected branch is present.
+      expect(wizard).toContain("const isServiceFlow = isServiceRequest || isServiceOffer;");
       expect(wizard).toContain("if (isServiceFlow) {");
       expect(wizard).toContain("if (!serviceTypeId) return false;");
-      expect(wizard).toContain("if (isWantedServiceRequest || isServiceRequest) {");
-      // The WANTED-specific quantity/budget/deadline checks run inside it.
-      const branch = wizard.split("if (isWantedServiceRequest || isServiceRequest) {")[1]?.split("return true;")[0] ?? "";
+      expect(wizard).toContain("if (isServiceRequest) {");
+      expect(wizard).not.toContain("isWantedServiceRequest");
+      expect(wizard).not.toContain('wanted.intent === "SERVICE_REQUEST"');
+      const branch = wizard.split("if (isServiceRequest) {")[1]?.split("return true;")[0] ?? "";
       expect(branch).toContain("Number.isInteger(wq)");
       expect(branch).toContain("wq >= 1");
       expect(branch).toContain("wmin <= wmax");
