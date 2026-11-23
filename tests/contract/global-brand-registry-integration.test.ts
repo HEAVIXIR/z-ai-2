@@ -45,10 +45,15 @@ describe("HEAVIX global brand registry integration", () => {
     const placeholder = read("src/app/admin/brands/new/page.tsx");
     expect(placeholder).toContain('redirect("/admin/taxonomy/brands/new")');
     const nav = read("src/components/admin/BrandManagementNav.tsx");
-    expect(nav).toContain('href: "/admin/brands"');
-    const sidebarSeed = read("prisma/seed-admin-navigation.ts");
-    expect(sidebarSeed).toContain("مرکز مدیریت برندها");
-    expect(sidebarSeed).not.toContain("خانواده برندها");
+    expect(nav).toContain('href="/admin/brands"');
+    expect(nav).toContain("مرکز یکپارچه مدیریت برندها");
+    const sidebarDefaults = read("src/lib/admin/navigation-defaults.ts");
+    expect(sidebarDefaults).toContain("key: 'brand-center'");
+    expect(sidebarDefaults).toContain("href: '/admin/brands'");
+    expect(sidebarDefaults).not.toContain("href: '/admin/brand-families'");
+    expect(sidebarDefaults).not.toContain("href: '/admin/home/trusted-brands'");
+    const navigationApi = read("src/app/api/admin/navigation/route.ts");
+    expect(navigationApi).toContain("LEGACY_BRAND_NAV_HREFS");
   });
 
   it("makes explicit homepage display choices override legacy featured flags", () => {
@@ -85,4 +90,21 @@ describe("HEAVIX global brand registry integration", () => {
     expect(familyId).toContain("checkCsrf(req)");
     expect(homepage).toContain("checkCsrf(req)");
   });
+  it("exposes one brand-management destination and hides the legacy homepage duplicate", () => {
+    const nav = read("src/lib/admin/navigation-defaults.ts");
+    const navApi = read("src/app/api/admin/navigation/route.ts");
+    const hub = read("src/app/admin/brands/page.tsx");
+    const sections = read("src/lib/homepage/sections.ts");
+    expect(nav).toContain("key: 'brand-center'");
+    expect(nav).toContain("href: '/admin/brands'");
+    expect(nav).not.toContain("href: '/admin/brand-families'");
+    expect(nav).not.toContain("href: '/admin/home/trusted-brands'");
+    expect(navApi).toContain("LEGACY_BRAND_NAV_HREFS");
+    expect(hub).toContain("مرکز یکپارچه مدیریت برندها");
+    expect(hub).toContain("/admin/brand-families");
+    expect(hub).toContain("/admin/home/trusted-brands");
+    expect(sections).toContain('rows.filter((row) => row.key !== "brands")');
+    expect(sections).not.toContain('{ key: "brands", title: "برندهای معتبر"');
+  });
+
 });
