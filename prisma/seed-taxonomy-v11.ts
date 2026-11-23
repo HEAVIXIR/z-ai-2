@@ -20,7 +20,7 @@ import { PrismaClient } from "@prisma/client";
 const db = new PrismaClient();
 
 // ════════════════════════════════════════════════════════════
-// 1. TRANSACTION TYPES — HBR §18 (6)
+// 1. TRANSACTION TYPES — HBR §18 (7)
 // ════════════════════════════════════════════════════════════
 const TRANSACTIONS = [
   { key: "SALE",            nameFa: "فروش",            nameEn: "Sale",             icon: "tag",        sortOrder: 1 },
@@ -29,6 +29,7 @@ const TRANSACTIONS = [
   { key: "QUOTE",           nameFa: "پیشنهاد قیمت",    nameEn: "Quote",            icon: "file-text",  sortOrder: 4 },
   { key: "AUCTION",         nameFa: "مزایده",          nameEn: "Auction",          icon: "gavel",      sortOrder: 5 },
   { key: "SERVICE_REQUEST", nameFa: "درخواست خدمت",    nameEn: "Service Request",  icon: "wrench",     sortOrder: 6 },
+  { key: "SERVICE_OFFER",   nameFa: "ارائه خدمت",      nameEn: "Service Offer",    icon: "handshake",  sortOrder: 7 },
 ];
 
 // ════════════════════════════════════════════════════════════
