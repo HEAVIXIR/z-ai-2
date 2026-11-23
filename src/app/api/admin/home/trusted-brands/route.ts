@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,6 +85,7 @@ export async function GET() {
    }
    ============================================================ */
 export async function PUT(req: Request) {
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
