@@ -1,11 +1,11 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-23T08:41:28.837Z",
+  "updated_at_utc": "2026-11-23T09:27:55.222Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "integration/preview-readiness-workerd-2026-11-15",
   "branch_base_main_sha": "87216262b7ad5ab77049f8a65930321d3993df3c",
-  "latest_checkpoint_commit_sha_before_this_checkpoint": "e19c85ff70540519344ebfebd74b69abcf74a54a",
+  "latest_checkpoint_commit_sha_before_this_checkpoint": "4a2689c06c5b08df87156954e3b7c890243b0be6",
   "legacy_reference": {
     "repository": "dellk00k/z",
     "branch": "legacy/extracted-archives",
@@ -85,7 +85,10 @@
     "2026-11-18: Added execution report docs/operations/HEAVIX-EXECUTION-CONTINUATION-2026-11-18.md and appended worklog. No Production/DNS/stable Worker/secret/DB/migration/seed changes.",
     "2026-11-18 isolated Integration Preview read-only route acceptance: homepage, login, anonymous admin gate, health, taxonomy, transaction types, service types, excavator attributes and services endpoints all returned HTTP 200. Health reported both DBs up; taxonomy children, transaction types, service types and excavator attributes remained empty; services returned records.",
     "2026-11-18 selected-branch Marketplace scraper route is full implementation with safe URL handling, server-side re-fetch, pending import, CSRF/RBAC, AI preflight, timeout and audit, but provider path is gated by HEAVIX_AI_SCRAPER_ENABLED and invokes ZAI provider APIs.",
-    "2026-11-18 selected-branch Store scraper has manual import paths while provider discovery is separately gated by HEAVIX_STORE_SCRAPER_ENABLED and configured source-host allowlist. Manual-import AI budget behavior requires tests; neither scraper provider flag was enabled."
+    "2026-11-18 selected-branch Store scraper has manual import paths while provider discovery is separately gated by HEAVIX_STORE_SCRAPER_ENABLED and configured source-host allowlist. Manual-import AI budget behavior requires tests; neither scraper provider flag was enabled.",
+    "Store Part media lifecycle is now implemented in Integration and validated by exact-head CI #4754, OpenNext #1384 and isolated Preview #219.",
+    "Current Worker B2 secret bindings are present and non-secret bucket settings match heavix-dev-assets / heavix-media/ / us-east-005; key bucket-scope selector still needs owner confirmation.",
+    "Store Part deletion removes the Part record before attempting B2 media cleanup, so foreign-key failures cannot leave a valid Part with already-deleted images."
   ],
   "completed_in_previous_sessions": [
     "Created isolated recovery branch from main.",
@@ -221,7 +224,15 @@
     "Verified exact-head OpenNext real-route Workerd smoke #1364 passed.",
     "Verified isolated Integration Preview #211 on 886058ca: root 200, health 200 after two attempts, App DB up, Store DB up, taxonomy 200 and excavator detail 200.",
     "Audited current B2 media code: media-service uses the B2 adapter rather than local filesystem storage; seller ListingImageUploader uses /api/media/staging and the listing POST enforces the plan image limit without silent truncation.",
-    "Identified the remaining Store media gap: Store Parts Admin form has no image upload UI or Part-specific attachment/visibility lifecycle."
+    "Identified the remaining Store media gap: Store Parts Admin form has no image upload UI or Part-specific attachment/visibility lifecycle.",
+    "Implemented Store Part-specific private B2 upload endpoint with store.manage, CSRF, upload rate limiting, file-size and image validation.",
+    "Added Part image reference validation and post-create/post-update attachment, plus retry endpoint and cleanup of stale or unreferenced media.",
+    "Updated /api/media/[id] so Part images are public only when attached, referenced by the Part and the Part is active; retained admin read access for inactive Parts and compatibility for legacy public Part images.",
+    "Added Store Parts Admin image uploader, previews, remove controls, attachment retry banner and stale-media cleanup action.",
+    "Added upload security, Part public/private visibility, lifecycle contract and manual-create ownership tests; corrected the legacy-active test fixture.",
+    "Exact-head CI #4754 passed on 4a2689c; OpenNext #1384 passed; isolated Integration Preview #219 passed with root/health 200 and both databases up.",
+    "Verified current heavix-preview Worker B2 binding names and non-secret bucket/prefix/region/endpoint settings read-only; secret values were not read.",
+    "No real DB migrations/seeds/writes, no live B2 object writes, no Production deployment, no DNS change and no PR merge."
   ],
   "not_done_and_not_to_be_claimed": [
     "Exact-head CI/OpenNext for recovery head bac875427f707c377afbadbdcda43bf5b3b0eb0d.",
@@ -250,44 +261,32 @@
     "Do not claim any real database migration/seed/write; all CI migration/seed/backup proofs used disposable databases."
   ],
   "next_action": [
-    "Implement the Store Part media lifecycle on B2: admin-only staged upload requiring store.manage + CSRF + bounded image validation; attach assets to a Part only after creation; persist stable media references; make public reads conditional on an attached, active Part; include cleanup/retry semantics, audit, Admin UI and tests. Do not expose unassociated staged objects.",
-    "After owner-guided confirmation of the B2 application key scope, bucket access policy and current Integration Worker bindings (without sharing secret values), run a protected upload/read-back/SHA-256/delete/non-addressability proof on the current code.",
-    "Keep the canonical Preview OID mismatch isolated from the successful Integration Preview. Only correct HEAVIX_APP_PREVIEW_DATABASE_OID and HEAVIX_STORE_PREVIEW_DATABASE_OID after explicit owner approval and paired protected backup/restore evidence; never disclose secret values.",
-    "Address P0 Issue #345 (WANTED/BuyRequest structured persistence) with a schema/data-impact plan first; no migration against a real database until exact identity, backup and restore gates are independently satisfied.",
-    "Continue the unified Brand Management Center beyond shared navigation: consolidate family editing, canonical BrandDisplay and homepage section settings without deleting or duplicating existing brand/family data.",
-    "Keep AI scraping disabled unless the owner explicitly supplies/authorizes credentials, sets HEAVIX_AI_SCRAPER_ENABLED=true and configures a positive SCRAPER DB cost ceiling. Manual Marketplace and Store entry must remain usable without AI.",
-    "Keep PR #340 Draft/Open and main/Production untouched until the remaining runtime, media, authentication and release gates pass."
+    "Obtain owner confirmation that the B2 application key is scoped to the single heavix-dev-assets bucket and the heavix-media/ prefix; do not request or expose secret values.",
+    "After that confirmation, adapt the protected B2 proof workflow to the Integration branch and run the random-object upload/read-back/SHA-256/delete/post-delete non-addressability proof against us-east-005, confined to heavix-media/proof/.",
+    "After the Store Part media proof is closed, continue the requested 17-module homepage parity comparison against the older reference before resuming Brand Management Center work.",
+    "Then complete the unified global Brand registry, family management, trusted-brand display settings, Step 1 WANTED transaction option and Step 3 searchable brand selector without destructive data changes.",
+    "Keep canonical Preview OID correction and WANTED/BuyRequest schema work behind separate identity, backup/restore and explicit owner approval gates.",
+    "Keep PR #340 Draft/Open and main/Production untouched until the remaining runtime and release gates pass."
   ],
   "open_draft_pr": "https://github.com/HEAVIXIR/z-ai-2/pull/340",
   "latest_exact_head_ci_run": {
-    "id": 45139405587,
-    "sha": "886058ca0953110e218c656e2afdd4c4b28f3912",
+    "id": 45145879836,
+    "run_number": 4754,
+    "sha": "4a2689c06c5b08df87156954e3b7c890243b0be6",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/45139405587",
-    "jobs": [
-      "verify",
-      "phase-tests",
-      "audit-transaction",
-      "tls-proof",
-      "Workerd runtime smoke",
-      "docker-build-proof",
-      "Cloudflare compatibility (report-only)"
-    ],
-    "skipped_jobs": [
-      "Preview read-only paired migration diagnostics",
-      "Legacy archive inventory (read-only)"
-    ]
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/45145879836"
   },
-  "latest_code_head_sha": "886058ca0953110e218c656e2afdd4c4b28f3912",
+  "latest_code_head_sha": "4a2689c06c5b08df87156954e3b7c890243b0be6",
   "latest_ci_run": {
-    "id": 45139405587,
-    "sha": "886058ca0953110e218c656e2afdd4c4b28f3912",
+    "id": 45145879836,
+    "run_number": 4754,
+    "sha": "4a2689c06c5b08df87156954e3b7c890243b0be6",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/45139405587"
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/45145879836"
   },
   "benchmark_audit": {
     "path": "docs/audits/HEAVIX-GLOBAL-INDUSTRIAL-MARKETPLACE-BENCHMARK-2026-11-11.md",
@@ -304,11 +303,13 @@
     ]
   },
   "latest_verified_ci_run": {
-    "id": 45139405587,
-    "sha": "886058ca0953110e218c656e2afdd4c4b28f3912",
+    "id": 45145879836,
+    "run_number": 4754,
+    "sha": "4a2689c06c5b08df87156954e3b7c890243b0be6",
+    "branch": "integration/preview-readiness-workerd-2026-11-15",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/45139405587",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/45145879836",
     "jobs": [
       "verify",
       "phase-tests",
@@ -318,7 +319,7 @@
       "docker-build-proof",
       "Cloudflare compatibility (report-only)"
     ],
-    "note": "Exact Integration head verified successful on 2026-11-23; legacy inventory and Preview read-only diagnostics were skipped."
+    "note": "Exact Integration head passed; verify included typecheck, lint, security, integration, contract/unit, E2E, disposable PostgreSQL migration/backup proofs, production build and real Next.js server HTTP."
   },
   "confirmed_blockers": [
     "Vercel Preview for scraper branch is READY but protected by Vercel login; no browser/admin acceptance performed.",
@@ -406,10 +407,28 @@
         "actual_database_oid": "5"
       },
       "note": "Both remote OID secret binding names exist; secret values were not read. Expected OID bindings mismatch runtime OID 5."
+    },
+    "integration_preview": {
+      "url": "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev",
+      "deployment_specific_url": "https://34703a1c-heavix-preview.heavixir.workers.dev",
+      "workflow_run": 45145041433,
+      "run_number": 219,
+      "source_commit": "9dc2d7d1d3783a7fbca7b59cb4c2ad4f8354c12b",
+      "current_code_head": "4a2689c06c5b08df87156954e3b7c890243b0be6",
+      "workflow_mode": "isolated Integration Worker Preview; not canonical Preview or Production",
+      "health": {
+        "root_http": 200,
+        "health_http": 200,
+        "app_db": "up",
+        "store_db": "up",
+        "taxonomy_http": 200,
+        "taxonomy_contract": "14 roots, 6 transaction types, 9 service types, 16 application industries and nested machinery categories"
+      },
+      "note": "Preview ran on the runtime code commit; the later 4a2689c commit only corrected a test fixture. No Production deploy, migration, seed or B2 object write occurred."
     }
   },
   "media_storage_audit": {
-    "status": "B2 adapter and seller Listing staging path are implemented in current Integration code; active Worker B2 runtime proof and Store Part media lifecycle remain pending.",
+    "status": "B2 adapter and seller Listing staging remain implemented; Store Part B2 media lifecycle is implemented and CI/Preview verified; current Worker live object I/O remains gated on owner confirmation of bucket scope.",
     "verified_findings": [
       "src/lib/media-service.ts routes binary objects and sidecar metadata through the Backblaze B2 adapter; current source does not use local node:fs persistence as a media fallback.",
       "src/lib/b2-media-storage.ts provides server-side B2 object put/get/list/delete and signed-read operations scoped to the configured bucket and heavix-media/ prefix.",
@@ -417,15 +436,21 @@
       "POST /api/media/staging enforces authenticated user, CSRF, rate limit, allowed entity type, content/size checks and private staged-asset handling.",
       "POST /api/listings validates the plan-specific maxImages limit, rejects over-limit requests instead of silently truncating, verifies staged-asset ownership/state and attaches assets to the Listing.",
       "GET /api/media/[id] issues signed B2 reads and applies the current Listing/BuyRequest public/private lifecycle checks.",
-      "Store Parts Admin page already supports manual create/edit, but the page has no image upload UI; its API accepts image references without a Part-specific B2 staging/attachment workflow."
+      "Historical baseline finding superseded on 2026-11-23: Store Parts now has a dedicated private B2 staging, attachment, visibility, retry and cleanup lifecycle in Integration.",
+      "Store Part admin upload endpoint POST /api/admin/store/parts/media requires authentication, store.manage, CSRF, upload rate limiting, bounded file size and B2 private staging with entityType Part.",
+      "Store Part create/update validates stable internal media references and staged-asset ownership; staged assets attach only after the Part row exists.",
+      "POST /api/admin/store/parts/[id]/media retries pending attachment; POST /api/admin/store/parts/media/cleanup removes stale staged or unreferenced Part assets.",
+      "GET /api/media/[id] exposes Part media publicly only when the asset is attached and referenced by an active Part; inactive Part media remains permission-gated.",
+      "Store Parts Admin create/edit UI now has a dedicated image uploader, previews, remove controls, attachment retry and stale-media cleanup.",
+      "Current Cloudflare Worker script heavix-preview has B2_KEY_ID and B2_APPLICATION_KEY secret bindings; non-secret bucket, prefix, region and S3 endpoint values were verified as heavix-dev-assets, heavix-media/, us-east-005 and s3.us-east-005.backblazeb2.com. Secret values were not read."
     ],
     "not_verified": [
-      "Current Integration Worker's live B2 runtime binding presence and actual object I/O; secret values were not read.",
       "Current-head upload/read-back/SHA-256/delete proof against heavix-dev-assets; the existing proof run is from an older commit.",
       "Owner-confirmed application-key scope, exact bucket/prefix restriction, CORS and read policy for the current runtime.",
-      "Store Part image upload, attachment, active/inactive visibility gating, cleanup and public read path.",
       "Full seller browser upload/attach/delete acceptance.",
-      "Canonical Preview App/Store database OID identity; this remains mismatched and separate from Integration Preview health."
+      "Canonical Preview App/Store database OID identity; this remains mismatched and separate from Integration Preview health.",
+      "Actual upload/read-back/SHA-256/delete object I/O on the current Integration Worker; no live B2 write was performed.",
+      "Authenticated Admin browser acceptance of the new Store Part image uploader."
     ],
     "safety": [
       "Keep heavix-db-backups exclusively for encrypted database backups; never use it for media.",
@@ -435,11 +460,9 @@
       "Do not run real database migrations/seeds or change canonical Preview OID secrets as part of media work."
     ],
     "next_steps": [
-      "Implement a Store Part-specific admin staging endpoint requiring store.manage, CSRF, bounded image validation and B2 private staging.",
-      "Attach staged assets only after a Part exists; persist stable /api/media/{assetId} references and make public reads conditional on the asset being attached to an active Part.",
-      "Add retry/cleanup compensation for failed Part creation or attachment, plus audit events and handler/contract tests.",
-      "Add an image uploader to the Store Parts Admin create/edit UI without introducing AI/ZAI dependencies.",
-      "After owner-guided runtime binding and bucket-scope verification, run protected B2 upload/read-back/SHA-256/delete/post-delete non-addressability proof."
+      "Confirm the existing B2 key is restricted to the single heavix-dev-assets bucket (not All) and prefix heavix-media/; the owner-reported broad capability set is accepted as a Backblaze plan limitation.",
+      "Run the protected current-head B2 upload/read-back/SHA-256/delete/post-delete non-addressability proof only after that scope confirmation.",
+      "Perform authenticated Admin browser acceptance for Store Part image upload, retry, removal and inactive/public visibility."
     ],
     "owner_reported_buckets": {
       "backup_bucket": {
@@ -551,7 +574,7 @@
   },
   "latest_b2_media_design_document": "docs/operations/HEAVIX-B2-MEDIA-IMPLEMENTATION-DECISION-2026-11-11.md",
   "b2_media_status": {
-    "status": "ADAPTER END-TO-END PREVIEW PROOF PASSED; CURRENT WORKER RUNTIME BINDINGS AND END-TO-END SELLER FLOW STILL PENDING",
+    "status": "ADAPTER PROOF PASSED ON EARLIER COMMIT; CURRENT WORKER BINDINGS VERIFIED; STORE PART MEDIA IMPLEMENTED AND CI/PREVIEW VERIFIED; CURRENT WORKER LIVE OBJECT I/O PENDING SCOPE CONFIRMATION",
     "bucket": "heavix-dev-assets",
     "bucket_id_prefix": "356",
     "endpoint": "s3.us-east-005.backblazeb2.com",
@@ -564,8 +587,22 @@
     "proof_result": "upload, direct GET byte comparison, scoped list, signed GET byte comparison, exact-object delete and post-delete non-addressability all passed",
     "provenance_note": "B2 workflow and adapter implementation unchanged through recovery head bac8754; only one-line test-scope correction in tests/unit/listing-image-b2-contract.test.ts. Implementation-equivalent proof, not exact-current-head proof.",
     "environment_gate": "preview-backup was the only pending environment; its protection rules were skipped by an administrator for this single Preview-only proof. Review before reuse.",
-    "runtime_integration": "NOT VERIFIED on active Cloudflare Worker; no Production resource touched.",
-    "secret_handling": "Never request or store Application Key secret in chat."
+    "runtime_integration": "Current Cloudflare Worker script settings for heavix-preview list the required B2 bindings. Non-secret bucket/prefix/region/endpoint values match the approved design; secret values were not read. Actual object I/O on this current head remains unverified.",
+    "secret_handling": "Never request or store Application Key secret in chat.",
+    "worker_binding_verification": {
+      "script": "heavix-preview",
+      "bucket": "heavix-dev-assets",
+      "prefix": "heavix-media/",
+      "region": "us-east-005",
+      "endpoint": "https://s3.us-east-005.backblazeb2.com",
+      "secret_bindings_present": [
+        "B2_KEY_ID",
+        "B2_APPLICATION_KEY"
+      ],
+      "secret_values_read": false,
+      "verification": "Cloudflare Worker settings and secret-binding names read-only inspection on 2026-11-23"
+    },
+    "live_object_io": "NOT RUN; owner confirmation of single-bucket scope is still required."
   },
   "b2_media_key_provisioning": {
     "status": "OWNER_CONFIRMED_PLAN_LIMITATION_ACCEPTED_PENDING_BUCKET_SCOPE_CONFIRMATION",
@@ -868,34 +905,34 @@
     "latest_code_commit": "886058ca0953110e218c656e2afdd4c4b28f3912"
   },
   "latest_opennext_proof_run": {
-    "id": 45139413139,
-    "sha": "886058ca0953110e218c656e2afdd4c4b28f3912",
+    "id": 45145889150,
+    "run_number": 1384,
+    "sha": "4a2689c06c5b08df87156954e3b7c890243b0be6",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
     "status": "completed",
     "conclusion": "success",
-    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/45139413139",
+    "url": "https://github.com/HEAVIXIR/z-ai-2/actions/runs/45145889150",
     "jobs": [
       "OpenNext real-route smoke (no DB credentials)"
     ]
   },
   "integration_preview": {
     "url": "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev",
-    "deployment_specific_url": "https://a2d8b8b1-heavix-preview.heavixir.workers.dev",
-    "workflow_run": 45139405586,
-    "source_commit": "886058ca0953110e218c656e2afdd4c4b28f3912",
-    "current_code_head": "886058ca0953110e218c656e2afdd4c4b28f3912",
+    "deployment_specific_url": "https://34703a1c-heavix-preview.heavixir.workers.dev",
+    "workflow_run": 45145041433,
+    "run_number": 219,
+    "source_commit": "9dc2d7d1d3783a7fbca7b59cb4c2ad4f8354c12b",
+    "current_code_head": "4a2689c06c5b08df87156954e3b7c890243b0be6",
     "workflow_mode": "isolated Integration Worker Preview; not canonical Preview or Production",
     "health": {
       "root_http": 200,
       "health_http": 200,
-      "health_attempts": 2,
       "app_db": "up",
       "store_db": "up",
       "taxonomy_http": 200,
-      "excavator_detail_http": 200,
       "taxonomy_contract": "14 roots, 6 transaction types, 9 service types, 16 application industries and nested machinery categories"
     },
-    "note": "Automatically triggered by the Integration branch push. This is an isolated non-production Worker check. It does not prove authenticated Admin/Seller flows, B2 object I/O, or canonical Preview database identity."
+    "note": "Preview ran on the runtime code commit; the later 4a2689c commit only corrected a test fixture. No Production deploy, migration, seed or B2 object write occurred."
   },
   "runtime_login_cpu_audit": {
     "status": "CPU-limit failure CONFIRMED for Integration Preview login; canonical Worker login failure NOT VERIFIED by logs.",
@@ -944,13 +981,13 @@
     "date": "2026-11-23",
     "branch": "integration/preview-readiness-workerd-2026-11-15",
     "starting_pr340_head": "e19c85ff70540519344ebfebd74b69abcf74a54a",
-    "code_head_sha": "886058ca0953110e218c656e2afdd4c4b28f3912",
-    "code_commits": [
-      "886058ca0953110e218c656e2afdd4c4b28f3912"
-    ],
-    "summary": "Reconciled stale manual-entry status, hardened the existing no-AI Store Part create API, enforced a zero-cost/explicit-opt-in SCRAPER policy, and verified exact-head CI, OpenNext and isolated Integration Preview.",
-    "source_verification": "Fetched the current Marketplace manual-listing route/UI and tests, Store Parts Admin page/API, AI policy/seed/tests, B2 media service/adapter, seller staging route, ListingImageUploader, listing POST and media read route. Confirmed the previous handoff's manual Marketplace and Store UI next actions were already implemented on this branch; no duplicate UI was created.",
-    "test_execution": "CI #4734 (run 45139405587) passed on the exact code head; OpenNext #1364 (run 45139413139) passed; Integration Preview #211 (run 45139405586) passed. CI database migrations/seeds/backup proofs ran only against disposable test databases. No local test run.",
-    "safety": "No real database migration/seed/write, no B2 object write, no AI provider invocation, no Production deployment, no DNS change, no PR merge. Integration Preview is isolated and non-production."
+    "code_head_sha": "4a2689c06c5b08df87156954e3b7c890243b0be6",
+    "runtime_code_commit": "9dc2d7d1d3783a7fbca7b59cb4c2ad4f8354c12b",
+    "test_fixture_commit": "4a2689c06c5b08df87156954e3b7c890243b0be6",
+    "summary": "Implemented the Store Part B2 media lifecycle in Integration: admin-only private staging, post-create attachment, active-Part public-read gating, retry, cleanup, audit and Admin UI. Full CI, OpenNext and isolated Integration Preview passed. Live B2 object I/O remains gated on owner confirmation of the single-bucket key scope.",
+    "source_verification": "Confirmed Part is an allowed media entity type, Store Part images are persisted as stable /api/media/{assetId} references, and the current Worker script has the B2 runtime bindings. Secret values were not read.",
+    "test_execution": "CI #4754 (run 45145879836) passed on exact head 4a2689c; OpenNext #1384 (run 45145889150) passed; Integration Preview #219 (run 45145041433) passed on runtime code commit 9dc2d7d. Security, integration, contract/unit and E2E tests passed; production build, disposable PostgreSQL migration/backup proofs and Docker/Caddy connectivity passed.",
+    "safety": "No real DB migration/seed/write, no live B2 object write, no AI provider invocation, no Production deployment, no DNS change, and no PR merge. PR #340 remains Draft/Open.",
+    "blocker": "The B2 application key's Allow Access to Bucket(s) selector still needs owner confirmation that it is restricted to the single heavix-dev-assets bucket (not All)."
   }
 }
