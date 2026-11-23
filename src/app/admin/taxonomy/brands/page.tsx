@@ -21,19 +21,12 @@ export const dynamic = "force-dynamic";
 
 export const metadata = { title: "برندها — هویکس" };
 
-// 15 type options
-const TYPE_OPTIONS = [
-  "MANUFACTURER", "DISTRIBUTOR", "DEALER", "RESELLER",
-  "OEM", "IMPORTER", "EXPORTER", "WHOLESALER",
-  "RETAILER", "SERVICE_PROVIDER", "RENTAL_COMPANY", "TRADING_COMPANY",
-  "SUBSIDIARY", "JOINT_VENTURE", "PRIVATE_LABEL",
-];
+// Canonical 5 type options (from src/lib/brand-labels.ts)
+import { CANONICAL_BRAND_TYPES, CANONICAL_BRAND_STATUSES } from "@/lib/brand-labels";
+const TYPE_OPTIONS = [...CANONICAL_BRAND_TYPES];
 
-// 11 status options
-const STATUS_OPTIONS = [
-  "ACTIVE", "INACTIVE", "DRAFT", "PENDING", "ARCHIVED",
-  "DISCONTINUED", "LEGACY", "HISTORICAL", "ACQUIRED", "MERGED", "BANKRUPT",
-];
+// Canonical 4 status options
+const STATUS_OPTIONS = [...CANONICAL_BRAND_STATUSES];
 
 // 5 verification options
 const VERIFICATION_OPTIONS = [

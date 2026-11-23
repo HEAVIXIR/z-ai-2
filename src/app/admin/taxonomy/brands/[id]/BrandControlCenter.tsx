@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { toFa } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
-import { BRAND_TYPE_LABELS, BRAND_STATUS_LABELS, VERIFICATION_LABELS } from "@/lib/brand-labels";
+import { BRAND_TYPE_LABELS, BRAND_STATUS_LABELS, VERIFICATION_LABELS, CANONICAL_BRAND_TYPES, CANONICAL_BRAND_STATUSES } from "@/lib/brand-labels";
 
 /* ============================================================
    BrandControlCenter — full brand management with tabs:
@@ -35,8 +35,8 @@ import { BRAND_TYPE_LABELS, BRAND_STATUS_LABELS, VERIFICATION_LABELS } from "@/l
             | Models | Media | SEO | Display | Activity
    ============================================================ */
 
-const TYPE_OPTIONS = Object.keys(BRAND_TYPE_LABELS);
-const STATUS_OPTIONS = Object.keys(BRAND_STATUS_LABELS);
+const TYPE_OPTIONS = [...CANONICAL_BRAND_TYPES];
+const STATUS_OPTIONS = [...CANONICAL_BRAND_STATUSES];
 const VERIFICATION_OPTIONS = Object.keys(VERIFICATION_LABELS);
 
 const ALIAS_LANGUAGES = [

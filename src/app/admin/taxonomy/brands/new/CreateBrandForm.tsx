@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { BRAND_TYPE_LABELS, BRAND_STATUS_LABELS, VERIFICATION_LABELS } from "@/lib/brand-labels";
+import { BRAND_TYPE_LABELS, BRAND_STATUS_LABELS, VERIFICATION_LABELS, CANONICAL_BRAND_TYPES, CANONICAL_BRAND_STATUSES } from "@/lib/brand-labels";
 import {
   ArrowRight,
   Building2,
@@ -21,8 +21,8 @@ import {
    redirects to /admin/taxonomy/brands/[id] on success.
    ============================================================ */
 
-const TYPE_OPTIONS = Object.keys(BRAND_TYPE_LABELS).filter((type) => type !== "BRAND_FAMILY");
-const STATUS_OPTIONS = Object.keys(BRAND_STATUS_LABELS);
+const TYPE_OPTIONS = [...CANONICAL_BRAND_TYPES];
+const STATUS_OPTIONS = [...CANONICAL_BRAND_STATUSES];
 const VERIFICATION_OPTIONS = Object.keys(VERIFICATION_LABELS);
 
 const EMPTY_FORM = {
@@ -31,7 +31,7 @@ const EMPTY_FORM = {
   aliases: "",
   shortName: "",
   slug: "",
-  type: "MACHINE_BRAND",
+  type: "MANUFACTURER",
   status: "ACTIVE",
   verification: "UNVERIFIED",
   country: "",
