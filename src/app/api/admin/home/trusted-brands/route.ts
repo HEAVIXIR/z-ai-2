@@ -40,7 +40,6 @@ export async function GET() {
         display: { select: { showOnHomepage: true } },
         _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
       },
-      take: 200,
     });
 
     const out = brands.map((b) => ({
