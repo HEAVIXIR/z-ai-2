@@ -39,7 +39,7 @@ tests/
 
 Pure-function tests that need no DB:
 
-- **`password.test.ts`** — bcrypt hash format, verify true/false, salt randomness.
+- **`password.test.ts`** — PBKDF2 hash format, legacy bcrypt compatibility, verify true/false, salt randomness.
 - **`rate-limit.test.ts`** — fixed-window enforcement, remaining count, window reset via `vi.useFakeTimers`, `retryAfterSeconds` RFC 6585 §4.
 - **`brand-alias.test.ts`** — ZWNJ/ZWJ strip, Arabic→Persian YEH/KAF, lowercase, whitespace collapse, idempotence.
 - **`upload-security.test.ts`** — magic-byte sniffing for JPEG/PNG/GIF/WebP/BMP, null for non-image / SVG / short buffers, size cap, filename sanitization.
