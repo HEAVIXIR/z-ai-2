@@ -522,7 +522,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "برای ثبت درخواست، دسته‌بندی نهایی و بدون زیرشاخه فعال را انتخاب کنید." }, { status: 400 });
       }
     }
-    if (requestedBrandId && (!brandRow || !brandRow.active || brandRow.status !== "ACTIVE")) {
+    if (requestedBrandId && (!brandRow || !brandRow.active)) {
       return NextResponse.json({ error: "برند انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
     }
     if (requestedModelId) {
