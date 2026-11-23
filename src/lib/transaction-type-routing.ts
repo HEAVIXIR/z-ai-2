@@ -7,14 +7,12 @@
  * CATALOG for buy/rent intent or SERVICE for service intent. Only service
  * supply/request transaction types use SERVICE categories.
  *
- * NOTE on SERVICE_OFFER: the V1.1 base-6 TransactionType seed
- * (prisma/seed-taxonomy-v11.ts) lists SALE/RENT/WANTED/QUOTE/AUCTION/
- * SERVICE_REQUEST. SERVICE_OFFER is seeded by the SUPPLEMENTAL seed
- * (prisma/seed-service-and-mineral-taxonomy.ts) and IS a canonical
- * TransactionType for service-supply listings — it is the supply-side
- * counterpart to SERVICE_REQUEST demand. It is NOT in the base-6 list
- * but is canonical for the service domain. The matching map
- * SERVICE_REQUEST → SERVICE_OFFER is backed by this seeded type.
+ * NOTE on SERVICE_OFFER: SERVICE_OFFER is now in the base-7 V1.1
+ * TransactionType seed (prisma/seed-taxonomy-v11.ts). It was
+ * previously seeded only by the supplemental seed
+ * (prisma/seed-service-and-mineral-taxonomy.ts) but has been
+ * promoted to the base seed to ensure it's always present.
+ * It is the supply-side counterpart to SERVICE_REQUEST demand.
  */
 export type ListingCategoryLayer = "CATALOG" | "MARKETPLACE" | "SERVICE" | "FALLBACK";
 
@@ -27,9 +25,7 @@ const TRANSACTION_CATEGORY_LAYER: Record<string, ListingCategoryLayer> = {
   QUOTE: "CATALOG",
   AUCTION: "CATALOG",
   SERVICE_REQUEST: "SERVICE",
-  // Seeded by the supplemental seed (prisma/seed-service-and-mineral-
-  // taxonomy.ts); canonical service-supply type. Not in the base-6 V1.1
-  // list but canonical for the SERVICE domain.
+  // Canonical service-supply type. Now in the base-7 V1.1 seed.
   SERVICE_OFFER: "SERVICE",
 };
 
