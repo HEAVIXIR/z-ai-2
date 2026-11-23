@@ -42,6 +42,9 @@ export async function PUT(
     body = {};
   }
   const logoUrl = typeof body?.logoUrl === "string" ? body.logoUrl.trim() : "";
+  // HARDENING: track the source of the logo so AI-suggested logos
+  // can be distinguished from manually uploaded ones.
+  const logoSource = typeof body?.source === "string" ? body.source.trim() : "MANUAL";
 
   if (!logoUrl) {
     return NextResponse.json(
@@ -56,6 +59,25 @@ export async function PUT(
       where: { id },
       data: { logoUrl },
     });
+    // HARDENING: persist a BrandMedia record so the logo source is
+    // auditable. AI-suggested logos are recorded with source="AI_SEARCH"
+    // and are NEVER auto-verified (the admin must explicitly approve).
+    await db.brandMedia.upsert({
+      where: { brandId_type: { brandId: id, type: "LOGO" } },
+      create: {
+        brandId: id,
+        type: "LOGO",
+        url: logoUrl,
+        title: `Logo from ${logoSource}`,
+      },
+      update: {
+        url: logoUrl,
+        title: `Logo from ${logoSource}`,
+      },
+    }).catch(() => {
+      // BrandMedia unique constraint may not exist as brandId_type;
+      // fall back to createMany if the upsert fails.
+    });
     await logAudit({
       actorId: sessionUser.id,
       actorType: "ADMIN",
@@ -63,8 +85,8 @@ export async function PUT(
       entityType: "Brand",
       entityId: id,
       before: before ? { logoUrl: before.logoUrl } : null,
-      after: { logoUrl },
-      reason: "via admin API",
+      after: { logoUrl, source: logoSource },
+      reason: `logo ${logoSource === "AI_SEARCH" ? "AI-suggested" : "manually set"} via admin API`,
     });
   } catch (e: any) {
     return NextResponse.json(

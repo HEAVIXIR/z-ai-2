@@ -88,6 +88,41 @@ export async function PATCH(req: Request, { params }: Params) {
     const existing = await db.brand.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    // HARDENING: prevent self-reference and circular parent chains.
+    // If parentBrandId is being set, walk the parent chain to ensure:
+    //   1. parentBrandId !== id (no self-parenting)
+    //   2. the new parent is not a descendant of this brand (no cycles)
+    if (body.parentBrandId !== undefined) {
+      const newParentId = body.parentBrandId || null;
+      if (newParentId) {
+        if (newParentId === id) {
+          return NextResponse.json(
+            { error: "یک برند نمی‌تواند والد خودش باشد." },
+            { status: 400 },
+          );
+        }
+        // Walk the parent chain of the proposed parent to detect cycles.
+        // Limit to 20 hops to prevent infinite loops on pre-existing bad data.
+        let cursor: string | null = newParentId;
+        const visited = new Set<string>([id]);
+        for (let hop = 0; hop < 20 && cursor; hop++) {
+          if (visited.has(cursor)) {
+            return NextResponse.json(
+              { error: "والد انتخاب‌شده باعث ایجاد چرخه در روابط برند می‌شود." },
+              { status: 400 },
+            );
+          }
+          visited.add(cursor);
+          const node = await db.brand.findUnique({
+            where: { id: cursor },
+            select: { parentBrandId: true },
+          });
+          if (!node) break;
+          cursor = node.parentBrandId;
+        }
+      }
+    }
+
     const data: any = {};
     const allowed = [
       "name", "nameEn", "shortName", "logoUrl", "website", "country",
