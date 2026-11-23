@@ -12,7 +12,10 @@ describe("first-party country → province → city picker", () => {
     expect(picker).toContain('fetch("/api/locations", { cache: "no-store" })');
     expect(picker).toContain("`/api/locations?country=${encodeURIComponent(code)}`");
     expect(picker).toContain("`/api/locations?province=${encodeURIComponent(value.provinceId)}`");
-    // The picker may embed the allowlisted OpenStreetMap preview, but its data\n    // fetches must remain same-origin HEAVIX API calls.\n    expect(picker).not.toMatch(/fetch\\(\\s*["\\x27`]https?:\\/\\//);\n    expect(picker).toContain("https://www.openstreetmap.org/export/embed.html");
+    // The picker may embed the allowlisted OpenStreetMap preview, but its data
+    // fetches must remain same-origin HEAVIX API calls.
+    expect(picker).not.toMatch(/fetch\(\s*["']https?:\/\//);
+    expect(picker).toContain("https://www.openstreetmap.org/export/embed.html");
     expect(api).toContain("db.country.findMany");
     expect(api).toContain("db.province.findMany");
     expect(api).toContain("db.city.findMany");
