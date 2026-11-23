@@ -11,8 +11,9 @@
  * 6. Duplicate slug prevention
  * 7. Orphan category prevention
  * 8. Circular parent prevention
- * 9. Attribute type system — all 12 types have correct field mapping
- * 10. Attribute option loading — SELECT/MULTI_SELECT options returned
+ * 9. Transaction types — all 7 canonical active keys are present
+ * 10. Attribute type system — all 12 types have correct field mapping
+ * 11. Attribute option loading — SELECT/MULTI_SELECT options returned
  *
  * Run: bun test tests/phase1-hardening.test.ts
  */
