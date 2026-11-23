@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 
 type Point = { latitude: number; longitude: number };
 type Props = {
   latitude?: string;
   longitude?: string;
   onChange: (point: Point) => void;
+  onClear: () => void;
 };
 
 type DragState = {
@@ -51,7 +52,7 @@ function fromWorld(x: number, y: number, zoom: number): Point {
   };
 }
 
-export default function InteractiveLocationMap({ latitude, longitude, onChange }: Props) {
+export default function InteractiveLocationMap({ latitude, longitude, onChange, onClear }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [size, setSize] = useState({ width: 760, height: 320 });
@@ -92,7 +93,6 @@ export default function InteractiveLocationMap({ latitude, longitude, onChange }
     setZoom((current) => Math.max(current, 12));
   }, [latitude, longitude]);
 
-  const worldSize = TILE_SIZE * 2 ** zoom;
   const centerWorld = toWorld(center, zoom);
   const topLeftX = centerWorld.x - size.width / 2;
   const topLeftY = centerWorld.y - size.height / 2;
@@ -138,7 +138,7 @@ export default function InteractiveLocationMap({ latitude, longitude, onChange }
     onChange(point);
   };
 
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
     const mode = target.closest("[data-map-marker='true']") ? "marker" : "map";
     const centerPoint = toWorld(center, zoom);
@@ -241,7 +241,7 @@ export default function InteractiveLocationMap({ latitude, longitude, onChange }
       {selectedPoint && (
         <div className="flex flex-wrap items-center justify-between gap-2 bg-black/25 px-3 py-2 text-[11px] text-emerald-300">
           <span>نقطه انتخاب‌شده: {selectedPoint.latitude.toFixed(6)} ، {selectedPoint.longitude.toFixed(6)}</span>
-          <button type="button" onClick={() => onChange({ latitude: NaN, longitude: NaN })} className="text-white/60 underline underline-offset-2 hover:text-white">
+          <button type="button" onClick={onClear} className="text-white/60 underline underline-offset-2 hover:text-white">
             پاک‌کردن نقطه
           </button>
         </div>
