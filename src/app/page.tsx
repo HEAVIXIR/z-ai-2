@@ -16,7 +16,6 @@ import VerifiedMachinesCarousel from "@/components/home/VerifiedMachinesCarousel
 import LatestAdsSection, { type LatestAd } from "@/components/home/LatestAdsSection";
 import Sell7Section from "@/components/home/Sell7Section";
 import WhyUsSection from "@/components/home/WhyUsSection";
-import BrandsSection from "@/components/home/BrandsSection";
 import TrustedBrandsSection, { type TrustedBrand } from "@/components/home/TrustedBrandsSection";
 import CtaSection from "@/components/home/CtaSection";
 import ExclusiveSaleSection from "@/components/home/ExclusiveSaleSection";
@@ -205,14 +204,6 @@ export default async function HomePage() {
     listingCount: c._count.listings,
   }));
 
-  const tickerBrands: TickerBrand[] = allBrands.map((b) => ({
-    id: b.id,
-    name: b.name,
-    slug: b.slug,
-    logoUrl: b.logoUrl,
-    nameEn: b.nameEn,
-    listingCount: b._count.listings,
-  }));
 
   const mapListing = (l: HomeListingRow) => ({
     id: l.id,
@@ -517,11 +508,8 @@ export default async function HomePage() {
                   </ScrollReveal>
                 );
               case "brands":
-                return (
-                  <ScrollReveal key={section.id} id="brands">
-                    <BrandsSection brands={tickerBrands} totalBrands={brandCount} />
-                  </ScrollReveal>
-                );
+                // Legacy duplicate brands section is intentionally suppressed; the trusted-brands section is the single canonical homepage brands display.
+                return null;
               case "trusted-brands":
                 return trustedBrands.length > 0 ? (
                   <TrustedBrandsSection

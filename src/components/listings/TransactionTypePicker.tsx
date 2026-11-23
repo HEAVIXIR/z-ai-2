@@ -39,6 +39,9 @@ export default function TransactionTypePicker({
   const [error, setError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
 
+  const canonicalLabels: Record<string, string> = {"SALE":"فروش","RENT":"اجاره","WANTED":"درخواست خرید","QUOTE":"پیشنهاد قیمت","AUCTION":"مزایده","SERVICE_REQUEST":"درخواست خدمت","SERVICE_OFFER":"ارائه خدمت"};
+  const canonicalIcons: Record<string, string> = {"SALE":"🏷️","RENT":"🔑","WANTED":"📢","QUOTE":"📄","AUCTION":"🔨","SERVICE_REQUEST":"🛠️","SERVICE_OFFER":"🧰"};
+
   useEffect(() => {
     let alive = true;
     setError(false);
@@ -50,7 +53,19 @@ export default function TransactionTypePicker({
         if (!res.ok) throw new Error("transaction types unavailable");
         const data = (await res.json()) as { types: TransactionTypeOption[] };
         if (!alive) return;
-        setTypes(data.types ?? []);
+        const received = data.types ?? [];
+        // Keep WANTED selectable even if a seed/admin toggle accidentally hides it.
+        const wanted = received.find((item) => item.key === "WANTED") ?? {
+          id: "local-wanted-fallback", key: "WANTED", nameFa: "درخواست خرید", nameEn: "Wanted",
+          description: null, icon: null, sortOrder: 30,
+        };
+        const normalized = received.map((item) => ({
+          ...item,
+          nameFa: canonicalLabels[item.key] ?? item.nameFa,
+          icon: canonicalIcons[item.key] ?? item.icon,
+        }));
+        if (!normalized.some((item) => item.key === "WANTED")) normalized.push(wanted);
+        setTypes(normalized.sort((a, b) => a.sortOrder - b.sortOrder));
       } catch {
         if (alive) setError(true);
       } finally {
@@ -129,7 +144,7 @@ export default function TransactionTypePicker({
                 <Check className="h-3 w-3" />
               </span>
             )}
-            <span className="text-2xl">{t.icon ?? ICON_FALLBACK[t.key] ?? "🛒"}</span>
+            <span className="text-2xl">{canonicalIcons[t.key] ?? t.icon ?? ICON_FALLBACK[t.key] ?? "🛒"}</span>
             <span
               className={`text-xs font-bold transition-colors ${
                 active ? "text-[#F58220]" : "text-white/80 group-hover:text-white"

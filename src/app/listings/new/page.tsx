@@ -1033,7 +1033,7 @@ export default function NewListingPage() {
                               // Text in this field is a search query, never a new Brand.
                               setForm((f) => ({ ...f, brandLabel: "" }));
                             }}
-                            onFocus={() => brandResults.length > 0 && setBrandOpen(true)}
+                            onFocus={() => setBrandOpen(Boolean(brandQuery.trim()))}
                             placeholder="نام برند را فارسی یا انگلیسی تایپ کنید…"
                             className={`${inputCls} pr-9`}
                             aria-label="جستجوی برند"
