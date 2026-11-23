@@ -66,6 +66,7 @@ export async function POST(request: Request) {
       originalFilename: file.name,
       entityType: "Part",
       visibility: "PRIVATE",
+      maxOutputBytes: MAX_UPLOAD_BYTES,
       altText: formData.get("altText")?.toString() || undefined,
     });
 

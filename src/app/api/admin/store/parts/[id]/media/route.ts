@@ -38,7 +38,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
 
     const urls = parseStoredPartImageUrls(part.images);
-    const managedUrls = urls.filter((url) => /^\\/api\\/media\\/[a-f0-9]{24}$/.test(url));
+    const managedUrls = urls.filter((url) => url.startsWith("/api/media/") && /^[a-f0-9]{24}$/.test(url.slice("/api/media/".length)));
     const validation = await validatePartImageUrls(managedUrls, user.id, part.id);
     if (!validation.ok) {
       return NextResponse.json({ success: false, error: validation.error }, { status: validation.status });
