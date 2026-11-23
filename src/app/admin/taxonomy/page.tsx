@@ -83,7 +83,7 @@ export default async function TaxonomyHubPage() {
     {
       title: "برندها",
       desc: "کاتالوگ برندها با خانواده، نوع، وضعیت و دامنه.",
-      href: "/admin/taxonomy/brands",
+      href: "/admin/brands",
       icon: Building2,
       accent: "text-zinc-700",
       ring: "ring-zinc-100",
