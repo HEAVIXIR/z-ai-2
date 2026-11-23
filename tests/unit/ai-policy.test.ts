@@ -161,8 +161,14 @@ describe("getTaskPolicy — deny-by-default", () => {
   });
 });
 
-it("fails closed for inactive SCRAPER policy instead of synthesizing a zero-cost policy", async () => {
-    mockTaskPolicy = { taskType: "SCRAPER", active: false, costCeilingUsd: 0.1, hourlyLimit: 5, dailyLimit: 20 };
+it("fails closed for inactive SCRAPER policy", async () => {
+    mockTaskPolicy = { taskType: "SCRAPER", active: false, costCeilingUsd: 0, hourlyLimit: 5, dailyLimit: 20 };
+    const result = await getTaskPolicy("SCRAPER");
+    expect(result).toBeNull();
+});
+
+it("denies an active SCRAPER policy with a zero cost ceiling", async () => {
+    mockTaskPolicy = { taskType: "SCRAPER", active: true, costCeilingUsd: 0, hourlyLimit: 5, dailyLimit: 20 };
     const result = await getTaskPolicy("SCRAPER");
     expect(result).toBeNull();
 });
