@@ -16,7 +16,9 @@ describe("AI scraper zero-spend policy contract", () => {
     expect(seed).toContain('update: scraperDisabledByDefault ? { active: false, costCeilingUsd: 0 } : {}');
   });
 
-  it("fails closed for missing, inactive or zero-cost SCRAPER policies", () => {
+  it("requires explicit runtime opt-in plus an active, positive-cost DB policy", () => {
+    expect(policy).toContain('taskType === "SCRAPER" && process.env.HEAVIX_AI_SCRAPER_ENABLED !== "true"');
+    expect(policy).toContain("explicit HEAVIX_AI_SCRAPER_ENABLED=true opt-in is required");
     expect(policy).toContain("if (!row || !row.active) return null;");
     expect(policy).toContain('taskType === "SCRAPER" && (!Number.isFinite(row.costCeilingUsd) || row.costCeilingUsd <= 0)');
   });

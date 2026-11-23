@@ -1,5 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
+async function withScraperOptIn<T>(value: string | undefined, run: () => Promise<T>): Promise<T> {
+  const previous = process.env.HEAVIX_AI_SCRAPER_ENABLED;
+  if (value === undefined) delete process.env.HEAVIX_AI_SCRAPER_ENABLED;
+  else process.env.HEAVIX_AI_SCRAPER_ENABLED = value;
+  try {
+    return await run();
+  } finally {
+    if (previous === undefined) delete process.env.HEAVIX_AI_SCRAPER_ENABLED;
+    else process.env.HEAVIX_AI_SCRAPER_ENABLED = previous;
+  }
+}
+
 /* ============================================================
    Unit tests for src/lib/ai-policy.ts (STEP 18.2.7.3.6)
    ------------------------------------------------------------
@@ -161,15 +173,27 @@ describe("getTaskPolicy — deny-by-default", () => {
   });
 });
 
-it("fails closed for inactive SCRAPER policy", async () => {
-    mockTaskPolicy = { taskType: "SCRAPER", active: false, costCeilingUsd: 0, hourlyLimit: 5, dailyLimit: 20 };
-    const result = await getTaskPolicy("SCRAPER");
+it("denies SCRAPER when explicit runtime opt-in is absent even if the DB policy is funded", async () => {
+    mockTaskPolicy = { taskType: "SCRAPER", active: true, costCeilingUsd: 0.05, hourlyLimit: 5, dailyLimit: 20 };
+    const result = await withScraperOptIn(undefined, () => getTaskPolicy("SCRAPER"));
     expect(result).toBeNull();
 });
 
-it("denies an active SCRAPER policy with a zero cost ceiling", async () => {
+it("allows a funded active SCRAPER policy only after explicit runtime opt-in", async () => {
+    mockTaskPolicy = { taskType: "SCRAPER", active: true, costCeilingUsd: 0.05, hourlyLimit: 5, dailyLimit: 20 };
+    const result = await withScraperOptIn("true", () => getTaskPolicy("SCRAPER"));
+    expect(result).toMatchObject({ taskType: "SCRAPER", active: true, costCeilingUsd: 0.05 });
+});
+
+it("fails closed for inactive SCRAPER policy even after runtime opt-in", async () => {
+    mockTaskPolicy = { taskType: "SCRAPER", active: false, costCeilingUsd: 0.05, hourlyLimit: 5, dailyLimit: 20 };
+    const result = await withScraperOptIn("true", () => getTaskPolicy("SCRAPER"));
+    expect(result).toBeNull();
+});
+
+it("denies an active SCRAPER policy with a zero cost ceiling even after runtime opt-in", async () => {
     mockTaskPolicy = { taskType: "SCRAPER", active: true, costCeilingUsd: 0, hourlyLimit: 5, dailyLimit: 20 };
-    const result = await getTaskPolicy("SCRAPER");
+    const result = await withScraperOptIn("true", () => getTaskPolicy("SCRAPER"));
     expect(result).toBeNull();
 });
 // ============================================================

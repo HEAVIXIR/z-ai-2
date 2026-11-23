@@ -111,4 +111,26 @@ describe("AI preflight side-effect ordering", () => {
       mocks.executeRaw.mock.invocationCallOrder[0],
     );
   });
+  it("denies SCRAPER before quota or global budget unless explicitly enabled", async () => {
+    const previous = process.env.HEAVIX_AI_SCRAPER_ENABLED;
+    delete process.env.HEAVIX_AI_SCRAPER_ENABLED;
+    try {
+      mocks.findPolicy.mockResolvedValue({ ...policy, taskType: "SCRAPER", costCeilingUsd: 0.05 });
+      const result = await preflightAIRequest({
+        taskType: "SCRAPER",
+        user: { id: "admin-1" },
+        inputLength: 80,
+      });
+
+      expect(result).toMatchObject({ ok: false, statusCode: 403 });
+      expect(mocks.findPolicy).not.toHaveBeenCalled();
+      expect(mocks.countLogs).not.toHaveBeenCalled();
+      expect(mocks.upsertBudget).not.toHaveBeenCalled();
+      expect(mocks.executeRaw).not.toHaveBeenCalled();
+    } finally {
+      if (previous === undefined) delete process.env.HEAVIX_AI_SCRAPER_ENABLED;
+      else process.env.HEAVIX_AI_SCRAPER_ENABLED = previous;
+    }
+  });
+
 });

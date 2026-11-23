@@ -58,6 +58,13 @@ const MONTH_MS = 30 * DAY_MS;
  */
 export async function getTaskPolicy(taskType: string) {
   try {
+    // Billable scraper calls require two independent opt-ins:
+    // an explicit runtime flag and an active, positive-cost DB policy.
+    // This guard runs before quota/budget reads so manual flows remain free.
+    if (taskType === "SCRAPER" && process.env.HEAVIX_AI_SCRAPER_ENABLED !== "true") {
+      console.warn("[ai-policy] SCRAPER denied: explicit HEAVIX_AI_SCRAPER_ENABLED=true opt-in is required");
+      return null;
+    }
     const row = await db.aITaskPolicy.findUnique({
       where: { taskType },
     });
