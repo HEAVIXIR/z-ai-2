@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { createUserSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { verifyPassword } from "@/lib/password";
+import { hashPassword, isLegacyBcryptHash, verifyPassword } from "@/lib/password";
 import { isAdmin } from "@/lib/authorization";
 
 export async function loginAction(formData: FormData): Promise<void> {
@@ -16,9 +16,19 @@ export async function loginAction(formData: FormData): Promise<void> {
   });
   if (!user || user.status === "BLOCKED") redirect("/login?error=1");
 
-  if (!(await verifyPassword(password, user.passwordHash))) redirect("/login?error=1");
+  const allowLegacyBcrypt = process.env.HEAVIX_AUTH_ALLOW_LEGACY_BCRYPT !== "false";
+  const legacyBcryptHash = isLegacyBcryptHash(user.passwordHash);
+  if (!(await verifyPassword(password, user.passwordHash, { allowLegacyBcrypt }))) redirect("/login?error=1");
 
-  await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+  const migratedPasswordHash =
+    legacyBcryptHash && allowLegacyBcrypt ? await hashPassword(password) : undefined;
+  await db.user.update({
+    where: { id: user.id },
+    data: {
+      lastLoginAt: new Date(),
+      ...(migratedPasswordHash ? { passwordHash: migratedPasswordHash } : {}),
+    },
+  });
   await createUserSession(user.id);
   redirect((await isAdmin(user.id)) ? "/admin/dashboard" : "/dashboard");
 }
