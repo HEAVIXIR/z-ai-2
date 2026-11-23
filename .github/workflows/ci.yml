@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main, 'recovery/**']
+    branches: [main, 'recovery/**', 'integration/preview-readiness-workerd-2026-11-15']
     types: [opened, reopened, synchronize, edited, ready_for_review]
   push:
     branches: [main, 'feature/**', 'feat/**', 'fix/**', 'recovery/**', 'integration/preview-readiness-workerd-2026-11-15']
