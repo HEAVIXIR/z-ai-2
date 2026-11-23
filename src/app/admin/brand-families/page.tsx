@@ -1,4 +1,5 @@
 "use client";
+import BrandManagementNav from "@/components/admin/BrandManagementNav";
 
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -128,6 +129,7 @@ export default function BrandFamiliesPage() {
 
   return (
     <div className="space-y-6">
+      <BrandManagementNav active="families" />
       {/* Header */}
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-black text-zinc-900">
