@@ -208,7 +208,7 @@ export async function PATCH(req: Request, { params }: Args) {
       }
     }
 
-    // Optional password reset (P0-1: bcrypt-hash the new password).
+    // Optional password reset uses the shared Worker-compatible PBKDF2 format.
     if (body.password && String(body.password).length >= 6) {
       data.passwordHash = await hashPassword(String(body.password));
     }
