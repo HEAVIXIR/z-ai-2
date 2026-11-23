@@ -380,6 +380,8 @@ function IdentityTab({
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiSavingLogo, setAiSavingLogo] = useState(false);
+  // Logo source tracking: "AI_SEARCH" | "MANUAL" | null (unknown/legacy)
+  const [logoSource, setLogoSource] = useState<string | null>(null);
 
   const setField = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
@@ -434,18 +436,19 @@ function IdentityTab({
       const res = await fetch(`/api/admin/brands/${brand.id}/logo`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ logoUrl: url }),
+        body: JSON.stringify({ logoUrl: url, source: "AI_SEARCH" }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
         throw new Error(data?.error ?? "ذخیره لوگو ناموفق بود.");
       }
       setField("logoUrl", url);
+      setLogoSource("AI_SEARCH");
       setAiModalOpen(false);
       setAiResults([]);
       toast({
         title: "لوگوی برند به‌روزرسانی شد",
-        description: "لوگوی انتخاب‌شده با موفقیت ذخیره شد.",
+        description: "لوگوی انتخاب‌شده از جستجوی هوش مصنوعی ذخیره شد. منبع: AI_SEARCH (تأیید نشده).",
       });
     } catch (e: any) {
       setAiError(e?.message ?? "ذخیره لوگو ناموفق بود.");
@@ -624,7 +627,25 @@ function IdentityTab({
         </div>
         <div>
           <label className={labelCls}>لوگو (URL)</label>
-          <input value={form.logoUrl} onChange={(e) => setField("logoUrl", e.target.value)} className={inputCls} dir="ltr" />
+          <input value={form.logoUrl} onChange={(e) => { setField("logoUrl", e.target.value); setLogoSource("MANUAL"); }} className={inputCls} dir="ltr" />
+          {/* Logo source indicator — independent from verification status */}
+          {form.logoUrl && (
+            <div className="mt-1 flex items-center gap-2 text-[10px]">
+              <span className={`rounded px-1.5 py-0.5 font-bold ${
+                logoSource === "AI_SEARCH"
+                  ? "bg-amber-100 text-amber-700"
+                  : logoSource === "MANUAL"
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-zinc-100 text-zinc-500"
+              }`}>
+                {logoSource === "AI_SEARCH" ? "منبع: جستجوی هوش مصنوعی" : logoSource === "MANUAL" ? "منبع: ورود دستی" : "منبع: نامشخص"}
+              </span>
+              <span className="text-zinc-400">·</span>
+              <span className="text-zinc-500">
+                تأیید برند: {VERIFICATION_LABELS[form.verification]?.label || "تأیید نشده"}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
