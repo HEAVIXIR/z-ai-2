@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BrandManagementNav from "@/components/admin/BrandManagementNav";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { toFa } from "@/lib/format";
@@ -185,6 +186,7 @@ export default async function TaxonomyBrandsPage({
 
   return (
     <div className="space-y-6">
+      <BrandManagementNav active="brands" />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black text-zinc-900">برندها</h1>
