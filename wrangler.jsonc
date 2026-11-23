@@ -12,6 +12,7 @@
   "placement": { "mode": "smart" },
   "vars": {
     "HEAVIX_ENV": "preview",
+    "HEAVIX_PREVIEW_ORIGIN": "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev",
     "NODE_ENV": "production",
     "AI_PROVIDER": "zai",
     "ZAI_MODEL": "glm-4.6-flash",
@@ -27,6 +28,7 @@
   "previews": {
     "vars": {
       "HEAVIX_ENV": "preview",
+      "HEAVIX_PREVIEW_ORIGIN": "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev",
       "NODE_ENV": "production",
       "AI_PROVIDER": "zai",
       "ZAI_MODEL": "glm-4.6-flash",
