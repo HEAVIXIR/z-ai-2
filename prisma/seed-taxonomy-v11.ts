@@ -972,7 +972,9 @@ async function main() {
       where: { key: t.key },
       create: t,
       // Reactivate only the newly introduced supply-side service type if a dormant row exists.
-      update: t.key === "SERVICE_OFFER" ? { active: true } : {},
+      update: t.key === "SERVICE_OFFER"
+        ? { nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder, active: true }
+        : {},
     });
   }
 
