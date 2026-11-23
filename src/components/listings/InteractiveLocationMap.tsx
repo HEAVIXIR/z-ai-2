@@ -196,6 +196,7 @@ export default function InteractiveLocationMap({ latitude, longitude, onChange, 
         onPointerCancel={() => { dragRef.current = null; }}
       >
         {tiles.map((tile) => (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             key={tile.key}
             src={tile.url}
@@ -207,18 +208,28 @@ export default function InteractiveLocationMap({ latitude, longitude, onChange, 
         ))}
 
         {markerPosition && markerPosition.left >= 0 && markerPosition.left <= size.width && markerPosition.top >= 0 && markerPosition.top <= size.height && (
-          <div
+          <button
+            type="button"
             data-map-marker="true"
-            role="button"
-            aria-label="نشانگر محل دستگاه؛ برای جابه‌جایی بکشید"
-            className="absolute z-10 -translate-x-1/2 -translate-y-full cursor-grab active:cursor-grabbing"
+            aria-label="نشانگر محل دستگاه؛ برای جابه‌جایی بکشید یا با کلیدهای جهت‌نما حرکت دهید"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              const step = 0.001 * 2 ** Math.max(0, 12 - zoom);
+              if (event.key === "ArrowUp") onChange({ latitude: clamp(parsedLatitude + step, -90, 90), longitude: parsedLongitude });
+              else if (event.key === "ArrowDown") onChange({ latitude: clamp(parsedLatitude - step, -90, 90), longitude: parsedLongitude });
+              else if (event.key === "ArrowLeft") onChange({ latitude: parsedLatitude, longitude: clamp(parsedLongitude - step, -180, 180) });
+              else if (event.key === "ArrowRight") onChange({ latitude: parsedLatitude, longitude: clamp(parsedLongitude + step, -180, 180) });
+              else return;
+              event.preventDefault();
+            }}
+            className="absolute z-10 -translate-x-1/2 -translate-y-full cursor-grab border-0 bg-transparent p-0 active:cursor-grabbing"
             style={{ left: markerPosition.left, top: markerPosition.top }}
           >
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-[#F58220] text-white shadow-xl">
+            <span className="relative flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-[#F58220] text-white shadow-xl">
               <span className="text-lg leading-none">●</span>
               <span className="absolute -bottom-1 h-2 w-2 rotate-45 bg-[#F58220]" />
-            </div>
-          </div>
+            </span>
+          </button>
         )}
 
         <div className="absolute right-3 top-3 z-20 flex flex-col overflow-hidden rounded-lg border border-black/15 bg-white/95 shadow-lg">
