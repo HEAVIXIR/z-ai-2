@@ -87,82 +87,28 @@ export async function PUT(
       data: { logoUrl },
     });
 
-    // 2. Persist BrandMedia record — NO silent error swallowing.
-    //    Strategy:
-    //      a) Try upsert (works if @@unique([brandId, type]) exists)
-    //      b) If upsert fails, ONLY fall back to deleteMany+create when
-    //         we can PROVE the error is about the compound unique
-    //         constraint `brandId_type` not existing on the BrandMedia
-    //         table. The precise Prisma signal for this is:
-    //           - code P2004 AND message contains "brandId_type"
-    //         (P2004 = "A unique constraint in the database was violated"
-    //          — but when the compound field name itself is unknown,
-    //          Prisma reports the field in the message.)
-    //         We do NOT blanket-match P2009 (unknown argument) or P2021
-    //         (table missing) because those can indicate unrelated
-    //         structural errors.
-    //      c) For ALL OTHER errors (connection P1001, timeout P2028,
-    //         table-missing P2021, unknown-arg P2009, etc.): propagate
-    //         as HTTP 500. The old logo row is NEVER deleted.
-    //      d) When the fallback DOES run, it uses db.$transaction() so
-    //         deleteMany + create are atomic — if create fails, the
-    //         delete is rolled back and the old logo survives.
+    // 2. Persist BrandMedia record.
+    //    BrandMedia does NOT have @@unique([brandId, type]), so upsert
+    //    cannot be used. Instead, use a transaction: delete existing
+    //    LOGO media for this brand, then create a new one.
+    //    The transaction ensures atomicity — if create fails, the
+    //    delete is rolled back and the old logo survives.
     let mediaId: string | null = null;
-    try {
-      const media = await db.brandMedia.upsert({
-        where: { brandId_type: { brandId: id, type: "LOGO" } },
-        create: {
+    const result = await db.$transaction(async (tx) => {
+      await tx.brandMedia.deleteMany({
+        where: { brandId: id, type: "LOGO" },
+      });
+      const media = await tx.brandMedia.create({
+        data: {
           brandId: id,
           type: "LOGO",
           url: logoUrl,
           title: `Logo from ${logoSource}`,
         },
-        update: {
-          url: logoUrl,
-          title: `Logo from ${logoSource}`,
-        },
       });
-      mediaId = media.id;
-    } catch (upsertErr: any) {
-      const code = upsertErr?.code ?? "";
-      const msg = String(upsertErr?.message ?? "");
-
-      // STRICT match: only fall back when Prisma explicitly complains
-      // about the compound unique constraint field `brandId_type`.
-      // The fallback is ONLY allowed for these exact code+message combos:
-      //   P2004 + message contains "brandId_type"
-      //   P2009 + message contains "brandId_type"
-      // No regex, no blanket matching. Every other error code — including
-      // P2021 (table missing), P1001 (connection), P2028 (timeout),
-      // P2002 (unique violation), P2003 (FK violation) — propagates
-      // WITHOUT touching the old logo row, even if the message happens
-      // to contain "brandId_type" or "Unknown field".
-      const isCompoundFieldMissing =
-        msg.includes("brandId_type") &&
-        (code === "P2004" || code === "P2009");
-
-      if (!isCompoundFieldMissing) {
-        throw upsertErr;
-      }
-
-      // Proven missing compound constraint: safe to use fallback.
-      // Transaction ensures atomicity.
-      const result = await db.$transaction(async (tx) => {
-        await tx.brandMedia.deleteMany({
-          where: { brandId: id, type: "LOGO" },
-        });
-        const media = await tx.brandMedia.create({
-          data: {
-            brandId: id,
-            type: "LOGO",
-            url: logoUrl,
-            title: `Logo from ${logoSource}`,
-          },
-        });
-        return media;
-      });
-      mediaId = result.id;
-    }
+      return media;
+    });
+    mediaId = result.id;
 
     // 3. Audit log — records source + before/after logoUrl.
     //    Brand.verification is deliberately NOT included in the audit
