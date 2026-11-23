@@ -449,7 +449,7 @@ describe("H.3 follow-up hardening: WANTED attribute transport and server enforce
     const route = read("src/app/api/wanted/route.ts");
     expect(route).toContain("db.brand.findUnique({");
     expect(route).toContain("const requestedBrandId = brandId ? String(brandId) : null;");
-    expect(route).toContain('!brandRow || !brandRow.active || brandRow.status !== "ACTIVE"');
+    expect(route).toContain("if (requestedBrandId && !isBrandSelectable(brandRow))");
     expect(route).toContain("requestedModelName.length > 120");
     expect(route).toContain("modelName: requestedModelName || null");
     expect(route).not.toContain("db.brandCategory.findUnique");

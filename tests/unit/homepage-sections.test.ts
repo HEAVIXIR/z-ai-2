@@ -20,10 +20,10 @@ function row(overrides: Partial<HomepageSectionConfig> = {}): HomepageSectionCon
 }
 
 describe("canonical HEAVIX homepage composition", () => {
-  it("defines all 17 canonical section keys exactly once", () => {
+  it("defines all 16 canonical section keys exactly once", () => {
     const keys = DEFAULT_HOME_SECTIONS.map((section) => section.key);
-    expect(keys).toHaveLength(17);
-    expect(new Set(keys).size).toBe(17);
+    expect(keys).toHaveLength(16);
+    expect(new Set(keys).size).toBe(16);
     expect(keys).toEqual([
       "hero",
       "categories",
@@ -39,7 +39,6 @@ describe("canonical HEAVIX homepage composition", () => {
       "sell7",
       "why-us",
       "trusted-brands",
-      "brands",
       "knowledge",
       "cta",
     ]);
@@ -49,7 +48,7 @@ describe("canonical HEAVIX homepage composition", () => {
     const existing = row({ order: 2, active: false, title: "عنوان سفارشی", config: '{"x":1}' });
     const result = mergeHomepageSections([existing]);
 
-    expect(result).toHaveLength(17);
+    expect(result).toHaveLength(16);
     expect(result.find((section) => section.key === "hero")).toMatchObject({
       id: "db-hero",
       title: "عنوان سفارشی",
@@ -57,7 +56,7 @@ describe("canonical HEAVIX homepage composition", () => {
       active: false,
       config: '{"x":1}',
     });
-    expect(result.find((section) => section.key === "brands")?.active).toBe(false);
+    expect(result.find((section) => section.key === "brands")).toBeUndefined();
     expect(result.map((section) => section.order)).toEqual(
       [...result].map((section) => section.order).sort((a, b) => a - b),
     );
