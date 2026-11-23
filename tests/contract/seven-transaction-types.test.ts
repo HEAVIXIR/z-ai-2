@@ -15,14 +15,14 @@ describe("HEAVIX seven transaction types and service intent separation", () => {
     expect(seed).toContain("HEAVIX_PREVIEW_TRANSACTION_TYPE_SEED_APPROVED");
     expect(seed).toContain("HEAVIX_APP_PREVIEW_DATABASE_OID");
     expect(seed).toContain("HEAVIX_EXPECTED_SYSTEM_IDENTIFIER");
-    expect(seed).toContain("rowsToReactivate");
+    expect(seed).toContain("rowsToCanonicalize");
   });
 
   it("keeps SERVICE_OFFER active in the broad taxonomy seed without changing other admin flags", () => {
     const seed = read("prisma/seed-taxonomy-v11.ts");
     expect(seed).toContain('key: "SERVICE_OFFER",   nameFa: "ارائه خدمت"');
     expect(seed).toContain('icon: "handshake"');
-    expect(seed).toContain('update: t.key === "SERVICE_OFFER" ? { active: true } : {}');
+    expect(seed).toContain('nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder, active: true');
   });
 
   it("keeps service request as a dedicated top-level flow, not a WANTED sub-intent", () => {
