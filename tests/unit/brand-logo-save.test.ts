@@ -240,11 +240,12 @@ describe("PUT /api/admin/brands/[id]/logo", () => {
 
   it("success → Brand.logoUrl updated AND BrandMedia created with source", async () => {
     const txBrandUpdate = vi.fn().mockResolvedValue({});
+    const txDeleteMany = vi.fn().mockResolvedValue({ count: 0 });
     const txCreate = vi.fn().mockResolvedValue({ id: "media-ok" });
     mocks.transaction.mockImplementation(async (fn: any) => fn({
       brand: { update: txBrandUpdate },
       brandMedia: {
-        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        deleteMany: txDeleteMany,
         create: txCreate,
       },
     }));
@@ -258,12 +259,81 @@ describe("PUT /api/admin/brands/[id]/logo", () => {
     expect(body.logoUrl).toBe("https://new.com/l.png");
     expect(body.source).toBe("AI_SEARCH");
 
-    // Brand.logoUrl was updated to the new URL
+    // Brand.logoUrl was updated INSIDE the transaction
+    expect(txBrandUpdate).toHaveBeenCalledTimes(1);
     expect(txBrandUpdate.mock.calls[0]?.[0]?.data?.logoUrl).toBe("https://new.com/l.png");
+    expect(txBrandUpdate.mock.calls[0]?.[0]?.data?.verification).toBeUndefined();
 
-    // BrandMedia was created with the correct source in title
+    // BrandMedia.deleteMany called INSIDE the transaction
+    expect(txDeleteMany).toHaveBeenCalledTimes(1);
+    expect(txDeleteMany.mock.calls[0]?.[0]?.where).toEqual({ brandId: "test-id", type: "LOGO" });
+
+    // BrandMedia.create called INSIDE the transaction with source
+    expect(txCreate).toHaveBeenCalledTimes(1);
     expect(txCreate.mock.calls[0]?.[0]?.data?.title).toBe("Logo from AI_SEARCH");
     expect(txCreate.mock.calls[0]?.[0]?.data?.url).toBe("https://new.com/l.png");
+
+    // Execution order: update → deleteMany → create (within one transaction)
+    expect(txBrandUpdate.mock.invocationCallOrder[0])
+      .toBeLessThan(txDeleteMany.mock.invocationCallOrder[0]);
+    expect(txDeleteMany.mock.invocationCallOrder[0])
+      .toBeLessThan(txCreate.mock.invocationCallOrder[0]);
+  });
+
+  it("EXPLICIT: BrandMedia.create fails → tx.brand.update was called but rolled back; no direct db writes outside tx", async () => {
+    // Explicitly proves:
+    // 1. tx.brand.update WAS called (update attempted inside the tx)
+    // 2. tx.brandMedia.deleteMany WAS called (old logo deleted inside tx)
+    // 3. tx.brandMedia.create threw the error
+    // 4. db mock does NOT expose db.brand.update — proving no writes
+    //    happen outside the transaction (any direct db.brand.update
+    //    call would throw "update is not a function")
+    // 5. HTTP 500 + audit NOT written
+    const txBrandUpdate = vi.fn().mockResolvedValue({});
+    const txDeleteMany = vi.fn().mockResolvedValue({ count: 1 });
+    const txCreate = vi.fn().mockRejectedValue(new Error("create failed"));
+
+    mocks.transaction.mockImplementation(async (fn: any) => {
+      const tx = {
+        brand: { update: txBrandUpdate },
+        brandMedia: { deleteMany: txDeleteMany, create: txCreate },
+      };
+      return fn(tx); // fn will throw because txCreate rejects
+    });
+
+    const [req, ctx] = makeRequest({ logoUrl: "https://new.com/l.png", source: "AI_SEARCH" });
+    const res = await PUT(req as any, ctx);
+    const body = await res.json();
+
+    // 1. HTTP 500 — transaction failed
+    expect(res.status).toBe(500);
+    expect(body.error).toContain("create failed");
+
+    // 2. tx.brand.update WAS called (the update was attempted inside tx)
+    //    In real Prisma, this update is rolled back by the transaction.
+    expect(txBrandUpdate).toHaveBeenCalledTimes(1);
+    expect(txBrandUpdate.mock.calls[0]?.[0]?.data?.logoUrl).toBe("https://new.com/l.png");
+
+    // 3. tx.brandMedia.deleteMany WAS called (old logo deleted inside tx)
+    //    In real Prisma, this delete is also rolled back.
+    expect(txDeleteMany).toHaveBeenCalledTimes(1);
+
+    // 4. tx.brandMedia.create threw
+    expect(txCreate).toHaveBeenCalledTimes(1);
+
+    // 5. Execution order: update → deleteMany → create(fails)
+    expect(txBrandUpdate.mock.invocationCallOrder[0])
+      .toBeLessThan(txDeleteMany.mock.invocationCallOrder[0]);
+    expect(txDeleteMany.mock.invocationCallOrder[0])
+      .toBeLessThan(txCreate.mock.invocationCallOrder[0]);
+
+    // 6. Audit NOT written (transaction failed before audit)
+    expect(mocks.logAudit).not.toHaveBeenCalled();
+
+    // 7. db mock only exposes brand.findUnique + $transaction.
+    //    No db.brand.update — proving all writes go through tx.*
+    //    inside the transaction. If the code tried db.brand.update
+    //    directly, it would throw "update is not a function".
   });
 
   // ── Audit log ─────────────────────────────────────────────
