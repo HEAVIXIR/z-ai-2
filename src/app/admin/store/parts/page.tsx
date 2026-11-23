@@ -281,7 +281,8 @@ export default function StorePartsPage() {
       const res = await fetch(`/api/admin/store/parts/${p.id}`, { method: "DELETE" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "خطا");
-      setToast("قطعه حذف شد");
+      const cleanupPending = Number(json.mediaCleanupPendingCount) || 0;
+      setToast(cleanupPending > 0 ? `قطعه حذف شد؛ ${cleanupPending} فایل رسانه برای پاکسازی مجدد باقی مانده است.` : "قطعه حذف شد");
       await load();
     } catch (e: any) {
       setToast(e.message);

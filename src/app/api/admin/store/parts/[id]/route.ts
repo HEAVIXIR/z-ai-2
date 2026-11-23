@@ -218,25 +218,11 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const existing = await storeDb.part.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
     const existingImageUrls = parseStoredPartImageUrls(existing.images);
-    const cleanup = await cleanupPartMediaUrls(existingImageUrls, id, user.id);
-    if (cleanup.pendingCount > 0) {
-      await storeDb.part.update({ where: { id }, data: { images: JSON.stringify(cleanup.pendingUrls) } });
-      await logAudit({
-        actorId: user.id,
-        actorType: "ADMIN",
-        action: "store.part.update",
-        entityType: "Part",
-        entityId: id,
-        before: { images: existing.images },
-        after: { images: JSON.stringify(cleanup.pendingUrls), mediaCleanupPending: true },
-      });
-      return NextResponse.json({
-        success: false,
-        error: "حذف قطعه تا پایان پاکسازی تصاویر متصل کامل نشد؛ دوباره تلاش کنید.",
-        mediaCleanupPendingCount: cleanup.pendingCount,
-      }, { status: 503 });
-    }
+    // Delete the Part row first: foreign-key constraints must never leave a
+    // valid Part record with its media already removed. Any failed B2 cleanup
+    // is private/non-addressable and can be retried by the orphan cleanup job.
     await storeDb.part.delete({ where: { id } });
+    const cleanup = await cleanupPartMediaUrls(existingImageUrls, id, user.id, true);
 
     await logAudit({
       actorId: user.id,
@@ -252,7 +238,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, mediaCleanupPendingCount: cleanup.pendingCount });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
   }

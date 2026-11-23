@@ -22,6 +22,8 @@ describe("Store Part media lifecycle contract", () => {
     const update = read("src/app/api/admin/store/parts/[id]/route.ts");
     expect(update).toContain("attachStagedPartImages(stagedMediaAssets, part.id, user.id)");
     expect(update).toContain("cleanupPartMediaUrls(removedUrls, id, user.id)");
+    const deleteHandler = update.slice(update.indexOf("export async function DELETE"));
+    expect(deleteHandler.indexOf("storeDb.part.delete")).toBeLessThan(deleteHandler.indexOf("cleanupPartMediaUrls(existingImageUrls, id, user.id, true)"));
   });
 
   it("supports attachment retry and cleanup of stale or unreferenced Part assets", () => {

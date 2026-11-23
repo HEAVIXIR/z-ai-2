@@ -110,6 +110,7 @@ export async function cleanupPartMediaUrls(
   urls: string[],
   partId: string,
   userId: string,
+  allowStagedOwnerOverride = false,
 ): Promise<{ deletedCount: number; pendingCount: number; pendingUrls: string[] }> {
   let deletedCount = 0;
   let pendingCount = 0;
@@ -137,7 +138,7 @@ export async function cleanupPartMediaUrls(
       asset.entityType === "Part" &&
       asset.entityId === null &&
       asset.status === "STAGED" &&
-      asset.uploadedBy === userId;
+      (asset.uploadedBy === userId || allowStagedOwnerOverride);
 
     if (!belongsToPart && !isOwnedStagedAsset) {
       pendingCount++;
