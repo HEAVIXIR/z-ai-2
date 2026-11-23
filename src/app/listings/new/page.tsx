@@ -17,6 +17,7 @@ import AttributeFields, {
 } from "@/components/listings/AttributeFields";
 import { toFa } from "@/lib/format";
 import { isRequestTransactionType } from "@/lib/transaction-type-routing";
+import { BRAND_STATUS_LABELS } from "@/lib/brand-labels";
 import {
   ArrowRight,
   ArrowLeft,
@@ -1129,9 +1130,9 @@ export default function NewListingPage() {
                                             {r.nameEn}
                                           </p>
                                         )}
-                                        {r.status && ["LEGACY", "HISTORICAL", "DISCONTINUED"].includes(r.status) && (
-                                          <span className="mt-1 inline-flex rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-0.5 text-[9px] font-bold text-amber-300">
-                                            {r.status === "LEGACY" ? "برند میراثی" : r.status === "HISTORICAL" ? "برند تاریخی" : "تولید متوقف‌شده"}
+                                        {r.status && r.status !== "ACTIVE" && BRAND_STATUS_LABELS[r.status]?.label && (
+                                          <span className="mt-1 inline-flex rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-bold text-white/60">
+                                            {BRAND_STATUS_LABELS[r.status].label}
                                           </span>
                                         )}
                                       </div>
