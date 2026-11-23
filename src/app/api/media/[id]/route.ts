@@ -59,11 +59,11 @@ export async function GET(_request: Request, { params }: RouteContext) {
     } else if (isPartAsset && asset.status === "ACTIVE" && asset.visibility === "PUBLIC") {
       // Backward compatibility for older Part images already stored as public assets.
       const part = await storeDb.part.findFirst({
-        where: { active: true, images: { contains: asset.url } },
-        select: { id: true },
+        where: { images: { contains: asset.url } },
+        select: { id: true, active: true },
       });
       partExists = !!part;
-      isPublic = !!part;
+      isPublic = part?.active === true;
     }
     if (isBuyRequestAsset && asset.status === "ATTACHED" && asset.entityId) {
       const buyRequest = await db.buyRequest.findUnique({

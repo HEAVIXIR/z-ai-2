@@ -41,6 +41,7 @@ export async function validatePartImageUrls(
   userId: string,
   partId?: string,
   allowedExistingUrls: string[] = [],
+  allowStagedOwnerOverride = false,
 ): Promise<PartMediaValidation> {
   const staged: MediaAsset[] = [];
   for (const url of urls) {
@@ -74,7 +75,7 @@ export async function validatePartImageUrls(
       asset.status === "STAGED" &&
       asset.visibility === "PRIVATE" &&
       asset.entityId === null &&
-      asset.uploadedBy === userId &&
+      (asset.uploadedBy === userId || allowStagedOwnerOverride) &&
       asset.relativePath.includes("/staging/");
 
     if (!ownedStagedAsset) {

@@ -117,8 +117,8 @@ describe("Store Part media public-read lifecycle", () => {
     const response = await GET(request(), context());
     expect(response.status).toBe(302);
     expect(mocks.partFindFirst).toHaveBeenCalledWith({
-      where: { active: true, images: { contains: assetUrl } },
-      select: { id: true },
+      where: { images: { contains: assetUrl } },
+      select: { id: true, active: true },
     });
   });
 });

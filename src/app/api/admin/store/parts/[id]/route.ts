@@ -193,20 +193,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       },
     });
 
-    const mediaResult = await attachStagedPartImages(stagedMediaAssets, part.id, user.id);
-    let mediaCleanupPendingCount = 0;
-    if (nextImageUrls) {
-      const removedUrls = parseStoredPartImageUrls(existing.images).filter((url) => !nextImageUrls!.includes(url));
-      const cleanupResult = await cleanupPartMediaUrls(removedUrls, id, user.id);
-      mediaCleanupPendingCount = cleanupResult.pendingCount;
-    }
-    return NextResponse.json({
-      success: true,
-      data: serialize(part),
-      mediaStatus: mediaResult.pendingCount > 0 ? "PENDING" : "ATTACHED",
-      mediaPendingCount: mediaResult.pendingCount,
-      mediaCleanupPendingCount,
-    });
+    return NextResponse.json({ success: true, data: serialize(part) });
   } catch (e: any) {
     console.error("[store/parts PATCH] error:", e);
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
