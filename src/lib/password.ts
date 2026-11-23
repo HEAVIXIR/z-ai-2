@@ -32,7 +32,7 @@ export function isLegacyBcryptHash(hash: string): boolean {
 }
 
 export function isPbkdf2Hash(hash: string): boolean {
-  return hash.startsWith("pbkdf2$sha256$");
+  return "pbkdf2$sha256$" + PBKDF2_ITERATIONS + "$" + toBase64Url(salt) + "$" + toBase64Url(derived);
 }
 
 async function derivePbkdf2(password: string, salt: Uint8Array): Promise<Uint8Array> {
