@@ -129,15 +129,19 @@ export async function PUT(
 
       // STRICT match: only fall back when Prisma explicitly complains
       // about the compound unique constraint field `brandId_type`.
-      // This is the ONLY case where upsert cannot work because the
-      // schema lacks @@unique([brandId, type]).
+      // The fallback is ONLY allowed for these exact code+message combos:
+      //   P2004 + message contains "brandId_type"
+      //   P2009 + message contains "brandId_type"
+      // No regex, no blanket matching. Every other error code — including
+      // P2021 (table missing), P1001 (connection), P2028 (timeout),
+      // P2002 (unique violation), P2003 (FK violation) — propagates
+      // WITHOUT touching the old logo row, even if the message happens
+      // to contain "brandId_type" or "Unknown field".
       const isCompoundFieldMissing =
         msg.includes("brandId_type") &&
-        (code === "P2004" || code === "P2009" || /unknown.*field|unknown.*argument/i.test(msg));
+        (code === "P2004" || code === "P2009");
 
       if (!isCompoundFieldMissing) {
-        // Connection error, timeout, table missing, constraint violation,
-        // or any other error — do NOT touch the old logo row.
         throw upsertErr;
       }
 

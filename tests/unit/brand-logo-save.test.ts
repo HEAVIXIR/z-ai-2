@@ -191,6 +191,23 @@ describe("PUT /api/admin/brands/[id]/logo", () => {
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
+  it("does NOT fall back for P2021 even when message contains brandId_type + Unknown field", async () => {
+    // This is the edge case the manager identified: P2021 + brandId_type +
+    // 'Unknown field' in message. The old regex would have matched this,
+    // but the new strict condition only allows P2004 and P2009.
+    const err = Object.assign(
+      new Error("Unknown field `brandId_type` — table does not exist"),
+      { code: "P2021" },
+    );
+    mocks.brandMediaUpsert.mockRejectedValue(err);
+
+    const [req, ctx] = makeRequest({ logoUrl: "https://x.com/l.png", source: "AI_SEARCH" });
+    const res = await PUT(req as any, ctx);
+    expect(res.status).toBe(500);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.brandMediaDeleteMany).not.toHaveBeenCalled();
+  });
+
   it("does NOT fall back for P2009 without brandId_type in message", async () => {
     const err = Object.assign(new Error("Unknown argument `foo`"), { code: "P2009" });
     mocks.brandMediaUpsert.mockRejectedValue(err);
@@ -375,6 +392,7 @@ describe("PUT /api/admin/brands/[id]/logo", () => {
       { code: "P1001", msg: "Connection lost", shouldFallback: false },
       { code: "P2028", msg: "Timeout", shouldFallback: false },
       { code: "P2021", msg: "Table does not exist", shouldFallback: false },
+      { code: "P2021", msg: "Unknown field `brandId_type` — table missing", shouldFallback: false },
       { code: "P2009", msg: "Unknown argument `foo`", shouldFallback: false },
       { code: "P2002", msg: "Unique constraint violation", shouldFallback: false },
       { code: "P2003", msg: "Foreign key constraint", shouldFallback: false },
