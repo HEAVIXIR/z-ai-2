@@ -28,6 +28,7 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { getActiveStats } from "@/lib/site-stats";
 import HomepageSectionFrame from "@/components/home/HomepageSectionFrame";
 import { mergeHomepageSections } from "@/lib/homepage/sections";
+import { selectVerifiedListings } from "@/lib/homepage/verified-selection";
 import { withHomepageQueryDiagnostics } from "@/lib/homepage-query-diagnostics";
 import {
   getCachedTopBrands,
@@ -79,15 +80,18 @@ export default async function HomePage() {
   // the sequential round-trips from 3 to 2 (batch 3 depends on
   // results from batch 1+2, so it must remain separate).
   //
-  // REGRESSION FIX: The listing.verified query previously depended on
-  // siteSettings.verifiedSectionVerifiedOnly, which is inside the same
-  // Promise.all. To preserve the admin-configured behavior WITHOUT
-  // adding a sequential round-trip, the query now fetches ALL published
-  // supply listings (no verified filter) and the filtering is applied
-  // in JavaScript after the Promise.all resolves. This adds zero PPG
-  // round-trips while preserving the admin's verified-only setting.
+  // DETERMINISTIC VERIFIED SECTION: The verified section uses TWO
+  // parallel queries inside this Promise.all — one strict (verified:true,
+  // take:8) and one inclusive (no verified filter, take:8). The admin
+  // setting siteSettings.verifiedSectionVerifiedOnly selects which set
+  // is rendered AFTER the Promise.all resolves. This preserves the
+  // admin-configured behavior WITHOUT adding a sequential round-trip,
+  // AND eliminates the prior pool-of-20 limitation where fewer than 8
+  // verified listings could appear when the newest 20 published listings
+  // were mostly unverified. Each query already constrains take:8 at the
+  // DB level, so the result is deterministic.
   const [allBrands, allCategories, homeCategoryConfigRow, siteSettings,
-    featuredRows, verifiedCandidateRows, latestRows,
+    featuredRows, verifiedStrictRows, verifiedInclusiveRows, latestRows,
     activeListings, brandCount, categoryCount, featuredCount,
     requestRows, articleRows, hotSearchRows, homeSections, heroConfig,
   ] = await Promise.all([
@@ -101,13 +105,24 @@ export default async function HomePage() {
       take: 8,
       include: listingInclude,
     })),
-    // Fetch a larger pool of recent published listings; the verified-only
-    // filter is applied in JS after siteSettings resolves. take: 20 gives
-    // enough headroom for both verified-only and verified-inclusive modes.
-    withHomepageQueryDiagnostics("listing.verified-pool", () => db.listing.findMany({
+    // DETERMINISTIC verified section — two parallel queries replace the
+    // fixed 20-row pool. The strict query filters verified:true at the DB
+    // level (take:8); the inclusive query has no verified filter (take:8).
+    // The admin setting selects which set is used after siteSettings
+    // resolves (see selectVerifiedListings below) — no sequential
+    // round-trip added. This eliminates the pool-of-20 limitation where
+    // fewer than 8 verified listings appeared when the newest 20 were
+    // mostly unverified.
+    withHomepageQueryDiagnostics("listing.verified-strict", () => db.listing.findMany({
+      where: { status: "PUBLISHED", verified: true, listingType: { in: [...SUPPLY_LISTING_TYPES] } },
+      orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
+      take: 8,
+      include: listingInclude as any,
+    })),
+    withHomepageQueryDiagnostics("listing.verified-inclusive", () => db.listing.findMany({
       where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
-      take: 20,
+      take: 8,
       include: listingInclude as any,
     })),
     withHomepageQueryDiagnostics("listing.latest", () => db.listing.findMany({
@@ -132,14 +147,16 @@ export default async function HomePage() {
     parentId: homeCategoryConfigRow?.homeCategoryParentId ?? null,
   };
   const verifiedOnlyFlag = siteSettings?.verifiedSectionVerifiedOnly ?? true;
-  // Apply the admin-configured verified filter in JS. When verifiedOnly=true,
-  // only verified listings are shown. When false, all published listings
-  // from the pool are shown (same behavior as the original SQL filter).
-  const verifiedRows = verifiedOnlyFlag
-    ? verifiedCandidateRows.filter((r) => r.verified)
-    : verifiedCandidateRows;
-  // Trim to the original take: 8 after filtering.
-  const verifiedRowsTrimmed = verifiedRows.slice(0, 8);
+  // Select the deterministic verified-section listings based on the admin
+  // setting. Both candidate sets were already fetched in parallel (batch 1)
+  // and constrained to take:8 at the DB level — no JS filtering or slicing
+  // is needed. This guarantees 8 cards (or fewer only when the DB genuinely
+  // has fewer qualifying rows).
+  const verifiedRowsTrimmed = selectVerifiedListings(
+    verifiedStrictRows,
+    verifiedInclusiveRows,
+    verifiedOnlyFlag,
+  );
   const resolvedHomeSections = mergeHomepageSections(homeSections);
 
   /* Run all independent post-configuration reads concurrently.
