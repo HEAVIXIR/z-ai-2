@@ -4,6 +4,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { can } from "@/lib/authorization";
 import { getAsset } from "@/lib/media-service";
 import { createB2MediaReadUrl } from "@/lib/b2-media-storage";
+import { storeDb } from "@/lib/store-db";
+import { parseStoredPartImageUrls } from "@/lib/store-part-media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,9 +27,11 @@ export async function GET(_request: Request, { params }: RouteContext) {
     // BuyRequest media must follow the request's full public-visibility
     // predicate; a sidecar visibility flag alone must never bypass moderation.
     const isBuyRequestAsset = asset.entityType === "BuyRequest";
-    let isPublic = !isBuyRequestAsset && asset.visibility === "PUBLIC";
+    const isPartAsset = asset.entityType === "Part";
+    let isPublic = !isBuyRequestAsset && !isPartAsset && asset.visibility === "PUBLIC";
     let listingOwnerId: string | null = null;
     let buyRequestOwnerId: string | null = null;
+    let partExists = false;
     if (!isPublic && asset.entityType === "Listing") {
       const listingImage = await db.listingImage.findFirst({
         where: { url: asset.url },
@@ -42,6 +46,17 @@ export async function GET(_request: Request, { params }: RouteContext) {
     // The sidecar's entity reference is authoritative only after attachAsset
     // has moved the asset to ATTACHED; an unassociated staged upload is never
     // made public by a guessed or client-supplied entityId.
+    if (isPartAsset && asset.status === "ATTACHED" && asset.entityId) {
+      const part = await storeDb.part.findUnique({
+        where: { id: asset.entityId },
+        select: { active: true, images: true },
+      });
+      if (part) {
+        partExists = true;
+        const referenced = parseStoredPartImageUrls(part.images).includes(asset.url);
+        isPublic = part.active === true && referenced;
+      }
+    }
     if (isBuyRequestAsset && asset.status === "ATTACHED" && asset.entityId) {
       const buyRequest = await db.buyRequest.findUnique({
         where: { id: asset.entityId },
@@ -76,10 +91,13 @@ export async function GET(_request: Request, { params }: RouteContext) {
       const isRequestReviewer = !!user && isBuyRequestAsset && !!buyRequestOwnerId
         ? await can(user.id, "request.read")
         : false;
+      const isStoreReader = !!user && isPartAsset && partExists
+        ? await can(user.id, "store.read")
+        : false;
       const isMediaAdmin = !!user && !isOwner
         ? await can(user.id, "media.read")
         : false;
-      if (!isOwner && !isMediaAdmin && !isRequestReviewer) {
+      if (!isOwner && !isMediaAdmin && !isRequestReviewer && !isStoreReader) {
         // Avoid leaking the existence of staged/private media.
         return new NextResponse(null, { status: 404 });
       }

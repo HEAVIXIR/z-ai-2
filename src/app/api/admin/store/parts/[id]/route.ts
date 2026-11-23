@@ -4,6 +4,7 @@ import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
+import { attachStagedPartImages, cleanupPartMediaUrls, parsePartImageUrls, parseStoredPartImageUrls, validatePartImageUrls } from "@/lib/store-part-media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,7 +73,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
     });
     if (!part) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
-    return NextResponse.json({ success: true, data: serialize(part) });
+    const mediaResult = await attachStagedPartImages(stagedMediaAssets, part.id, user.id);
+    let mediaCleanupPendingCount = 0;
+    if (nextImageUrls) {
+      const removedUrls = parseStoredPartImageUrls(existing.images).filter((url) => !nextImageUrls!.includes(url));
+      const cleanup = await cleanupPartMediaUrls(removedUrls, id, user.id);
+      mediaCleanupPendingCount = cleanup.pendingCount;
+    }
+    return NextResponse.json({
+      success: true,
+      data: serialize(part),
+      mediaStatus: mediaResult.pendingCount > 0 ? "PENDING" : "ATTACHED",
+      mediaPendingCount: mediaResult.pendingCount,
+      mediaCleanupPendingCount,
+    });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
   }
@@ -114,6 +128,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const data: any = {};
+    let nextImageUrls: string[] | null = null;
+    let stagedMediaAssets: import("@/lib/media-service").MediaAsset[] = [];
+    if (Object.prototype.hasOwnProperty.call(body, "images")) {
+      const parsedImages = parsePartImageUrls(body.images);
+      if (!parsedImages) {
+        return NextResponse.json({ success: false, error: "فهرست تصاویر نامعتبر است؛ فقط ۲۰ تصویر داخلی رسانه مجاز است." }, { status: 400 });
+      }
+      const validation = await validatePartImageUrls(parsedImages, user.id, id);
+      if (!validation.ok) {
+        return NextResponse.json({ success: false, error: validation.error }, { status: validation.status });
+      }
+      nextImageUrls = parsedImages;
+      stagedMediaAssets = validation.staged;
+      data.images = JSON.stringify(parsedImages);
+    }
     if (body.name !== undefined) data.name = body.name;
     if (body.nameFa !== undefined) data.nameFa = body.nameFa || null;
     if (body.sku !== undefined) data.sku = body.sku;
@@ -124,7 +153,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.oldPriceUsd !== undefined) data.oldPriceUsd = body.oldPriceUsd ? Number(body.oldPriceUsd) : null;
     if (body.contactForPrice !== undefined) data.contactForPrice = !!body.contactForPrice;
     if (body.lowStockThreshold !== undefined) data.lowStockThreshold = Number(body.lowStockThreshold) || 5;
-    if (body.images !== undefined) data.images = JSON.stringify(body.images || []);
+
     if (body.compatibleCars !== undefined) data.compatibleCars = JSON.stringify(body.compatibleCars || []);
     if (body.sourceUrl !== undefined) data.sourceUrl = body.sourceUrl || null;
     if (body.active !== undefined) data.active = !!body.active;
@@ -187,6 +216,16 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   try {
     const existing = await storeDb.part.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
+    const existingImageUrls = parseStoredPartImageUrls(existing.images);
+    const cleanup = await cleanupPartMediaUrls(existingImageUrls, id, user.id);
+    if (cleanup.pendingCount > 0) {
+      await storeDb.part.update({ where: { id }, data: { images: JSON.stringify(cleanup.pendingUrls) } });
+      return NextResponse.json({
+        success: false,
+        error: "حذف قطعه تا پایان پاکسازی تصاویر متصل کامل نشد؛ دوباره تلاش کنید.",
+        mediaCleanupPendingCount: cleanup.pendingCount,
+      }, { status: 503 });
+    }
     await storeDb.part.delete({ where: { id } });
 
     await logAudit({

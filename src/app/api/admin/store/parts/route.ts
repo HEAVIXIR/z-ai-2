@@ -5,6 +5,7 @@ import { requirePermission } from "@/lib/authorization";
 import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
 import { readBoundedJson } from "@/lib/read-bounded-json";
+import { attachStagedPartImages, parsePartImageUrls, validatePartImageUrls } from "@/lib/store-part-media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -183,7 +184,7 @@ export async function POST(req: Request) {
   const parsedLowStockThreshold = boundedNumber(body.lowStockThreshold, { optional: true, integer: true });
   const stock = parsedStock ?? 0;
   const lowStockThreshold = parsedLowStockThreshold ?? 5;
-  const images = boundedStringArray(body.images, 20, 2000);
+  const images = parsePartImageUrls(body.images);
   const compatibleCars = boundedStringArray(body.compatibleCars, 100, 160);
   const active = body.active === undefined ? true : body.active;
   const featured = body.featured === undefined ? false : body.featured;
@@ -207,7 +208,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: "وضعیت فعال یا ویژه نامعتبر است." }, { status: 400 });
   }
   if (!images || !compatibleCars) {
-    return NextResponse.json({ success: false, error: "فهرست تصاویر یا خودروهای سازگار نامعتبر است." }, { status: 400 });
+    return NextResponse.json({ success: false, error: "فهرست تصاویر یا خودروهای سازگار نامعتبر است. تصاویر باید URL داخلی رسانه باشند و حداکثر ۲۰ مورد ثبت شوند." }, { status: 400 });
+  }
+  const mediaValidation = await validatePartImageUrls(images, user.id);
+  if (!mediaValidation.ok) {
+    return NextResponse.json({ success: false, error: mediaValidation.error }, { status: mediaValidation.status });
   }
   if (sourceUrl && !safeHttpUrl(sourceUrl)) {
     return NextResponse.json({ success: false, error: "آدرس منبع باید یک URL معتبر HTTP یا HTTPS باشد." }, { status: 400 });
@@ -277,7 +282,13 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ success: true, data: serialize(part) }, { status: 201 });
+    const mediaResult = await attachStagedPartImages(mediaValidation.staged, part.id, user.id);
+    return NextResponse.json({
+      success: true,
+      data: serialize(part),
+      mediaStatus: mediaResult.pendingCount > 0 ? "PENDING" : "ATTACHED",
+      mediaPendingCount: mediaResult.pendingCount,
+    }, { status: 201 });
   } catch (e) {
     console.error("[store/parts POST] failed:", e);
     return NextResponse.json(
