@@ -12,6 +12,7 @@ This work is tracked as six parallel, independently verifiable workstreams again
 - The listing wizard consumes `TransactionTypePicker`; its canonical Persian label already includes `SERVICE_OFFER` / «ارائه خدمت».
 - The desktop picker grid had six columns despite seven canonical choices; changed to seven columns.
 - The seed header incorrectly said six transaction types; corrected to seven.
+- The CI phase-catalog fixture also seeded only six types. It now seeds `SERVICE_OFFER` as the seventh type and verifies at least seven active transaction types.
 - The bootstrap verifier and Phase 1 hardening test previously did not require all seven active keys. They now assert all seven canonical keys, including `SERVICE_OFFER`.
 
 ### 2. Dynamic technical attributes
@@ -48,6 +49,7 @@ This work is tracked as six parallel, independently verifiable workstreams again
 
 - `src/components/listings/TransactionTypePicker.tsx`: seven-column desktop layout.
 - `prisma/seed-taxonomy-v11.ts`: correct seven-type seed documentation.
+- `prisma/seed-phase-catalog.ts`: bring the CI fixture and its final verification up to all seven canonical active transaction types.
 - `tests/phase1-hardening.test.ts`: require all seven active canonical transaction keys.
 - `scripts/verify-taxonomy-bootstrap.ts`: verify seven active transaction keys, location catalog presence/size, and active direct excavator attribute links.
 - `src/components/listings/LocationPicker.tsx` + `next.config.ts`: display a marker preview for valid exact coordinates and allow the OSM frame under a narrowly scoped CSP directive.
