@@ -40,10 +40,15 @@ describe("HEAVIX global brand registry integration", () => {
 
   it("uses the canonical brand create page and searches admin records by aliases", () => {
     const admin = read("src/app/admin/taxonomy/brands/page.tsx");
-    expect(admin).toContain('href="/admin/taxonomy/brands/new"');
+    expect(admin).toContain('href="/admin/brands/new"');
     expect(admin).toContain("normalizedValue: { contains: normalizedQ }");
     const placeholder = read("src/app/admin/brands/new/page.tsx");
-    expect(placeholder).toContain('redirect("/admin/taxonomy/brands")');
+    expect(placeholder).toContain('redirect("/admin/taxonomy/brands/new")');
+    const nav = read("src/components/admin/BrandManagementNav.tsx");
+    expect(nav).toContain('href: "/admin/brands"');
+    const sidebarSeed = read("prisma/seed-admin-navigation.ts");
+    expect(sidebarSeed).toContain("مرکز مدیریت برندها");
+    expect(sidebarSeed).not.toContain("خانواده برندها");
   });
 
   it("makes explicit homepage display choices override legacy featured flags", () => {
