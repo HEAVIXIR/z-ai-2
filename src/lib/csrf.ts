@@ -22,8 +22,10 @@ function toOrigin(value: string | null | undefined): string | null {
 /**
  * Build the allowlist only from deployment configuration and explicitly
  * trusted deployment origins, never from incoming request URL/Host headers.
- * The Cloudflare branch Preview origin is exact and scoped to this Preview;
- * do not replace it with a workers.dev wildcard or trust arbitrary hosts.
+ *
+ * Cloudflare Workers branch previews must set HEAVIX_PREVIEW_ORIGIN to their
+ * exact HTTPS origin. Do not infer it from Host or allow a workers.dev
+ * wildcard: Vercel and Cloudflare previews are separate browser origins.
  */
 function allowedOrigins(): Set<string> {
   const allowed = new Set<string>();
@@ -31,18 +33,11 @@ function allowedOrigins(): Set<string> {
     process.env.HEAVIX_PREVIEW_URL,
     process.env.NEXTAUTH_URL,
     process.env.NEXT_PUBLIC_SITE_URL,
-    // Explicit, exact Cloudflare branch-preview origin; never infer from Host.
     process.env.HEAVIX_PREVIEW_ORIGIN,
     process.env.VERCEL_URL,
     process.env.VERCEL_BRANCH_URL,
     process.env.VERCEL_PROJECT_PRODUCTION_URL,
   ];
-
-  // Exact Cloudflare Preview origin only when this Worker is explicitly marked
-  // as Preview. Never trust arbitrary workers.dev subdomains.
-  if (process.env.HEAVIX_ENV === "preview") {
-    allowed.add("https://heavix-preview.heavixir.workers.dev");
-  }
 
   for (const value of configured) {
     if (!value) continue;
