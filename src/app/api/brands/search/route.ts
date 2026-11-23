@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { searchBrands } from "@/lib/search";
 import { db } from "@/lib/db";
+import { BRAND_UNAVAILABLE_STATUSES } from "@/lib/brand-labels";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
     const brands = rawQ
       ? await searchBrands(rawQ, { take: 20 })
       : await db.brand.findMany({
-          where: { active: true },
+          where: { active: true, status: { notIn: [...BRAND_UNAVAILABLE_STATUSES] } },
           take: 20,
           orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
           select: {
