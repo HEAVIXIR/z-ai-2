@@ -127,10 +127,25 @@ export async function withHomepageQueryDiagnostics<T>(
   queryName: string,
   operation: () => T | PromiseLike<T>,
 ): Promise<Awaited<T>> {
+  const startedAt = Date.now();
   try {
-    return await operation();
+    const result = await operation();
+    const durationMs = Date.now() - startedAt;
+    // Emit only bounded query labels and duration; never log SQL, parameters,
+    // row data, user data, connection strings, or raw errors.
+    if (durationMs >= 250) {
+      console.warn("[homepage-db-query-slow]", {
+        query: safeString(queryName, SAFE_QUERY_NAME) ?? "homepage.unknown",
+        durationMs,
+      });
+    }
+    return result;
   } catch (error) {
-    console.error("[homepage-db-query-failed]", sanitizeHomepageQueryError(queryName, error));
+    const durationMs = Date.now() - startedAt;
+    console.error("[homepage-db-query-failed]", {
+      ...sanitizeHomepageQueryError(queryName, error),
+      durationMs,
+    });
     throw error;
   }
 }
