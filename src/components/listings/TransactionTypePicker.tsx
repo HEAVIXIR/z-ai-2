@@ -62,7 +62,7 @@ export default function TransactionTypePicker({
         const normalized = received.map((item) => ({
           ...item,
           nameFa: canonicalLabels[item.key] ?? item.nameFa,
-          icon: canonicalIcons[item.key] ?? item.icon,
+          icon: canonicalIcons[item.key] ?? item.icon ?? ICON_FALLBACK[item.key] ?? "🛒",
         }));
         if (!normalized.some((item) => item.key === "WANTED")) normalized.push(wanted);
         setTypes(normalized.sort((a, b) => a.sortOrder - b.sortOrder));

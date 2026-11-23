@@ -259,7 +259,6 @@ export default function NewListingPage() {
       setBrandResults([]);
       setBrandLoading(false);
       setBrandError(null);
-      setBrandOpen(false);
       brandAbort.current?.abort();
       return;
     }
@@ -1033,7 +1032,7 @@ export default function NewListingPage() {
                               // Text in this field is a search query, never a new Brand.
                               setForm((f) => ({ ...f, brandLabel: "" }));
                             }}
-                            onFocus={() => setBrandOpen(Boolean(brandQuery.trim()))}
+                            onFocus={() => setBrandOpen(true)}
                             placeholder="نام برند را فارسی یا انگلیسی تایپ کنید…"
                             className={`${inputCls} pr-9`}
                             aria-label="جستجوی برند"
@@ -1076,9 +1075,13 @@ export default function NewListingPage() {
                           </div>
                         )}
 
-                        {brandOpen && brandQuery.trim() && (
+                        {brandOpen && (
                           <div className="absolute z-50 mt-2 max-h-72 w-full overflow-y-auto rounded-2xl border border-white/10 bg-[#0f0f0f] shadow-[0_25px_60px_rgba(0,0,0,.6)]">
-                            {brandResults.length === 0 ? (
+                            {!brandQuery.trim() ? (
+                              <div className="p-4 text-center text-xs text-white/50">
+                                برای نمایش برندها، نام برند را فارسی یا انگلیسی تایپ کنید. برند جدید فقط توسط مدیریت به فهرست مرکزی افزوده می‌شود.
+                              </div>
+                            ) : brandResults.length === 0 ? (
                               <div className="p-4 text-center text-xs text-white/50">
                                 برندی پیدا نشد. املای فارسی یا انگلیسی را بررسی کنید؛ برای افزودن برند جدید باید مدیر آن را به فهرست مرکزی اضافه کند.
                               </div>
