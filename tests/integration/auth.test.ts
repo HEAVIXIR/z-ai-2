@@ -84,8 +84,8 @@ describe("password hash/verify cycle (user auth path)", () => {
   it("round-trips a typical user password", async () => {
     const pw = "MyP@ssword123";
     const hash = await hashPassword(pw);
-    // Hash is bcrypt format.
-    expect(hash.startsWith("$2")).toBe(true);
+    // New hashes use the Worker-compatible WebCrypto PBKDF2 format.
+    expect(hash.startsWith("pbkdf2$sha256$600000$")).toBe(true);
     // Verify accepts the original password.
     expect(await verifyPassword(pw, hash)).toBe(true);
     // Verify rejects a near-miss.
@@ -126,7 +126,7 @@ describe.skip("SPEC: register → verify-email → login flow", () => {
     //    mobile, password, userType } — body.role MUST be ignored
     //    and forced to "BUYER" (HEAVIX Principle 4 + P0-2).
     // 2. Verify User row exists with role="BUYER", emailVerified=false,
-    //    verificationDeadline ≈ now + 7d, passwordHash startsWith "$2".
+    //    verificationDeadline ≈ now + 7d, passwordHash startsWith "pbkdf2$sha256$".
     // 3. Verify the password is NOT stored in plaintext — i.e. the
     //    raw password string is NOT present in the DB.
     // 4. Verify a Session row was created and a HttpOnly cookie set.
