@@ -26,7 +26,7 @@
      bun run db:seed-user-roles
 */
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import { hashPassword } from "../src/lib/password";
 
 const db = new PrismaClient();
 
@@ -108,10 +108,10 @@ async function main() {
   });
 
   // 2. If none, create one so RBAC is exercisable through the user-session
-  //    path too (the legacy admin-cookie path will keep working regardless).
+  //    path too (the canonical user-session path is the only supported admin auth path).
   if (!adminUser) {
     console.log(`  • No admin user found; creating one with mobile ${ADMIN_MOBILE} …`);
-    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD!, 10);
+    const passwordHash = await hashPassword(ADMIN_PASSWORD!);
     adminUser = await db.user.create({
       data: {
         firstName: "HEAVIX",
