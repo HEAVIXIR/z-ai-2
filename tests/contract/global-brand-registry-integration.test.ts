@@ -63,6 +63,15 @@ describe("HEAVIX global brand registry integration", () => {
     expect(featuredFeed).toContain('return NextResponse.json({ brands: [] });');
   });
 
+  it("uses one canonical type, status, and verification vocabulary in brand create/edit", () => {
+    const create = read("src/app/admin/taxonomy/brands/new/CreateBrandForm.tsx");
+    const edit = read("src/app/admin/taxonomy/brands/[id]/BrandControlCenter.tsx");
+    expect(create).toContain('type: "MACHINE_BRAND"');
+    expect(create).toContain('Object.keys(BRAND_TYPE_LABELS).filter((type) => type !== "BRAND_FAMILY")');
+    expect(edit).toContain("Object.keys(BRAND_TYPE_LABELS)");
+    expect(edit).toContain("Object.keys(BRAND_STATUS_LABELS)");
+    expect(edit).toContain("Object.keys(VERIFICATION_LABELS)");
+  });
   it("protects family and homepage brand mutations with CSRF checks", () => {
     const family = read("src/app/api/brand-families/route.ts");
     const familyId = read("src/app/api/brand-families/[id]/route.ts");
