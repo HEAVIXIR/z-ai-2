@@ -201,7 +201,7 @@ export default async function TaxonomyBrandsPage({
         <div className="flex flex-wrap items-center gap-2">
           <BatchLogoSearchButton />
           <Link
-            href="/admin/taxonomy/brands/new"
+            href="/admin/brands/new"
             className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#F58220] px-6 text-sm font-bold text-white transition hover:bg-[#ff8c38]"
           >
             + برند جدید
