@@ -136,7 +136,7 @@ export const ADMIN_NAVIGATION_STANDALONES: Standalone[] = [
   { key: 'dashboard', titleFa: 'داشبورد', href: '/admin/dashboard', icon: 'LayoutDashboard', sortOrder: 0, permissionKey: 'admin.dashboard.read' },
   { key: 'listings', titleFa: 'آگهی‌ها', href: '/admin/listings', icon: 'Megaphone', sortOrder: 2, permissionKey: 'listing.read' },
   { key: 'companies', titleFa: 'شرکت‌ها', href: '/admin/companies', icon: 'Building2', sortOrder: 3, permissionKey: 'company.read' },
-  { key: 'brand-center', titleFa: 'مدیریت برندها', href: '/admin/brands', icon: 'Building2', sortOrder: 3.25, permissionKey: 'brand.read' },
+  { key: 'brand-center', titleFa: 'مدیریت برندها', href: '/admin/brands', icon: 'Building2', sortOrder: 4, permissionKey: 'brand.read' },
   { key: 'subscriptions', titleFa: 'اشتراک‌ها', href: '/admin/subscriptions', icon: 'Crown', sortOrder: 9, permissionKey: 'subscription.read' },
   { key: 'users', titleFa: 'کاربران', href: '/admin/users', icon: 'Users', sortOrder: 10, permissionKey: 'user.read' },
   { key: 'sellers', titleFa: 'فروشندگان', href: '/admin/sellers', icon: 'Store', sortOrder: 10.25, permissionKey: 'user.read' },
