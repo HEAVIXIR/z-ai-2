@@ -63,11 +63,11 @@ export default async function AdminBrandsHubPage() {
         {counts ? (
           <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
             {[
-              ["کل برندها", counts.total, Database],
-              ["فعال", counts.active, Building2],
-              ["تأییدشده", counts.verified, ShieldCheck],
-              ["خانواده‌ها", counts.families, FolderTree],
-            ].map(([label, value, Icon]: any) => (
+              { label: "کل برندها", value: counts.total, Icon: Database },
+              { label: "فعال", value: counts.active, Icon: Building2 },
+              { label: "تأییدشده", value: counts.verified, Icon: ShieldCheck },
+              { label: "خانواده‌ها", value: counts.families, Icon: FolderTree },
+            ].map(({ label, value, Icon }) => (
               <div key={label} className="rounded-2xl bg-zinc-50 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold text-zinc-500"><Icon className="h-4 w-4" />{label}</div>
                 <p className="mt-2 text-2xl font-black tabular-nums text-zinc-900">{toFa(value)}</p>
