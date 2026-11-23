@@ -67,9 +67,6 @@ const cspDirectives = [
   "object-src 'none'",
   // Disallow workers/sharedworkers from blob: (defense-in-depth).
   "worker-src 'self'",
-  // The listing wizard embeds an OpenStreetMap point preview after valid
-  // user-entered coordinates; keep all other third-party framing blocked.
-  "frame-src 'self' https://www.openstreetmap.org",
   "manifest-src 'self'",
 ].join("; ");
 
