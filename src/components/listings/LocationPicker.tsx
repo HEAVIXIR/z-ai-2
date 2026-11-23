@@ -60,6 +60,31 @@ export default function LocationPicker({
   const [provinceRetry, setProvinceRetry] = useState(0);
   const [cityRetry, setCityRetry] = useState(0);
 
+  const latitude = value.latitude?.trim() ? Number(value.latitude) : NaN;
+  const longitude = value.longitude?.trim() ? Number(value.longitude) : NaN;
+  const hasValidExactPoint =
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    longitude >= -180 &&
+    longitude <= 180;
+  const mapDelta = 0.01;
+  const mapBounds = hasValidExactPoint
+    ? [
+        (longitude - mapDelta).toFixed(6),
+        (latitude - mapDelta).toFixed(6),
+        (longitude + mapDelta).toFixed(6),
+        (latitude + mapDelta).toFixed(6),
+      ].join(",")
+    : "";
+  const exactPointMapUrl = hasValidExactPoint
+    ? `https://www.openstreetmap.org/export/embed.html?bbox=${mapBounds}&layer=mapnik&marker=${latitude},${longitude}`
+    : "";
+  const exactPointOpenUrl = hasValidExactPoint
+    ? `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=15/${latitude}/${longitude}`
+    : "";
+
   // 1) Load country list (default to ایران)
   useEffect(() => {
     let alive = true;
@@ -350,9 +375,37 @@ export default function LocationPicker({
           <p role="alert" className="mt-2 text-xs text-red-300">برای ثبت نقطهٔ دقیق، هر دو مختصات عرض و طول باید وارد شوند.</p>
         )}
         {value.latitude?.trim() && value.longitude?.trim() && (
-          <p className="mt-2 text-[11px] text-emerald-300">
-            نقطهٔ واردشده: {value.latitude} ، {value.longitude}
-          </p>
+          hasValidExactPoint ? (
+            <>
+              <p className="mt-2 text-[11px] text-emerald-300">
+                نقطهٔ واردشده: {latitude.toFixed(6)} ، {longitude.toFixed(6)}
+              </p>
+              <div className="mt-3 overflow-hidden rounded-xl border border-white/10">
+                <iframe
+                  title="پیش‌نمایش موقعیت دقیق روی نقشه"
+                  src={exactPointMapUrl}
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  className="h-64 w-full border-0"
+                />
+              </div>
+              <a
+                href={exactPointOpenUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex text-[11px] font-bold text-[#F58220] underline underline-offset-4"
+              >
+                بازکردن نقطه در نقشهٔ کامل
+              </a>
+              <p className="mt-2 text-[10px] leading-5 text-white/40">
+                این نقشه پیش‌نمایش مختصات واردشده است؛ نشانگر را از این پنجره نمی‌توان جابه‌جا کرد. برای تغییر نقطه، مختصات بالا را اصلاح کنید.
+              </p>
+            </>
+          ) : (
+            <p role="alert" className="mt-2 text-xs text-red-300">
+              مختصات واردشده خارج از محدودهٔ معتبر جغرافیایی است.
+            </p>
+          )
         )}
       </div>
       )}

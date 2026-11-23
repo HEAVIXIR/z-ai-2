@@ -11,8 +11,9 @@
  * 6. Duplicate slug prevention
  * 7. Orphan category prevention
  * 8. Circular parent prevention
- * 9. Attribute type system — all 12 types have correct field mapping
- * 10. Attribute option loading — SELECT/MULTI_SELECT options returned
+ * 9. Transaction types — all 7 canonical active keys are present
+ * 10. Attribute type system — all 12 types have correct field mapping
+ * 11. Attribute option loading — SELECT/MULTI_SELECT options returned
  *
  * Run: bun test tests/phase1-hardening.test.ts
  */
@@ -192,13 +193,23 @@ describe("Phase 1.5 — Hardening Tests", () => {
       expect(txTypes).toBeGreaterThan(0);
     });
 
-    it("should have 6 transaction types (SALE, RENT, WANTED, QUOTE, AUCTION, SERVICE_REQUEST)", async () => {
-      const txTypes = await db.transactionType.findMany();
-      const keys = txTypes.map(t => t.key);
-      expect(keys).toContain("SALE");
-      expect(keys).toContain("RENT");
-      expect(keys).toContain("WANTED");
-      expect(keys).toContain("AUCTION");
+    it("should have all 7 canonical active transaction types", async () => {
+      const txTypes = await db.transactionType.findMany({
+        where: { active: true },
+        select: { key: true },
+      });
+      const keys = new Set(txTypes.map((type) => type.key));
+      for (const key of [
+        "SALE",
+        "RENT",
+        "WANTED",
+        "QUOTE",
+        "AUCTION",
+        "SERVICE_REQUEST",
+        "SERVICE_OFFER",
+      ]) {
+        expect(keys.has(key), `missing active transaction type: ${key}`).toBe(true);
+      }
     });
   });
 

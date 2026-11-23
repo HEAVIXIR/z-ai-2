@@ -123,7 +123,7 @@ export default function TransactionTypePicker({
   return (
     <div
       className={`grid gap-3 ${
-        compact ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
+        compact ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-7"
       }`}
     >
       {types.map((t) => {
