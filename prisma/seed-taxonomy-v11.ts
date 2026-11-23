@@ -755,10 +755,7 @@ async function upsertCat(c: CatSeed, parentId?: string, parentPath?: string, lev
       await db.categoryApplicationIndustry.upsert({
         where: { categoryId_applicationIndustryId: { categoryId: cat.id, applicationIndustryId: ind.id } },
         create: { categoryId: cat.id, applicationIndustryId: ind.id },
-        // Reactivate and canonicalize the newly introduced supply-side service type.
-      update: t.key === "SERVICE_OFFER"
-        ? { nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder, active: true }
-        : {},
+        update: {},
       });
     }
   }
@@ -974,7 +971,10 @@ async function main() {
     await db.transactionType.upsert({
       where: { key: t.key },
       create: t,
-      update: {},
+      // Reactivate and canonicalize the newly introduced supply-side service type.
+      update: t.key === "SERVICE_OFFER"
+        ? { nameFa: t.nameFa, nameEn: t.nameEn, icon: t.icon, sortOrder: t.sortOrder, active: true }
+        : {},
     });
   }
 
