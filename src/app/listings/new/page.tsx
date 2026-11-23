@@ -141,11 +141,11 @@ export default function NewListingPage() {
   const [wanted, setWanted] = useState({
     // Demand intent: what the buyer wants to do. SALE = buy (خرید),
     // RENT = rent (اجاره), SALE_AND_RENT = flexible (خرید/اجاره),
-    // SERVICE_REQUEST = service demand (خدمات). Stored in
-    // BuyRequest.transaction and read by the matching engine to narrow
-    // supply candidates to compatible types. Default buy intent matches
-    // the historical WANTED behavior.
-    intent: "SALE" as "SALE" | "RENT" | "SALE_AND_RENT" | "SERVICE_REQUEST",
+    // Service demand is a separate top-level SERVICE_REQUEST transaction,
+    // not a WANTED sub-intent. WANTED remains the demand-side equipment flow;
+    // its legacy RENT option is preserved until the canonical rental-request
+    // migration is completed.
+    intent: "SALE" as "SALE" | "RENT" | "SALE_AND_RENT",
     quantity: "1",
     budgetMin: "",
     budgetMax: "",
@@ -338,7 +338,7 @@ export default function NewListingPage() {
   // If the user already picked a category at Step 2 with a different
   // intent, the category is now mismatched. Clear categoryId + related
   // state so the user re-selects with the correct taxonomy roots.
-  const handleWantedIntentChange = (nextIntent: "SALE" | "RENT" | "SALE_AND_RENT" | "SERVICE_REQUEST") => {
+  const handleWantedIntentChange = (nextIntent: "SALE" | "RENT" | "SALE_AND_RENT") => {
     if (wanted.intent === nextIntent) return;
     setWanted((v) => ({ ...v, intent: nextIntent }));
     // Only clear if a category was already chosen (avoid spurious clears
@@ -898,7 +898,6 @@ export default function NewListingPage() {
                             { v: "SALE", l: "خرید" },
                             { v: "RENT", l: "اجاره" },
                             { v: "SALE_AND_RENT", l: "خرید/اجاره" },
-                            { v: "SERVICE_REQUEST", l: "خدمات" },
                           ] as const).map((t) => (
                             <button
                               key={t.v}
@@ -910,7 +909,7 @@ export default function NewListingPage() {
                             </button>
                           ))}
                         </div>
-                        <p className="mt-2 text-xs text-white/45">نوع تقاضا تعیین می‌کند این درخواست با کدام آگهی‌های عرضه تطبیق داده شود (خرید ← فروش/مزایده، اجاره ← اجاره، خدمات ← ارائه خدمت). این انتخاب باید پیش از انتخاب دسته‌بندی انجام شود.</p>
+                        <p className="mt-2 text-xs text-white/45">نوع تقاضا تعیین می‌کند درخواست تجهیزات با کدام آگهی‌های عرضه تطبیق داده شود (خرید ← فروش/مزایده، اجاره ← اجاره). درخواست خدمت از کارت مستقل «درخواست خدمت» ثبت می‌شود.</p>
                       </div>
                     )}
 
