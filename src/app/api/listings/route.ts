@@ -530,7 +530,7 @@ export async function POST(req: Request) {
         where: { id: String(body.brandId) },
         select: { id: true, active: true, status: true },
       });
-      if (!brand || !brand.active || brand.status !== "ACTIVE") {
+      if (!brand || !brand.active) {
         return NextResponse.json({ error: "برند انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
       }
     }
