@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
+import { isBrandSelectable } from "@/lib/brand-labels";
 import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import { getSEO } from "@/lib/seo";
 import { resolveBrandBySlugOrAlias } from "@/lib/brand-resolve";
@@ -41,7 +42,7 @@ export async function generateMetadata({
   const { slug: rawSlug } = await params;
   const slug = decodeURIComponent(rawSlug);
   const brand = await resolveBrandBySlugOrAlias(slug);
-  if (!brand || !brand.active) return { title: "برند یافت نشد", robots: { index: false, follow: false } };
+  if (!isBrandSelectable(brand)) return { title: "برند یافت نشد", robots: { index: false, follow: false } };
   const seo = await getSEO("Brand", brand.id);
   const title = seo?.metaTitle?.trim() || `${brand.name} — ماشین‌آلات سنگین ${brand.name}`;
   const description = seo?.metaDescription?.trim() || `لیست آگهی‌های ماشین‌آلات سنگین ${brand.name} — خرید، فروش و اجاره در سراسر ایران. بررسی مدل‌ها، قیمت‌ها و مشخصات فنی.`;
@@ -69,7 +70,7 @@ export default async function BrandPage({
   const slug = decodeURIComponent(rawSlug);
 
   const brand = await resolveBrandBySlugOrAlias(slug);
-  if (!brand || !brand.active) notFound();
+  if (!isBrandSelectable(brand)) notFound();
 
   // Resolve industry keys → Persian labels (single round trip).
   const industryKeys = brand.industries.map((i) => i.industry);
