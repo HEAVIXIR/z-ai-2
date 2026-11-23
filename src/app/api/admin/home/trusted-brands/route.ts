@@ -51,7 +51,7 @@ export async function GET() {
       logoUrl: b.logoUrl,
       country: b.country,
       featured: b.featured,
-      showOnHomepage: b.display?.showOnHomepage ?? false,
+      showOnHomepage: b.display?.showOnHomepage ?? b.featured,
       listingCount: b._count.listings,
     }));
 
@@ -165,6 +165,20 @@ export async function PUT(req: Request) {
         },
         data: { showOnHomepage: false },
       });
+      // Persist an explicit opt-out for legacy featured brands that have no
+      // BrandDisplay row; otherwise the homepage fallback would add them back.
+      const legacyFeatured = await db.brand.findMany({
+        where: { active: true, status: "ACTIVE", featured: true },
+        select: { id: true },
+      });
+      for (const brand of legacyFeatured) {
+        if (selectedIds.has(brand.id)) continue;
+        await db.brandDisplay.upsert({
+          where: { brandId: brand.id },
+          create: { brandId: brand.id, showOnHomepage: false },
+          update: { showOnHomepage: false },
+        });
+      }
       await logAudit({
         actorId: user.id,
         actorType: "ADMIN",
