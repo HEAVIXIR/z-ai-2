@@ -9,7 +9,7 @@ describe("isBrandSelectable", () => {
     },
   );
 
-  it.each(["PENDING_REVIEW", "INACTIVE", "ARCHIVED"])(
+  it.each(["PENDING_REVIEW", "PENDING", "DRAFT", "INACTIVE", "ARCHIVED"])(
     "does not expose %s records to listing creation",
     (status) => {
       expect(isBrandSelectable({ active: true, status })).toBe(false);
