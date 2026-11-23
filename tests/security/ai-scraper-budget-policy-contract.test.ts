@@ -7,18 +7,19 @@ const seed = readFileSync(resolve(process.cwd(), "prisma/seed-ai-policies.ts"), 
 
 describe("AI scraper zero-spend policy contract", () => {
   it("keeps the seeded SCRAPER task inactive with a zero cost ceiling", () => {
-    expect(seed).toMatch(/taskType: "SCRAPER"[\\s\\S]{0,350}costCeilingUsd: 0,/);
+    expect(seed).toContain('taskType: "SCRAPER"');
+    expect(seed).toContain("costCeilingUsd: 0,");
     expect(seed).toContain("create: { ...p, active: !scraperDisabledByDefault }");
     expect(seed).toContain('update: scraperDisabledByDefault ? { active: false, costCeilingUsd: 0 } : {}');
-    expect(seed).not.toMatch(/costCeilingUsd: 0\\.05/);
+    expect(seed).not.toContain("costCeilingUsd: 0.05");
   });
 
   it("fails closed for missing, inactive or zero-cost SCRAPER policies", () => {
-    expect(policy).toMatch(/if \(!row \|\| !row\\.active\) return null/);
-    expect(policy).toMatch(/taskType === "SCRAPER".*costCeilingUsd <= 0/s);
+    expect(policy).toContain("if (!row || !row.active) return null;");
+    expect(policy).toContain('taskType === "SCRAPER" && (!Number.isFinite(row.costCeilingUsd) || row.costCeilingUsd <= 0)');
   });
 
   it("does not bypass per-user quotas for SCRAPER", () => {
-    expect(policy).not.toMatch(/taskType === "SCRAPER"\\) return \{ ok: true \}/);
+    expect(policy).not.toContain('taskType === "SCRAPER") return { ok: true }');
   });
 });
