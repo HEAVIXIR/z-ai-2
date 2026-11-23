@@ -14,6 +14,7 @@ import {
   Edit,
 } from "lucide-react";
 import { BrandListFilters } from "./BrandListFilters";
+import { normalizeAliasValue } from "@/lib/brand-alias";
 import BatchLogoSearchButton from "./BatchActions/BatchLogoSearchButton";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,7 @@ export default async function TaxonomyBrandsPage({
   const verificationFilter = sp.verification || "";
   const industryFilter = sp.industry || "";
   const q = sp.q || "";
+  const normalizedQ = q ? normalizeAliasValue(q) : "";
   const pageSize = 50;
   const requestedPage = Number.parseInt(sp.page || "1", 10);
   const page = Number.isFinite(requestedPage) ? Math.max(1, requestedPage) : 1;
@@ -64,6 +66,8 @@ export default async function TaxonomyBrandsPage({
             { name: { contains: q } },
             { nameEn: { contains: q } },
             { shortName: { contains: q } },
+            { aliases: { some: { value: { contains: q } } } },
+            { aliases: { some: { normalizedValue: { contains: normalizedQ } } } },
           ],
         }
       : {}),
