@@ -76,7 +76,7 @@ Migration discipline الزامی (`prisma/migrations`).
 ## ترتیب اجرایی (P0 → P1 → P2)
 
 ### P0 — قبل از ادامه توسعه (Security + DB Contract)
-1. Password hashing (Argon2id/bcrypt)
+1. Password hashing (PBKDF2-HMAC-SHA256; legacy bcrypt migration on Node/Vercel)
 2. حذف امکان ثبت‌نام ADMIN
 3. اصلاح Admin session (cryptographically secure)
 4. PostgreSQL/SQLite decision + migration strategy
