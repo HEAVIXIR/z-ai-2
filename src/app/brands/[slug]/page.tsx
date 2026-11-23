@@ -2,11 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
-import { isBrandSelectable } from "@/lib/brand-labels";
 import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 import { getSEO } from "@/lib/seo";
 import { resolveBrandBySlugOrAlias } from "@/lib/brand-resolve";
 import {
+  isBrandSelectable,
   BRAND_TYPE_LABELS,
   BRAND_STATUS_LABELS,
   VERIFICATION_LABELS,
