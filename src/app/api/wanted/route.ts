@@ -37,6 +37,7 @@ import { getAsset } from "@/lib/media-service";
 import { retryBuyRequestMediaAttachments } from "@/lib/wanted-media";
 import { getListingImagePolicy } from "@/lib/listing-image-policy";
 import { getCurrentUserId } from "@/lib/auth";
+import { isBrandSelectable } from "@/lib/brand-labels";
 import { checkCsrf } from "@/lib/csrf";
 import { readBoundedJson } from "@/lib/read-bounded-json";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
@@ -522,7 +523,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "برای ثبت درخواست، دسته‌بندی نهایی و بدون زیرشاخه فعال را انتخاب کنید." }, { status: 400 });
       }
     }
-    if (requestedBrandId && (!brandRow || !brandRow.active || brandRow.status !== "ACTIVE")) {
+    if (requestedBrandId && !isBrandSelectable(brandRow)) {
       return NextResponse.json({ error: "برند انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
     }
     if (requestedModelId) {

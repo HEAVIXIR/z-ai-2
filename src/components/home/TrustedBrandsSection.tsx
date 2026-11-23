@@ -104,7 +104,7 @@ export default function TrustedBrandsSection({
 
       <div className="mt-8 flex justify-center">
         <Link
-          href="/listings"
+          href="/brands"
           className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-7 text-sm font-bold text-white transition-all duration-300 hover:border-[#F58220]/40 hover:bg-[#F58220]/10 hover:text-[#F58220]"
         >
           همهٔ برندها
@@ -137,7 +137,7 @@ export default function TrustedBrandsSection({
 function BrandChip({ brand }: { brand: TrustedBrand }) {
   return (
     <Link
-      href={`/listings?brand=${brand.slug}`}
+      href={`/brands/${encodeURIComponent(brand.slug)}`}
       className="group/chip flex h-28 w-56 shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-white/10 bg-gradient-to-br from-[#141414] to-[#0c0c0c] p-4 transition-all duration-300 hover:-translate-y-1 hover:border-[#F58220]/50 hover:shadow-[0_15px_35px_-10px_rgba(245,130,32,0.35)]"
     >
       <span className="flex h-12 w-24 items-center justify-center overflow-hidden rounded-lg bg-white/95 p-1.5 shadow-inner transition-transform duration-300 group-hover/chip:scale-105">

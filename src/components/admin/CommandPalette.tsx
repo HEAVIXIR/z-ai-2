@@ -40,7 +40,7 @@ const COMMANDS: Cmd[] = [
   { id: "login", label: "ورود به پنل مدیریت", icon: LayoutDashboard, href: "/login", group: "admin" },
   { id: "admin", label: "داشبورد مدیریت", icon: Settings, href: "/admin/dashboard", group: "admin" },
   { id: "admin-listings", label: "مدیریت آگهی‌ها", icon: Megaphone, href: "/admin/listings", group: "admin" },
-  { id: "admin-brands", label: "مدیریت برندها", icon: Building2, href: "/admin/taxonomy/brands", group: "admin" },
+  { id: "admin-brands", label: "مدیریت برندها", icon: Building2, href: "/admin/brands", group: "admin" },
   { id: "admin-cats", label: "مدیریت دسته‌بندی‌ها", icon: FolderTree, href: "/admin/categories", group: "admin" },
 ];
 
