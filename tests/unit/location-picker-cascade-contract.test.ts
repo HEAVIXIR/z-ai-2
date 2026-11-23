@@ -12,10 +12,16 @@ describe("first-party country → province → city picker", () => {
     expect(picker).toContain('fetch("/api/locations", { cache: "no-store" })');
     expect(picker).toContain("`/api/locations?country=${encodeURIComponent(code)}`");
     expect(picker).toContain("`/api/locations?province=${encodeURIComponent(value.provinceId)}`");
-    // The picker may embed the allowlisted OpenStreetMap preview, but its data
-    // fetches must remain same-origin HEAVIX API calls.
+    // Location data remains first-party; map tiles are images, not API fetches.
     expect(picker).not.toMatch(/fetch\(\s*["']https?:\/\//);
-    expect(picker).toContain("https://www.openstreetmap.org/export/embed.html");
+    expect(picker).toContain("InteractiveLocationMap");
+    const map = read("src/components/listings/InteractiveLocationMap.tsx");
+    expect(map).toContain("https://tile.openstreetmap.org/");
+    expect(map).toContain("onPointerDown={handlePointerDown}");
+    expect(map).toContain("onPointerMove={handlePointerMove}");
+    expect(map).toContain("onPointerUp={handlePointerUp}");
+    expect(map).toContain('data-map-marker="true"');
+    expect(map).toContain("© OpenStreetMap");
     expect(api).toContain("db.country.findMany");
     expect(api).toContain("db.province.findMany");
     expect(api).toContain("db.city.findMany");
