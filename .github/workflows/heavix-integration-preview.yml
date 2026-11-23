@@ -190,6 +190,25 @@ jobs:
           }
           NODE
           echo "PASS: Integration Preview App DB and Store DB both report up after ${health_attempt} attempt(s)."
+
+          # Exercise the same-origin CSRF gate and the real login route with a
+          # synthetic non-existent account. Expected 401 proves the Worker
+          # reached application auth instead of returning a network/CPU error.
+          preview_origin="${PREVIEW_URL%/}"
+          login_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-login-smoke.json" -w '%{http_code}' \
+            -X POST "$PREVIEW_URL/api/auth/login" \
+            -H "Origin: $preview_origin" \
+            -H "Referer: $preview_origin/login" \
+            -H "Content-Type: application/json" \
+            --data '{"email":"preview-healthcheck@invalid.example","password":"not-a-real-preview-password"}' || true)"
+          echo "HEAVIX_PREVIEW_LOGIN_SMOKE_HTTP=$login_code"
+          if [ "$login_code" != "401" ]; then
+            cat "$RUNNER_TEMP/heavix-login-smoke.json" 2>/dev/null || true
+            echo "::error::Preview login smoke must reach application auth and return 401 for a synthetic account (received ${login_code:-000})."
+            exit 1
+          fi
+          echo "PASS: Preview login route passed same-origin CSRF and returned expected 401 for synthetic credentials."
+          echo "- Login smoke HTTP: $login_code" >> "$GITHUB_STEP_SUMMARY"
           {
             echo "- App DB: up"
             echo "- Store DB: up"
@@ -217,9 +236,12 @@ jobs:
             hasNestedExcavator: Boolean(hasExcavator),
           };
           console.log(JSON.stringify(checks, null, 2));
-          if (rootCount !== 14 || checks.transactionTypes !== 6 || checks.serviceTypes !== 9 || checks.applicationIndustries !== 16 || checks.machineryL1 < 12 || !hasExcavator) {
+          if (rootCount !== 14 || checks.transactionTypes < 6 || checks.transactionTypes > 7 || checks.serviceTypes !== 9 || checks.applicationIndustries !== 16 || checks.machineryL1 < 12 || !hasExcavator) {
             console.error("Integration Preview taxonomy contract failed.");
             process.exit(1);
+          }
+          if (checks.transactionTypes === 6) {
+            console.warn("SERVICE_OFFER is not present in the Preview DB yet; the additive taxonomy seed has not been applied.");
           }
           NODE
           detail_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-excavator-category.json" -w '%{http_code}' "$PREVIEW_URL/api/taxonomy/categories/cat-excavator" || true)"
@@ -239,11 +261,30 @@ jobs:
           }
           NODE
           echo "PASS: Excavator detail API exposes L3 configurations."
+
+          brand_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-brand-suggestions.json" -w '%{http_code}' "$PREVIEW_URL/api/brands/search" || true)"
+          echo "HEAVIX_PREVIEW_BRAND_SUGGESTIONS_HTTP=$brand_code"
+          if [ "$brand_code" != "200" ]; then
+            echo "::error::Global brand suggestion API must return HTTP 200 (received ${brand_code:-000})."
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/heavix-brand-suggestions.json", "utf8"));
+          const brands = Array.isArray(payload.brands) ? payload.brands : [];
+          console.log(JSON.stringify({ brandSuggestions: brands.length, sample: brands.slice(0, 3).map((b) => ({ name: b.name, status: b.status })) }, null, 2));
+          if (brands.length === 0) {
+            console.error("Global brand registry returned zero selectable suggestions; Step 3 cannot show brands until the Preview DB is safely seeded/reconciled.");
+            process.exit(1);
+          }
+          NODE
+          echo "PASS: Global brand suggestion API returned selectable brands."
+          echo "- Brand suggestions: verified non-empty" >> "$GITHUB_STEP_SUMMARY"
           echo "HEAVIX_PREVIEW_EXCAVATOR_DETAIL_HTTP=$detail_code" >> "$GITHUB_STEP_SUMMARY"
-          echo "PASS: Integration Preview exposes the 14-root taxonomy, 6 transaction types, 9 service types, 16 application industries, and nested machinery categories."
+          echo "PASS: Integration Preview exposes the 14-root taxonomy, 6–7 transaction types, 9 service types, 16 application industries, and nested machinery categories."
           {
             echo "- Taxonomy API HTTP: ${taxonomy_code:-000}"
-            echo "- Taxonomy contract: 14 roots / 6 transactions / 9 services / 16 industries"
+            echo "- Taxonomy contract: 14 roots / 6–7 transactions / 9 services / 16 industries"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish Preview URL in job summary
