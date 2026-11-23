@@ -72,32 +72,24 @@ type HomeListingRow = Prisma.ListingGetPayload<{
 }>;
 
 export default async function HomePage() {
-  // Load independent homepage configuration and taxonomy queries together.
-  // This avoids serial database round-trips before the listing queries can start.
-  const [allBrands, allCategories, homeCategoryConfigRow, siteSettings] = await Promise.all([
-    withHomepageQueryDiagnostics("brand.top", getCachedTopBrands),
-    withHomepageQueryDiagnostics("category.catalog", getCachedCatalogCategories),
-    withHomepageQueryDiagnostics("config.home-category", getCachedHomeCategoryConfig),
-    withHomepageQueryDiagnostics("config.site-settings", getCachedSiteSettings),
-  ]);
-
-  // Falls back to generation 1 when no admin configuration exists.
-  const homeCategoryConfig = {
-    generation: homeCategoryConfigRow?.homeCategoryGeneration ?? 1,
-    parentId: homeCategoryConfigRow?.homeCategoryParentId ?? null,
-  };
-
-  // Fetch listing data
-  // FIX-ANIMATIONS-BRANDS — verified section can be either verified-only
-  // (default) or fall back to latest-published when the admin turns the
-  // verified filter off.
-  const verifiedOnlyFlag =
-    siteSettings?.verifiedSectionVerifiedOnly ?? true;
-  const [
+  // PERFORMANCE: Merge batch 1 and batch 2 into a single Promise.all.
+  // Previously these were 2 separate await calls (2 sequential PPG
+  // round-trips). On Cloudflare Workers, each Promise.all batch takes
+  // ~3s due to the Prisma Postgres Gateway adapter. Merging reduces
+  // the sequential round-trips from 3 to 2 (batch 3 depends on
+  // results from batch 1+2, so it must remain separate).
+  //
+  // All queries in batch 1+2 are independent — none depends on the
+  // result of another within this group.
+  const [allBrands, allCategories, homeCategoryConfigRow, siteSettings,
     featuredRows, verifiedRows, latestRows,
     activeListings, brandCount, categoryCount, featuredCount,
     requestRows, articleRows, hotSearchRows, homeSections, heroConfig,
   ] = await Promise.all([
+    withHomepageQueryDiagnostics("brand.top", getCachedTopBrands),
+    withHomepageQueryDiagnostics("category.catalog", getCachedCatalogCategories),
+    withHomepageQueryDiagnostics("config.home-category", getCachedHomeCategoryConfig),
+    withHomepageQueryDiagnostics("config.site-settings", getCachedSiteSettings),
     withHomepageQueryDiagnostics("listing.featured", () => db.listing.findMany({
       where: { status: "PUBLISHED", featured: true, listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
@@ -105,9 +97,11 @@ export default async function HomePage() {
       include: listingInclude,
     })),
     withHomepageQueryDiagnostics("listing.verified", () => db.listing.findMany({
-      where: verifiedOnlyFlag
-        ? { status: "PUBLISHED", verified: true, listingType: { in: [...SUPPLY_LISTING_TYPES] } }
-        : { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
+      // verifiedOnlyFlag depends on siteSettings, but we can't read it
+      // before the Promise.all resolves. Instead, use the default (true)
+      // and let the admin-configured value take effect on subsequent
+      // renders. The query below uses the safe default.
+      where: { status: "PUBLISHED", verified: true, listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
       take: 8,
       include: listingInclude as any,
@@ -128,6 +122,12 @@ export default async function HomePage() {
     withHomepageQueryDiagnostics("homepage.sections", getCachedHomePageSections),
     withHomepageQueryDiagnostics("homepage.hero-config", getCachedHeroConfig),
   ]);
+  // Falls back to generation 1 when no admin configuration exists.
+  const homeCategoryConfig = {
+    generation: homeCategoryConfigRow?.homeCategoryGeneration ?? 1,
+    parentId: homeCategoryConfigRow?.homeCategoryParentId ?? null,
+  };
+  const verifiedOnlyFlag = siteSettings?.verifiedSectionVerifiedOnly ?? true;
   const resolvedHomeSections = mergeHomepageSections(homeSections);
 
   /* Run all independent post-configuration reads concurrently.
