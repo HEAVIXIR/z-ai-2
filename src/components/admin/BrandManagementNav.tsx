@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const items = [
-  { href: "/admin/taxonomy/brands", label: "فهرست و شناسنامه برندها", key: "brands" },
+  { href: "/admin/brands", label: "فهرست و شناسنامه برندها", key: "brands" },
   { href: "/admin/brand-families", label: "خانواده‌ها و روابط", key: "families" },
   { href: "/admin/home/trusted-brands", label: "نمایش در صفحه اول", key: "homepage" },
 ] as const;
