@@ -190,6 +190,25 @@ jobs:
           }
           NODE
           echo "PASS: Integration Preview App DB and Store DB both report up after ${health_attempt} attempt(s)."
+
+          # Exercise the same-origin CSRF gate and the real login route with a
+          # synthetic non-existent account. Expected 401 proves the Worker
+          # reached application auth instead of returning a network/CPU error.
+          preview_origin="${PREVIEW_URL%/}"
+          login_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-login-smoke.json" -w '%{http_code}' \
+            -X POST "$PREVIEW_URL/api/auth/login" \
+            -H "Origin: $preview_origin" \
+            -H "Referer: $preview_origin/login" \
+            -H "Content-Type: application/json" \
+            --data '{"email":"preview-healthcheck@invalid.example","password":"not-a-real-preview-password"}' || true)"
+          echo "HEAVIX_PREVIEW_LOGIN_SMOKE_HTTP=$login_code"
+          if [ "$login_code" != "401" ]; then
+            cat "$RUNNER_TEMP/heavix-login-smoke.json" 2>/dev/null || true
+            echo "::error::Preview login smoke must reach application auth and return 401 for a synthetic account (received ${login_code:-000})."
+            exit 1
+          fi
+          echo "PASS: Preview login route passed same-origin CSRF and returned expected 401 for synthetic credentials."
+          echo "- Login smoke HTTP: $login_code" >> "$GITHUB_STEP_SUMMARY"
           {
             echo "- App DB: up"
             echo "- Store DB: up"
@@ -239,8 +258,27 @@ jobs:
           }
           NODE
           echo "PASS: Excavator detail API exposes L3 configurations."
+
+          brand_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-brand-suggestions.json" -w '%{http_code}' "$PREVIEW_URL/api/brands/search" || true)"
+          echo "HEAVIX_PREVIEW_BRAND_SUGGESTIONS_HTTP=$brand_code"
+          if [ "$brand_code" != "200" ]; then
+            echo "::error::Global brand suggestion API must return HTTP 200 (received ${brand_code:-000})."
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/heavix-brand-suggestions.json", "utf8"));
+          const brands = Array.isArray(payload.brands) ? payload.brands : [];
+          console.log(JSON.stringify({ brandSuggestions: brands.length, sample: brands.slice(0, 3).map((b) => ({ name: b.name, status: b.status })) }, null, 2));
+          if (brands.length === 0) {
+            console.error("Global brand registry returned zero selectable suggestions; Step 3 cannot show brands until the Preview DB is safely seeded/reconciled.");
+            process.exit(1);
+          }
+          NODE
+          echo "PASS: Global brand suggestion API returned selectable brands."
+          echo "- Brand suggestions: verified non-empty" >> "$GITHUB_STEP_SUMMARY"
           echo "HEAVIX_PREVIEW_EXCAVATOR_DETAIL_HTTP=$detail_code" >> "$GITHUB_STEP_SUMMARY"
-          echo "PASS: Integration Preview exposes the 14-root taxonomy, 6 transaction types, 9 service types, 16 application industries, and nested machinery categories."
+          echo "PASS: Integration Preview exposes the 14-root taxonomy, 6–7 transaction types, 9 service types, 16 application industries, and nested machinery categories."
           {
             echo "- Taxonomy API HTTP: ${taxonomy_code:-000}"
             echo "- Taxonomy contract: 14 roots / 6 transactions / 9 services / 16 industries"
