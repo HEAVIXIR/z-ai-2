@@ -8,11 +8,9 @@ import {
   Loader2,
   CheckCircle2,
   Save,
-  Trash2,
   Pencil,
   Globe,
   Building2,
-  X,
   AlertCircle,
 } from "lucide-react";
 import { toFa } from "@/lib/format";
