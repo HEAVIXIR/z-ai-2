@@ -68,34 +68,64 @@ async function main() {
   });
   const existingByKey = new Map(existing.map((item) => [item.key, item]));
 
+  const serviceOfferRow = existingByKey.get("SERVICE_OFFER");
+  const knownLegacyServiceOffer = Boolean(
+    serviceOfferRow &&
+    serviceOfferRow.nameEn === "Service Offer" &&
+    serviceOfferRow.sortOrder === 7 &&
+    (
+      (serviceOfferRow.nameFa === "ارائه خدمات" && serviceOfferRow.icon === "wrench") ||
+      (serviceOfferRow.nameFa === "ارائه خدمت" && serviceOfferRow.icon === "handshake")
+    )
+  );
   const conflicts = TRANSACTION_TYPES.filter((seed) => {
     const row = existingByKey.get(seed.key);
-    return row && (
-      row.nameFa !== seed.nameFa ||
-      row.nameEn !== seed.nameEn ||
-      row.icon !== seed.icon ||
-      row.sortOrder !== seed.sortOrder ||
-      (row.active !== true && seed.key !== "SERVICE_OFFER")
-    );
+    if (!row) return false;
+    if (seed.key === "SERVICE_OFFER") {
+      const canonical = row.nameFa === seed.nameFa && row.nameEn === seed.nameEn &&
+        row.icon === seed.icon && row.sortOrder === seed.sortOrder && row.active === true;
+      return !canonical && !knownLegacyServiceOffer;
+    }
+    return row.nameFa !== seed.nameFa || row.nameEn !== seed.nameEn ||
+      row.icon !== seed.icon || row.sortOrder !== seed.sortOrder || row.active !== true;
   });
   if (conflicts.length) {
     throw new Error("Existing TransactionType rows differ from the canonical seed; refusing to overwrite: " + conflicts.map((item) => item.key).join(", "));
   }
 
   const missing = TRANSACTION_TYPES.filter((item) => !existingByKey.has(item.key));
-  const rowsToReactivate = TRANSACTION_TYPES.filter((item) => item.key === "SERVICE_OFFER" && existingByKey.get(item.key)?.active === false);
+  const rowsToCanonicalize = TRANSACTION_TYPES.filter((item) =>
+    item.key === "SERVICE_OFFER" && existingByKey.has(item.key) && (
+      existingByKey.get(item.key)?.nameFa !== item.nameFa ||
+      existingByKey.get(item.key)?.nameEn !== item.nameEn ||
+      existingByKey.get(item.key)?.icon !== item.icon ||
+      existingByKey.get(item.key)?.sortOrder !== item.sortOrder ||
+      existingByKey.get(item.key)?.active !== true
+    )
+  );
   console.log(JSON.stringify({
     mode: dryRun ? "dry-run" : "apply",
     canonicalKeyCount: TRANSACTION_TYPES.length,
     existingCanonicalRows: existing.length,
     rowsToCreate: missing,
-    rowsToReactivate,
+    rowsToCanonicalize,
     untouchedTables: ["Category", "ServiceType", "ApplicationIndustry", "Country", "Province", "City", "Brand", "ProductModel", "Product", "Listing"],
   }, null, 2));
 
   if (dryRun) return;
   for (const item of missing) await db.transactionType.create({ data: { ...item, active: true } });
-  for (const item of rowsToReactivate) await db.transactionType.update({ where: { key: item.key }, data: { active: true } });
+  for (const item of rowsToCanonicalize) {
+    await db.transactionType.update({
+      where: { key: item.key },
+      data: {
+        nameFa: item.nameFa,
+        nameEn: item.nameEn,
+        icon: item.icon,
+        sortOrder: item.sortOrder,
+        active: true,
+      },
+    });
+  }
 
   const verified = await db.transactionType.findMany({
     where: { key: { in: [...keys] } },
