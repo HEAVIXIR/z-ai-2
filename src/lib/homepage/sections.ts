@@ -20,7 +20,6 @@ export const DEFAULT_HOME_SECTIONS = [
   { key: "sell7", title: "فروش در ۷ روز", order: 12, active: true },
   { key: "why-us", title: "چرا هویکس؟", order: 13, active: true },
   { key: "trusted-brands", title: "برندهای مورد اعتماد", order: 14, active: true },
-  { key: "brands", title: "برندهای معتبر", order: 15, active: false },
   { key: "knowledge", title: "هویکس دانش", order: 16, active: true },
   { key: "cta", title: "دعوت به اقدام", order: 17, active: true },
 ] as const;
@@ -39,7 +38,11 @@ export type HomepageSectionConfig = {
 export function mergeHomepageSections<T extends HomepageSectionConfig>(
   rows: readonly T[],
 ): Array<T | HomepageSectionConfig> {
-  const existingKeys = new Set(rows.map((row) => row.key));
+  // The old `brands` section was a duplicate of `trusted-brands`. Hide the
+  // legacy row from public composition and the layout editor without deleting
+  // the persisted database record; the canonical section owns display now.
+  const canonicalRows = rows.filter((row) => row.key !== "brands");
+  const existingKeys = new Set(canonicalRows.map((row) => row.key));
   const defaults: HomepageSectionConfig[] = DEFAULT_HOME_SECTIONS
     .filter((section) => !existingKeys.has(section.key))
     .map((section) => ({
@@ -53,5 +56,5 @@ export function mergeHomepageSections<T extends HomepageSectionConfig>(
       config: "{}",
     }));
 
-  return [...rows, ...defaults].sort((a, b) => a.order - b.order);
+  return [...canonicalRows, ...defaults].sort((a, b) => a.order - b.order);
 }
