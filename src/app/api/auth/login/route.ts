@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createUserSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { verifyPassword } from "@/lib/password";
+import { hashPassword, isLegacyBcryptHash, verifyPassword } from "@/lib/password";
 import { logAudit } from "@/lib/audit";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { LOGIN } from "@/lib/rate-limit-presets";
@@ -65,8 +65,17 @@ export async function POST(req: Request) {
 
     if (!user) return NextResponse.json({ error: "کاربر یافت نشد یا رمز نادرست است" }, { status: 401 });
 
-    const passwordValid = await verifyPassword(String(password), user.passwordHash);
-    if (!passwordValid) return NextResponse.json({ error: "کاربر یافت نشد یا رمز نادرست است" }, { status: 401 });
+    const allowLegacyBcrypt = process.env.HEAVIX_AUTH_ALLOW_LEGACY_BCRYPT !== "false";
+    const legacyBcryptHash = isLegacyBcryptHash(user.passwordHash);
+    const passwordValid = await verifyPassword(String(password), user.passwordHash, { allowLegacyBcrypt });
+    if (!passwordValid) {
+      return NextResponse.json(
+        {
+          error: "کاربر یافت نشد یا رمز نادرست است. اگر همین حساب در Vercel Preview وارد می‌شود، یک بار آنجا وارد شوید و سپس در Cloudflare Preview دوباره تلاش کنید.",
+        },
+        { status: 401 },
+      );
+    }
 
     if (user.status === "BLOCKED") {
       return NextResponse.json({ error: "حساب کاربری شما مسدود شده است" }, { status: 403 });
@@ -137,9 +146,14 @@ export async function POST(req: Request) {
       });
     }
 
+    const migratedPasswordHash =
+      legacyBcryptHash && allowLegacyBcrypt ? await hashPassword(String(password)) : undefined;
     await db.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: {
+        lastLoginAt: new Date(),
+        ...(migratedPasswordHash ? { passwordHash: migratedPasswordHash } : {}),
+      },
     });
     await createUserSession(user.id);
 
