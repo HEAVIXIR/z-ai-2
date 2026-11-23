@@ -10,6 +10,7 @@ describe("Step 1 service and equipment demand separation", () => {
     expect(seed).toContain('key: "SERVICE_OFFER"');
     expect(seed).toContain('nameFa: "ارائه خدمت"');
     expect(seed).toContain("HBR §18 (7)");
+    expect(seed).toContain('update: t.key === "SERVICE_OFFER" ? { active: true } : {}');
   });
 
   it("keeps service request separate from WANTED sub-intents", () => {
