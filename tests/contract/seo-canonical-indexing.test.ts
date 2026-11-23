@@ -36,7 +36,7 @@ describe("SEO canonical routes and private-page indexing contract", () => {
   });
 
   it("does not render inactive brands or categories as public SEO entities", () => {
-    expect(read("src/app/brands/[slug]/page.tsx")).toContain("!brand || !brand.active");
+    expect(read("src/app/brands/[slug]/page.tsx")).toContain("!brand || !isBrandSelectable(brand)");
     expect(read("src/app/categories/[slug]/page.tsx")).toContain("where: { slug, active: true }");
   });
 

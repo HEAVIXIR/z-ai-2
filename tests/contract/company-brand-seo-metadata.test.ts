@@ -8,7 +8,7 @@ describe("company and brand SEO metadata", () => {
   it("honors brand SEO overrides and prevents indexing inactive brands", () => {
     const source = read("src/app/brands/[slug]/page.tsx");
     expect(source).toContain('getSEO("Brand", brand.id)');
-    expect(source).toContain("!brand.active");
+    expect(source).toContain("!brand || !isBrandSelectable(brand)");
     expect(source).toContain("seo?.canonicalUrl");
     expect(source).toContain("seo?.robotsIndex");
     expect(source).toContain("seo?.robotsFollow");
