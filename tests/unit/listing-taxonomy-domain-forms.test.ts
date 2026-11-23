@@ -35,12 +35,10 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(route).toContain("categoryLayerForTransactionType(transactionType.key)");
     expect(route).toContain("const expectedLayer = categoryLayerForTransactionType(transactionType.key);");
     const wizard = read("src/app/listings/new/page.tsx");
-    // isServiceFlow must be intent-aware: a WANTED request with
-    // intent=SERVICE_REQUEST uses SERVICE categories; asset purchase/rent
-    // requests and supply listings use the CATALOG tree. Transaction intent
-    // never forces the selected asset category into the MARKETPLACE layer.
-    expect(wizard).toContain('const isWantedServiceRequest = transactionType === "WANTED" && wanted.intent === "SERVICE_REQUEST"');
-    expect(wizard).toContain("const isServiceFlow = isServiceRequest || isServiceOffer || isWantedServiceRequest");
+    // Service demand and supply are independent top-level transaction
+    // types; WANTED remains equipment demand and never carries service intent.
+    expect(wizard).not.toContain("isWantedServiceRequest");
+    expect(wizard).toContain("const isServiceFlow = isServiceRequest || isServiceOffer");
     expect(wizard).toContain("const categoryRoots = isServiceFlow ? serviceRoots : catalogRoots");
     const routing = read("src/lib/transaction-type-routing.ts");
     expect(routing).toContain('RENT: "CATALOG"');
