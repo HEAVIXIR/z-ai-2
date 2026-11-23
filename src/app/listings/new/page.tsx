@@ -77,6 +77,7 @@ type BrandSuggestion = {
   nameEn: string | null;
   country: string | null;
   logoUrl: string | null;
+  status?: string;
 };
 
 type TaxChild = { id: string; name: string; slug: string; icon: string | null };
@@ -311,6 +312,7 @@ export default function NewListingPage() {
 
   const pickBrand = (b: BrandSuggestion) => {
     setBrandId(b.id);
+    setBrandBrowseKey(0);
     setBrandQuery(b.name);
     setForm((f) => ({ ...f, brandLabel: b.name }));
     setBrandOpen(false);
@@ -1055,6 +1057,7 @@ export default function NewListingPage() {
                               onClick={() => {
                                 setBrandId("");
                                 setBrandQuery("");
+                                setBrandBrowseKey(0);
                                 setModelName("");
                                 setForm((f) => ({ ...f, brandLabel: "" }));
                                 setBrandResults([]);
@@ -1121,6 +1124,11 @@ export default function NewListingPage() {
                                           <p className="truncate text-[11px] text-white/40">
                                             {r.nameEn}
                                           </p>
+                                        )}
+                                        {r.status && ["LEGACY", "HISTORICAL", "DISCONTINUED"].includes(r.status) && (
+                                          <span className="mt-1 inline-flex rounded-full border border-amber-400/20 bg-amber-400/10 px-2 py-0.5 text-[9px] font-bold text-amber-300">
+                                            {r.status === "LEGACY" ? "برند میراثی" : r.status === "HISTORICAL" ? "برند تاریخی" : "تولید متوقف‌شده"}
+                                          </span>
                                         )}
                                       </div>
                                       {r.country && (
