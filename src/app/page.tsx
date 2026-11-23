@@ -164,9 +164,12 @@ export default async function HomePage() {
         withHomepageQueryDiagnostics("brand.display-ids", getCachedBrandDisplayIds),
         withHomepageQueryDiagnostics("brand.featured-ids", getCachedFeaturedBrandIds),
       ]);
+      const explicitDisplayIds = new Set(displayBrands.map((d) => d.brandId));
       const ids = Array.from(new Set<string>([
-        ...displayBrands.map((d) => d.brandId),
-        ...featuredBrands.map((b) => b.id),
+        ...displayBrands.filter((d) => d.showOnHomepage).map((d) => d.brandId),
+        // Legacy `featured` is a fallback only until an admin explicitly
+        // configures that brand homepage visibility.
+        ...featuredBrands.filter((b) => !explicitDisplayIds.has(b.id)).map((b) => b.id),
       ]));
       return ids.length ? withHomepageQueryDiagnostics("brand.trusted-by-ids", () => getCachedTrustedBrands(ids)) : [];
     }),

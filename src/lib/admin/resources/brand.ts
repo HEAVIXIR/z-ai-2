@@ -7,7 +7,7 @@ export const brandConfig: AdminResourceConfig = {
   icon: 'Building2',
   model: 'brand',
   apiBase: '/api/admin/taxonomy/brands',
-  adminPath: '/admin/taxonomy/brands',
+  adminPath: '/admin/brands',
 
   permissions: {
     read: 'brand.read',

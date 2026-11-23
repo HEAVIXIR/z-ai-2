@@ -5,6 +5,22 @@
  * to render consistent Persian badges for type / status / verification.
  */
 
+/**
+ * Statuses that must never be selectable in marketplace listings.
+ * Legacy, historical, acquired, merged, discontinued, regional and unknown
+ * brands remain selectable when their independent `active` flag is true.
+ */
+export const BRAND_UNAVAILABLE_STATUSES = ["PENDING_REVIEW", "PENDING", "DRAFT", "INACTIVE", "ARCHIVED"] as const;
+
+export function isBrandSelectable(
+  brand: { active?: boolean | null; status?: string | null } | null | undefined,
+): boolean {
+  return !!brand &&
+    brand.active === true &&
+    !BRAND_UNAVAILABLE_STATUSES.includes(
+      (brand.status ?? "ACTIVE") as (typeof BRAND_UNAVAILABLE_STATUSES)[number],
+    );
+}
 /** Brand type key → Persian label. */
 export const BRAND_TYPE_LABELS: Record<string, string> = {
   MACHINE_BRAND: "ماشین‌آلات",
@@ -21,7 +37,21 @@ export const BRAND_TYPE_LABELS: Record<string, string> = {
   LUBRICANT_BRAND: "روانکار",
   LEGACY_BRAND: "تاریخی",
   CORPORATE_BRAND: "شرکت مادر",
-  BRAND_FAMILY: "خانواده برند",
+  BRAND_FAMILY: "خانواده برند (نوع قدیمی)",
+  MANUFACTURER: "سازنده",
+  DISTRIBUTOR: "توزیع‌کننده",
+  DEALER: "نمایندگی",
+  RESELLER: "فروشنده مجدد",
+  IMPORTER: "واردکننده",
+  EXPORTER: "صادرکننده",
+  WHOLESALER: "عمده‌فروش",
+  RETAILER: "خرده‌فروش",
+  SERVICE_PROVIDER: "ارائه‌دهنده خدمات",
+  RENTAL_COMPANY: "شرکت اجاره",
+  TRADING_COMPANY: "شرکت بازرگانی",
+  SUBSIDIARY: "شرکت تابعه",
+  JOINT_VENTURE: "مشارکت",
+  PRIVATE_LABEL: "برند اختصاصی",
 };
 
 /** Brand status key → { Persian label, badge color token }. */
@@ -37,6 +67,9 @@ export const BRAND_STATUS_LABELS: Record<
   DISCONTINUED: { label: "توقف تولید", color: "gray" },
   REGIONAL: { label: "منطقه‌ای", color: "blue" },
   UNKNOWN: { label: "نامشخص", color: "gray" },
+  DRAFT: { label: "پیش‌نویس", color: "gray" },
+  PENDING: { label: "در انتظار تأیید", color: "amber" },
+  BANKRUPT: { label: "ورشکسته", color: "gray" },
   PENDING_REVIEW: { label: "در انتظار بررسی", color: "amber" },
   INACTIVE: { label: "غیرفعال", color: "gray" },
   ARCHIVED: { label: "بایگانی", color: "gray" },
@@ -52,6 +85,10 @@ export const VERIFICATION_LABELS: Record<
   OFFICIAL_SOURCE_VERIFIED: { label: "منبع رسمی", level: "sky" },
   MANUFACTURER_VERIFIED: { label: "تأیید سازنده", level: "emerald" },
   ADMIN_VERIFIED: { label: "تأیید مدیر", level: "emerald" },
+  PENDING: { label: "در انتظار بررسی", level: "none" },
+  VERIFIED: { label: "تأیید شده", level: "emerald" },
+  DISPUTED: { label: "مورد اختلاف", level: "amber" },
+  REJECTED: { label: "رد شده", level: "none" },
 };
 
 /** Map a verification level token → Tailwind badge classes (dark theme). */

@@ -38,7 +38,6 @@ const SECTION_LABELS: Record<string, string> = {
   "latest-ads": "آخرین آگهی‌ها",
   sell7: "فروش در ۷ روز",
   "why-us": "چرا هویکس",
-  brands: "برندها",
   "trusted-brands": "برندهای مورد اعتماد",
   knowledge: "هویکس دانش",
   cta: "دعوت به اقدام",
