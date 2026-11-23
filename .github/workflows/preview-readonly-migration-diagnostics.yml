@@ -82,6 +82,15 @@ jobs:
           inspect_history App "$DATABASE_URL"
           inspect_history Store "$STORE_DATABASE_URL"
 
+          echo "### App Preview global brand registry and transaction inventory (read-only)"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_brands, count(*) FILTER (WHERE active) AS active_flag_true, count(*) FILTER (WHERE NOT active) AS active_flag_false, count(*) FILTER (WHERE active AND status NOT IN ('PENDING_REVIEW','PENDING','DRAFT','INACTIVE','ARCHIVED')) AS selectable_by_current_policy, count(*) FILTER (WHERE \"brandFamilyId\" IS NOT NULL) AS brands_in_family, count(*) FILTER (WHERE \"parentBrandId\" IS NOT NULL) AS brands_with_parent FROM public.\"Brand\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT status, active, count(*) AS brand_count FROM public.\"Brand\" GROUP BY status, active ORDER BY status, active"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_families FROM public.\"BrandFamily\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_aliases, count(DISTINCT \"brandId\") AS brands_with_aliases, (SELECT count(*) FROM (SELECT \"normalizedValue\" FROM public.\"BrandAlias\" GROUP BY \"normalizedValue\" HAVING count(DISTINCT \"brandId\") > 1) collisions) AS cross_brand_alias_collisions FROM public.\"BrandAlias\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS display_rows, count(*) FILTER (WHERE \"showOnHomepage\") AS homepage_enabled, count(*) FILTER (WHERE NOT \"showOnHomepage\") AS homepage_disabled FROM public.\"BrandDisplay\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_transaction_types, count(*) FILTER (WHERE active) AS active_transaction_types, count(*) FILTER (WHERE key = 'SERVICE_OFFER' AND active) AS active_service_offer, string_agg(key, ', ' ORDER BY \"sortOrder\") AS transaction_keys FROM public.\"TransactionType\""
+          echo "PASS: App Preview brand, family, alias, homepage-curation and transaction counts inspected without returning brand names or mutating data."
+
           echo "### App Preview homepage Listing columns"
           psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name IN ('id','status','featured','verified','showInLatest','publishedAt','createdAt','brandId','categoryId','modelId') ORDER BY ordinal_position"
           missing_listing_columns="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT string_agg(required.column_name, ', ' ORDER BY required.column_name) FROM (VALUES ('id'),('status'),('featured'),('verified'),('showInLatest'),('publishedAt'),('createdAt'),('brandId'),('categoryId'),('modelId')) AS required(column_name) WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns c WHERE c.table_schema='public' AND c.table_name='Listing' AND c.column_name=required.column_name)")"
