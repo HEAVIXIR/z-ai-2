@@ -29,8 +29,8 @@ This work is tracked as six parallel, independently verifiable workstreams again
 
 ### 4. Exact map point
 - Current listing wizard supports optional manual latitude/longitude for SALE, RENT, and AUCTION.
-- The UI explicitly says city-center coordinates are not substituted for the real machine location.
-- There is no confirmed interactive map selector in the inspected wizard component. Map interaction, marker drag/click, coordinate persistence, and mobile behavior remain open acceptance items; do not claim this path is complete.
+- A valid manually entered point now renders an OpenStreetMap embed with a marker and a link to the full map; invalid coordinates are rejected visually. The map is a preview only: its marker cannot yet be moved/clicked to set the point.
+- The UI explicitly says city-center coordinates are not substituted for the real machine location. Marker selection/drag, coordinate persistence, and mobile behavior remain open acceptance items; do not claim the interactive map path is complete.
 
 ### 5. Canonical brands
 - The listing wizard searches `/api/brands/search` and stores a canonical Brand ID.
@@ -50,6 +50,8 @@ This work is tracked as six parallel, independently verifiable workstreams again
 - `prisma/seed-taxonomy-v11.ts`: correct seven-type seed documentation.
 - `tests/phase1-hardening.test.ts`: require all seven active canonical transaction keys.
 - `scripts/verify-taxonomy-bootstrap.ts`: verify seven active transaction keys, location catalog presence/size, and active direct excavator attribute links.
+- `src/components/listings/LocationPicker.tsx` + `next.config.ts`: display a marker preview for valid exact coordinates and allow the OSM frame under a narrowly scoped CSP directive.
+- `src/lib/homepage-query-diagnostics.ts`: log sanitized slow-query labels and elapsed time (250ms threshold), without SQL or user data.
 
 ## Operational gates
 
