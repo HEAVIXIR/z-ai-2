@@ -8,12 +8,16 @@ const source = readFileSync(
 );
 
 describe("Listing transaction type picker contract", () => {
-  it("loads the active transaction types from the canonical public API", () => {
+  it("loads and normalizes active transaction types from the canonical public API", () => {
     expect(source).toContain('fetch("/api/transaction-types", { cache: "no-store" })');
-    expect(source).toContain("setTypes(data.types ?? [])");
+    expect(source).toContain("const received = data.types ?? [];");
+    expect(source).toContain("const normalized: TransactionTypeOption[] = received.map(");
+    expect(source).toContain("setTypes(normalized.sort((a, b) => a.sortOrder - b.sortOrder))");
   });
 
-  it("requires the seller to explicitly select the transaction type", () => {
+  it("keeps WANTED available without silently selecting a transaction type", () => {
+    expect(source).toContain('item.key === "WANTED"');
+    expect(source).toContain('key: "WANTED"');
     expect(source).not.toMatch(/if\s*\(!value\s*&&[\s\S]*?onChange\(sale\.key\)/);
     expect(source).toContain('onClick={() => onChange(t.key)}');
   });
