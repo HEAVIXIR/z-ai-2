@@ -13,7 +13,7 @@ export interface VerifyPasswordOptions {
 function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function fromBase64Url(value: string): Uint8Array | null {
@@ -28,7 +28,7 @@ function fromBase64Url(value: string): Uint8Array | null {
 }
 
 export function isLegacyBcryptHash(hash: string): boolean {
-  return /^\\$2[aby]\\$\\d{2}\\$/.test(hash);
+  return /^\$2[aby]\$\d{2}\$/.test(hash);
 }
 
 export function isPbkdf2Hash(hash: string): boolean {
@@ -60,7 +60,7 @@ export async function hashPassword(password: string): Promise<string> {
   if (!password) throw new Error("Password is required");
   const salt = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_LENGTH_BYTES));
   const derived = await derivePbkdf2(password, salt);
-  return `pbkdf2$sha256$${PBKDF2_ITERATIONS}$${toBase64Url(salt)}$${toBase64Url(derived)}`;
+  return \`pbkdf2$sha256$\${PBKDF2_ITERATIONS}$\${toBase64Url(salt)}$\${toBase64Url(derived)}\`;
 }
 
 async function verifyPbkdf2Password(password: string, hash: string): Promise<boolean> {
