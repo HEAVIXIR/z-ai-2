@@ -15,6 +15,12 @@ describe("public homepage renderer contracts", () => {
     expect(homepageSource).toContain('withHomepageQueryDiagnostics("request.active", getCachedActiveRequests)');
     expect(homepageSource).toContain('withHomepageQueryDiagnostics("article.published", getCachedArticles)');
     expect(homepageSource).toContain("db.listing.findMany");
+    expect(homepageSource).toContain('withHomepageQueryDiagnostics("listing.stats"');
+    expect(homepageSource).toContain('db.listing.groupBy({');
+    expect(homepageSource).not.toContain('withHomepageQueryDiagnostics("listing.published-count"');
+    expect(homepageSource).not.toContain('withHomepageQueryDiagnostics("listing.featured-count"');
+    expect(homepageSource).not.toContain('withHomepageQueryDiagnostics("category.root-count"');
+    expect(homepageSource).toContain("const categoryCount = allCategories.filter((category) => category.parentId === null).length;");
     expect(homepageSource).toContain("getActiveStats");
 
     expect(cachedQueriesSource).toContain("db.homePageSection.findMany");
