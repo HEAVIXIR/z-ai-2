@@ -30,7 +30,7 @@ export const dynamic = "force-dynamic";
  */
 const quickLinks = [
   { title: "آگهی‌ها", href: "/admin/listings", icon: Megaphone, color: "text-orange-600" },
-  { title: "برندها", href: "/admin/taxonomy/brands", icon: Building2, color: "text-violet-600" },
+  { title: "برندها", href: "/admin/brands", icon: Building2, color: "text-violet-600" },
   { title: "دسته‌بندی‌ها", href: "/admin/categories", icon: FolderTree, color: "text-blue-600" },
   { title: "درخواست‌های خرید", href: "/admin/requests", icon: PackageSearch, color: "text-emerald-600" },
   { title: "پیشنهادها", href: "/admin/offers", icon: Users, color: "text-pink-600" },

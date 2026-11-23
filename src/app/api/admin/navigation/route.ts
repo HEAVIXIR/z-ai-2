@@ -16,6 +16,15 @@ import { ADMIN_NAVIGATION_GROUPS, ADMIN_NAVIGATION_STANDALONES } from '@/lib/adm
 
 export const dynamic = 'force-dynamic';
 
+// Old scattered destinations remain valid as direct URLs from the hub, but are
+// no longer emitted as independent sidebar items. This is read-only and does
+// not delete or rewrite persisted navigation rows.
+const LEGACY_BRAND_NAV_HREFS = new Set([
+  '/admin/taxonomy/brands',
+  '/admin/brand-families',
+  '/admin/home/trusted-brands',
+]);
+
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) {
@@ -100,7 +109,7 @@ export async function GET() {
         }];
       });
       const customItems: NavigationItem[] = (stored?.items ?? [])
-        .filter((item) => item.active && !canonicalItemKeys.has(item.key))
+        .filter((item) => item.active && !canonicalItemKeys.has(item.key) && !LEGACY_BRAND_NAV_HREFS.has(item.href))
         .map((item) => ({
           key: item.key,
           titleFa: item.titleFa,
@@ -155,7 +164,7 @@ export async function GET() {
       }];
     }),
     ...storedStandalone
-      .filter((item) => item.active && !canonicalStandaloneKeys.has(item.key))
+      .filter((item) => item.active && !canonicalStandaloneKeys.has(item.key) && !LEGACY_BRAND_NAV_HREFS.has(item.href))
       .map((item) => ({
         key: item.key,
         titleFa: item.titleFa,

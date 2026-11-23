@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { BRAND_TYPE_LABELS, BRAND_STATUS_LABELS, VERIFICATION_LABELS } from "@/lib/brand-labels";
 import {
   ArrowRight,
   Building2,
@@ -20,45 +21,9 @@ import {
    redirects to /admin/taxonomy/brands/[id] on success.
    ============================================================ */
 
-const TYPE_OPTIONS = [
-  "MANUFACTURER",
-  "DISTRIBUTOR",
-  "DEALER",
-  "RESELLER",
-  "OEM",
-  "IMPORTER",
-  "EXPORTER",
-  "WHOLESALER",
-  "RETAILER",
-  "SERVICE_PROVIDER",
-  "RENTAL_COMPANY",
-  "TRADING_COMPANY",
-  "SUBSIDIARY",
-  "JOINT_VENTURE",
-  "PRIVATE_LABEL",
-];
-
-const STATUS_OPTIONS = [
-  "ACTIVE",
-  "INACTIVE",
-  "DRAFT",
-  "PENDING",
-  "ARCHIVED",
-  "DISCONTINUED",
-  "LEGACY",
-  "HISTORICAL",
-  "ACQUIRED",
-  "MERGED",
-  "BANKRUPT",
-];
-
-const VERIFICATION_OPTIONS = [
-  "UNVERIFIED",
-  "PENDING",
-  "VERIFIED",
-  "DISPUTED",
-  "REJECTED",
-];
+const TYPE_OPTIONS = Object.keys(BRAND_TYPE_LABELS).filter((type) => type !== "BRAND_FAMILY");
+const STATUS_OPTIONS = Object.keys(BRAND_STATUS_LABELS);
+const VERIFICATION_OPTIONS = Object.keys(VERIFICATION_LABELS);
 
 const EMPTY_FORM = {
   name: "",
@@ -66,7 +31,7 @@ const EMPTY_FORM = {
   aliases: "",
   shortName: "",
   slug: "",
-  type: "",
+  type: "MACHINE_BRAND",
   status: "ACTIVE",
   verification: "UNVERIFIED",
   country: "",
@@ -277,7 +242,7 @@ export default function CreateBrandForm() {
               <option value="">—</option>
               {TYPE_OPTIONS.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {BRAND_TYPE_LABELS[t] ?? t}
                 </option>
               ))}
             </select>
@@ -302,7 +267,7 @@ export default function CreateBrandForm() {
             >
               {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {BRAND_STATUS_LABELS[s]?.label ?? s}
                 </option>
               ))}
             </select>
@@ -317,7 +282,7 @@ export default function CreateBrandForm() {
             >
               {VERIFICATION_OPTIONS.map((v) => (
                 <option key={v} value={v}>
-                  {v}
+                  {VERIFICATION_LABELS[v]?.label || "تأیید نشده"}
                 </option>
               ))}
             </select>

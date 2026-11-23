@@ -24,23 +24,22 @@ export async function GET(req: Request) {
     // BrandDisplay row, (2) OR them with featured=true.
     const [displayBrands, featuredBrands] = await Promise.all([
       db.brandDisplay.findMany({
-        where: { showOnHomepage: true },
-        select: { brandId: true, displayOrder: true },
+        select: { brandId: true, showOnHomepage: true, displayOrder: true },
       }),
       db.brand.findMany({
-        where: { featured: true, active: true },
+        where: { featured: true, active: true, status: "ACTIVE" },
         select: { id: true, sortOrder: true },
       }),
     ]);
 
-    const displayIds = new Set(displayBrands.map((d) => d.brandId));
-    const featuredIds = new Set(featuredBrands.map((b) => b.id));
+    const explicitDisplayIds = new Set(displayBrands.map((d) => d.brandId));
+    const displayIds = displayBrands.filter((d) => d.showOnHomepage).map((d) => d.brandId);
+    const featuredIds = featuredBrands.filter((b) => !explicitDisplayIds.has(b.id)).map((b) => b.id);
     const allIds = new Set<string>([...displayIds, ...featuredIds]);
-    if (allIds.size === 0) {
-      // Fallback: take the 20 brands with the most PUBLISHED listings
-      // so the ticker is never empty on a fresh install.
+    if (allIds.size === 0 && displayBrands.length === 0 && featuredBrands.length === 0) {
+      // Fallback only on a fresh install with no explicit curation or featured flags.
       const top = await db.brand.findMany({
-        where: { active: true },
+        where: { active: true, status: "ACTIVE" },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
         take: limit,
         include: {
@@ -59,9 +58,12 @@ export async function GET(req: Request) {
         })),
       });
     }
+    if (allIds.size === 0) {
+      return NextResponse.json({ brands: [] });
+    }
 
     const brands = await db.brand.findMany({
-      where: { id: { in: Array.from(allIds) }, active: true },
+      where: { id: { in: Array.from(allIds) }, active: true, status: "ACTIVE" },
       orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
       take: limit,
       include: {

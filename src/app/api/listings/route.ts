@@ -27,6 +27,7 @@ import { LISTING_CREATE } from "@/lib/rate-limit-presets";
 import { extractIdempotencyKey, findIdempotentResult } from "@/lib/idempotency";
 import { createHash } from "node:crypto";
 import { getListingImagePolicy } from "@/lib/listing-image-policy";
+import { isBrandSelectable } from "@/lib/brand-labels";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -530,7 +531,7 @@ export async function POST(req: Request) {
         where: { id: String(body.brandId) },
         select: { id: true, active: true, status: true },
       });
-      if (!brand || !brand.active || brand.status !== "ACTIVE") {
+      if (!isBrandSelectable(brand)) {
         return NextResponse.json({ error: "برند انتخاب‌شده معتبر یا فعال نیست." }, { status: 400 });
       }
     }

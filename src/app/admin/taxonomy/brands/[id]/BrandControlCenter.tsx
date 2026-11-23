@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { toFa } from "@/lib/format";
 import { useToast } from "@/hooks/use-toast";
+import { BRAND_TYPE_LABELS, BRAND_STATUS_LABELS, VERIFICATION_LABELS } from "@/lib/brand-labels";
 
 /* ============================================================
    BrandControlCenter — full brand management with tabs:
@@ -34,21 +35,9 @@ import { useToast } from "@/hooks/use-toast";
             | Models | Media | SEO | Display | Activity
    ============================================================ */
 
-const TYPE_OPTIONS = [
-  "MANUFACTURER", "DISTRIBUTOR", "DEALER", "RESELLER",
-  "OEM", "IMPORTER", "EXPORTER", "WHOLESALER",
-  "RETAILER", "SERVICE_PROVIDER", "RENTAL_COMPANY", "TRADING_COMPANY",
-  "SUBSIDIARY", "JOINT_VENTURE", "PRIVATE_LABEL",
-];
-
-const STATUS_OPTIONS = [
-  "ACTIVE", "INACTIVE", "DRAFT", "PENDING", "ARCHIVED",
-  "DISCONTINUED", "LEGACY", "HISTORICAL", "ACQUIRED", "MERGED", "BANKRUPT",
-];
-
-const VERIFICATION_OPTIONS = [
-  "UNVERIFIED", "PENDING", "VERIFIED", "DISPUTED", "REJECTED",
-];
+const TYPE_OPTIONS = Object.keys(BRAND_TYPE_LABELS);
+const STATUS_OPTIONS = Object.keys(BRAND_STATUS_LABELS);
+const VERIFICATION_OPTIONS = Object.keys(VERIFICATION_LABELS);
 
 const ALIAS_LANGUAGES = [
   { value: "fa", label: "فارسی" },
@@ -533,19 +522,19 @@ function IdentityTab({
       {/* HBR-1.0 fields */}
       <div className="grid grid-cols-2 gap-3 border-t border-zinc-100 pt-4">
         <div>
-          <label className={labelCls}>نوع برند (۱۵ گزینه)</label>
+          <label className={labelCls}>نوع برند ({TYPE_OPTIONS.length} گزینه)</label>
           <select value={form.type} onChange={(e) => setField("type", e.target.value)} className={inputCls}>
             <option value="">— انتخاب کنید —</option>
             {TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>{t}</option>
+              <option key={t} value={t}>{BRAND_TYPE_LABELS[t] ?? t}</option>
             ))}
           </select>
         </div>
         <div>
-          <label className={labelCls}>وضعیت (۱۱ گزینه)</label>
+          <label className={labelCls}>وضعیت ({STATUS_OPTIONS.length} گزینه)</label>
           <select value={form.status} onChange={(e) => setField("status", e.target.value)} className={inputCls}>
             {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
+              <option key={s} value={s}>{BRAND_STATUS_LABELS[s]?.label ?? s}</option>
             ))}
           </select>
         </div>
@@ -553,10 +542,10 @@ function IdentityTab({
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>تأیید (۵ گزینه)</label>
+          <label className={labelCls}>تأیید ({VERIFICATION_OPTIONS.length} گزینه)</label>
           <select value={form.verification} onChange={(e) => setField("verification", e.target.value)} className={inputCls}>
             {VERIFICATION_OPTIONS.map((v) => (
-              <option key={v} value={v}>{v}</option>
+              <option key={v} value={v}>{VERIFICATION_LABELS[v]?.label || "تأیید نشده"}</option>
             ))}
           </select>
         </div>
