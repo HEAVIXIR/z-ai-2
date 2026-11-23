@@ -225,7 +225,7 @@ async function main() {
 
   // ════════════════════════════════════════════════════════════
   // 3. TRANSACTION TYPES (phase1 #9)
-  // 6 types: SALE, RENT, WANTED, QUOTE, AUCTION, SERVICE_REQUEST
+  // 7 canonical types: SALE, RENT, WANTED, QUOTE, AUCTION, SERVICE_REQUEST, SERVICE_OFFER
   // ════════════════════════════════════════════════════════════
   console.log("\n3. Seeding TransactionTypes...");
   const txTypes = [
@@ -234,7 +234,8 @@ async function main() {
     { key: "WANTED", nameFa: "درخواست خرید", nameEn: "Wanted", sortOrder: 3 },
     { key: "QUOTE", nameFa: "استعلام قیمت", nameEn: "Quote", sortOrder: 4 },
     { key: "AUCTION", nameFa: "حراجی", nameEn: "Auction", sortOrder: 5 },
-    { key: "SERVICE_REQUEST", nameFa: "درخواست خدمات", nameEn: "Service Request", sortOrder: 6 },
+    { key: "SERVICE_REQUEST", nameFa: "درخواست خدمت", nameEn: "Service Request", sortOrder: 6 },
+    { key: "SERVICE_OFFER", nameFa: "ارائه خدمت", nameEn: "Service Offer", sortOrder: 7 },
   ];
   const txTypeIds: Record<string, string> = {};
   for (const t of txTypes) {
@@ -251,7 +252,7 @@ async function main() {
     });
     txTypeIds[t.key] = row.id;
   }
-  console.log(`  ✓ ${Object.keys(txTypeIds).length} transaction types`);
+  console.log(`  ✓ ${Object.keys(txTypeIds).length} transaction types (canonical target: 7)`);
 
   // ════════════════════════════════════════════════════════════
   // 4. ATTRIBUTE DEFINITIONS (phase1 #4, #5, #11 + phase4 #18, #19)
