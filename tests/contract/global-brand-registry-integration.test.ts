@@ -28,8 +28,11 @@ describe("HEAVIX global brand registry integration", () => {
     expect(brandSearch).not.toContain('status: "ACTIVE"');
     expect(brandSearch).not.toContain("categories:");
     const listingApi = read("src/app/api/listings/route.ts");
+    const wantedApi = read("src/app/api/wanted/route.ts");
     expect(listingApi).toContain("if (!brand || !brand.active)");
     expect(listingApi).not.toContain("brand.status !== \"ACTIVE\"");
+    expect(wantedApi).toContain("if (requestedBrandId && (!brandRow || !brandRow.active))");
+    expect(wantedApi).not.toContain("brandRow.status !== \"ACTIVE\"");
   });
 
   it("uses the canonical brand create page and searches admin records by aliases", () => {
