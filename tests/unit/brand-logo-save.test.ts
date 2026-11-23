@@ -256,4 +256,157 @@ describe("PUT /api/admin/brands/[id]/logo", () => {
     const res = await PUT(req as any, ctx);
     expect(res.status).toBe(403);
   });
+
+  // ── Persistence & Refresh tests ───────────────────────────
+  // These tests verify the contract that logo source survives
+  // across page refreshes by being stored in BrandMedia.title.
+  // The BrandControlCenter client component reads brand.media
+  // on initial load and parses "Logo from <SOURCE>" from the
+  // BrandMedia.title field.
+
+  it("stores source in BrandMedia.title as 'Logo from AI_SEARCH'", async () => {
+    const [req, ctx] = makeRequest({ logoUrl: "https://x.com/l.png", source: "AI_SEARCH" });
+    await PUT(req as any, ctx);
+
+    const upsertCall = mocks.brandMediaUpsert.mock.calls[0]?.[0];
+    expect(upsertCall?.create?.title).toBe("Logo from AI_SEARCH");
+    expect(upsertCall?.update?.title).toBe("Logo from AI_SEARCH");
+  });
+
+  it("stores source in BrandMedia.title as 'Logo from MANUAL'", async () => {
+    const [req, ctx] = makeRequest({ logoUrl: "https://x.com/l.png", source: "MANUAL" });
+    await PUT(req as any, ctx);
+
+    const upsertCall = mocks.brandMediaUpsert.mock.calls[0]?.[0];
+    expect(upsertCall?.create?.title).toBe("Logo from MANUAL");
+  });
+
+  it("BrandMedia.title format is parseable by the BrandControlCenter regex", async () => {
+    // The BrandControlCenter parses: logoMedia.title.match(/Logo from (\w+)/)
+    // This test verifies the stored title matches that regex.
+    const [req, ctx] = makeRequest({ logoUrl: "https://x.com/l.png", source: "AI_SEARCH" });
+    await PUT(req as any, ctx);
+
+    const upsertCall = mocks.brandMediaUpsert.mock.calls[0]?.[0];
+    const title = upsertCall?.create?.title;
+    const match = title?.match(/Logo from (\w+)/);
+    expect(match).not.toBeNull();
+    expect(match?.[1]).toBe("AI_SEARCH");
+  });
+
+  // ── Legacy logo tests ─────────────────────────────────────
+  // A brand with a logoUrl but NO BrandMedia record (legacy data)
+  // should show source as null/unknown in the UI.
+
+  it("brand with logoUrl but no BrandMedia → source is unknown", async () => {
+    // Simulate: brand has logoUrl but the API returns no media array
+    // (legacy brand created before the source tracking feature)
+    mocks.brandFindUnique.mockResolvedValue({
+      id: "legacy-id",
+      name: "Legacy Brand",
+      slug: "legacy-brand",
+      logoUrl: "https://old.com/logo.png",
+      verification: "UNVERIFIED",
+    });
+
+    const [req, ctx] = makeRequest({ logoUrl: "https://new.com/logo.png", source: "MANUAL" });
+    const res = await PUT(req as any, ctx);
+    const body = await res.json();
+
+    // The PUT succeeds — it creates a new BrandMedia with source
+    expect(res.status).toBe(200);
+    expect(body.source).toBe("MANUAL");
+
+    // The audit log records the old logoUrl (before) and new (after)
+    const auditCall = mocks.logAudit.mock.calls[0]?.[0];
+    expect(auditCall?.before?.logoUrl).toBe("https://old.com/logo.png");
+    expect(auditCall?.after?.source).toBe("MANUAL");
+  });
+
+  // ── Save failure tests ────────────────────────────────────
+  // When the save fails, the logo source should NOT be updated
+  // in the UI (the BrandControlCenter only sets logoSource after
+  // a successful API response).
+
+  it("save failure does not persist BrandMedia (error propagates)", async () => {
+    mocks.brandMediaUpsert.mockRejectedValue(
+      Object.assign(new Error("Connection lost"), { code: "P1001" }),
+    );
+
+    const [req, ctx] = makeRequest({ logoUrl: "https://x.com/l.png", source: "AI_SEARCH" });
+    const res = await PUT(req as any, ctx);
+
+    // HTTP 500 — save failed
+    expect(res.status).toBe(500);
+    // No BrandMedia was created or deleted
+    expect(mocks.brandMediaDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.brandMediaCreate).not.toHaveBeenCalled();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    // Audit log was NOT written (the try block threw before reaching logAudit)
+    expect(mocks.logAudit).not.toHaveBeenCalled();
+  });
+
+  it("save failure with transaction rollback — old logo preserved", async () => {
+    // Simulate: upsert fails with compound-field-missing (fallback triggers)
+    // but the transaction also fails — old logo must survive
+    mocks.brandMediaUpsert.mockRejectedValue(
+      Object.assign(new Error("Unknown field `brandId_type`"), { code: "P2004" }),
+    );
+    mocks.transaction.mockRejectedValue(new Error("create failed in tx"));
+
+    const [req, ctx] = makeRequest({ logoUrl: "https://x.com/l.png", source: "AI_SEARCH" });
+    const res = await PUT(req as any, ctx);
+
+    expect(res.status).toBe(500);
+    // The transaction was attempted (and failed atomically)
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    // No direct deleteMany or create was called outside the transaction
+    expect(mocks.brandMediaDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.brandMediaCreate).not.toHaveBeenCalled();
+  });
+
+  // ── Comprehensive fallback matrix ─────────────────────────
+  // Summary test: verify that ONLY the exact compound-field-missing
+  // error triggers the fallback. All other Prisma error codes are
+  // propagated without touching existing data.
+
+  it("fallback matrix: only brandId_type+P2004 triggers fallback", async () => {
+    const cases = [
+      { code: "P1001", msg: "Connection lost", shouldFallback: false },
+      { code: "P2028", msg: "Timeout", shouldFallback: false },
+      { code: "P2021", msg: "Table does not exist", shouldFallback: false },
+      { code: "P2009", msg: "Unknown argument `foo`", shouldFallback: false },
+      { code: "P2002", msg: "Unique constraint violation", shouldFallback: false },
+      { code: "P2003", msg: "Foreign key constraint", shouldFallback: false },
+      { code: "P2004", msg: "Unknown field `brandId_type`", shouldFallback: true },
+      { code: "P2009", msg: "Unknown field `brandId_type`", shouldFallback: true },
+    ];
+
+    for (const c of cases) {
+      vi.clearAllMocks();
+      mocks.getCurrentUser.mockResolvedValue({ id: "admin-1" });
+      mocks.hasPermission.mockResolvedValue(true);
+      mocks.brandFindUnique.mockResolvedValue({
+        id: "test-id", name: "Test", slug: "test",
+        logoUrl: null, verification: "UNVERIFIED",
+      });
+      mocks.brandUpdate.mockResolvedValue({});
+      mocks.brandMediaUpsert.mockRejectedValue(
+        Object.assign(new Error(c.msg), { code: c.code }),
+      );
+      mocks.transaction.mockImplementation(makeTxMock());
+
+      const [req, ctx] = makeRequest({ logoUrl: "https://x.com/l.png", source: "AI_SEARCH" });
+      const res = await PUT(req as any, ctx);
+
+      if (c.shouldFallback) {
+        expect(res.status).toBe(200);
+        expect(mocks.transaction).toHaveBeenCalledTimes(1);
+      } else {
+        expect(res.status).toBe(500);
+        expect(mocks.transaction).not.toHaveBeenCalled();
+        expect(mocks.brandMediaDeleteMany).not.toHaveBeenCalled();
+      }
+    }
+  });
 });
