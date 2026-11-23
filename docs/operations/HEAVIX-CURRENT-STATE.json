@@ -1,7 +1,7 @@
 {
   "project": "HEAVIX",
   "purpose": "Durable cross-chat and cross-agent continuation checkpoint for restoring the complete original HEAVIX product and integrating verified current work.",
-  "updated_at_utc": "2026-11-23T09:27:55.222Z",
+  "updated_at_utc": "2026-11-23T09:29:02.667Z",
   "repository": "HEAVIXIR/z-ai-2",
   "active_branch": "integration/preview-readiness-workerd-2026-11-15",
   "branch_base_main_sha": "87216262b7ad5ab77049f8a65930321d3993df3c",
@@ -827,7 +827,7 @@
       "qualification": "These are observations of the old active Worker, not the recovery candidate. /categories 404 is not a legacy route; category details are slug-based."
     }
   },
-  "documentation_head": "c9a03308ecd402fbea63cfbb92a5e270e1ec829a",
+  "documentation_head": "28fabd7b8c00c3fb606cf98f9a1741f6f84c9a02",
   "recovery_latest_exact_head_ci": {
     "id": 43714375711,
     "sha": "c5eda9ec93e419faf9d9f87bc87eddc79c3f2187",
@@ -988,6 +988,8 @@
     "source_verification": "Confirmed Part is an allowed media entity type, Store Part images are persisted as stable /api/media/{assetId} references, and the current Worker script has the B2 runtime bindings. Secret values were not read.",
     "test_execution": "CI #4754 (run 45145879836) passed on exact head 4a2689c; OpenNext #1384 (run 45145889150) passed; Integration Preview #219 (run 45145041433) passed on runtime code commit 9dc2d7d. Security, integration, contract/unit and E2E tests passed; production build, disposable PostgreSQL migration/backup proofs and Docker/Caddy connectivity passed.",
     "safety": "No real DB migration/seed/write, no live B2 object write, no AI provider invocation, no Production deployment, no DNS change, and no PR merge. PR #340 remains Draft/Open.",
-    "blocker": "The B2 application key's Allow Access to Bucket(s) selector still needs owner confirmation that it is restricted to the single heavix-dev-assets bucket (not All)."
-  }
+    "blocker": "The B2 application key's Allow Access to Bucket(s) selector still needs owner confirmation that it is restricted to the single heavix-dev-assets bucket (not All).",
+    "documentation_checkpoint_commit": "28fabd7b8c00c3fb606cf98f9a1741f6f84c9a02"
+  },
+  "latest_documentation_checkpoint_commit": "28fabd7b8c00c3fb606cf98f9a1741f6f84c9a02"
 }
