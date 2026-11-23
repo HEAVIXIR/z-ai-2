@@ -39,6 +39,20 @@ describe("checkCsrf", () => {
     expect(checkCsrf(req)).toBe(true);
   });
 
+  it("allows the explicitly configured canonical Cloudflare Preview origin", () => {
+    process.env.NODE_ENV = "production";
+    process.env.HEAVIX_ENV = "preview";
+    process.env.HEAVIX_PREVIEW_ORIGIN = "https://heavix-preview.heavixir.workers.dev";
+
+    const origin = "https://heavix-preview.heavixir.workers.dev";
+    const req = new Request(`${origin}/api/auth/login`, {
+      method: "POST",
+      headers: { origin, referer: `${origin}/login` },
+    });
+
+    expect(checkCsrf(req)).toBe(true);
+  });
+
   it("allows the exact configured Cloudflare branch Preview origin", () => {
     process.env.NODE_ENV = "production";
     process.env.HEAVIX_ENV = "preview";
@@ -58,22 +72,17 @@ describe("checkCsrf", () => {
     expect(checkCsrf(req)).toBe(true);
   });
 
-  it("rejects the old generic workers.dev hostname when the branch Preview origin is configured", () => {
+  it("rejects the canonical workers.dev hostname when a different branch Preview origin is configured", () => {
     process.env.NODE_ENV = "production";
     process.env.HEAVIX_ENV = "preview";
     process.env.HEAVIX_PREVIEW_ORIGIN =
       "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev";
 
-    const req = new Request(
-      "https://heavix-preview.heavixir.workers.dev/api/auth/login",
-      {
-        method: "POST",
-        headers: {
-          origin: "https://heavix-preview.heavixir.workers.dev",
-          referer: "https://heavix-preview.heavixir.workers.dev/login",
-        },
-      },
-    );
+    const origin = "https://heavix-preview.heavixir.workers.dev";
+    const req = new Request(`${origin}/api/auth/login`, {
+      method: "POST",
+      headers: { origin, referer: `${origin}/login` },
+    });
 
     expect(checkCsrf(req)).toBe(false);
   });
