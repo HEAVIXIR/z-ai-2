@@ -88,9 +88,14 @@ export async function PUT(
     });
 
     // 2. Persist BrandMedia record — NO silent error swallowing.
-    //    If BrandMedia has a @@unique([brandId, type]) constraint,
-    //    upsert works. If not, we use createMany + deleteMany as a
-    //    fallback. Either way, errors propagate to the caller.
+    //    Strategy:
+    //      a) Try upsert (works if @@unique([brandId, type]) exists)
+    //      b) If upsert fails with a "unique constraint not found" error
+    //         (Prisma error P2009 or similar field-not-found), fall back
+    //         to deleteMany + create INSIDE a transaction so the old
+    //         logo row is preserved if the create fails.
+    //      c) If upsert fails with ANY OTHER error (connection lost,
+    //         timeout, etc.), propagate it — do NOT delete the old row.
     let mediaId: string | null = null;
     try {
       // Try upsert first (works if @@unique([brandId, type]) exists)
@@ -108,21 +113,43 @@ export async function PUT(
         },
       });
       mediaId = media.id;
-    } catch {
-      // Upsert failed — likely no @@unique([brandId, type]) constraint.
-      // Fallback: delete existing LOGO media for this brand, then create new.
-      await db.brandMedia.deleteMany({
-        where: { brandId: id, type: "LOGO" },
+    } catch (upsertErr: any) {
+      // Only fall back to deleteMany+create if the error is specifically
+      // about the missing unique constraint (compound field not found).
+      // Prisma returns P2009 ("Unknown argument") or P2021 ("The table
+      // does not have a unique constraint") for this case.
+      const code = upsertErr?.code ?? "";
+      const msg = String(upsertErr?.message ?? "");
+      const isMissingConstraint =
+        code === "P2009" ||
+        code === "P2021" ||
+        /brandId_type|unknown.*argument|does not have.*unique/i.test(msg);
+
+      if (!isMissingConstraint) {
+        // This is a real DB error (connection, timeout, constraint
+        // violation, etc.) — do NOT delete the old logo row.
+        // Propagate the error to the caller.
+        throw upsertErr;
+      }
+
+      // Missing constraint: use a transaction so deleteMany + create
+      // are atomic. If create fails, the delete is rolled back and
+      // the old logo row survives.
+      const result = await db.$transaction(async (tx) => {
+        await tx.brandMedia.deleteMany({
+          where: { brandId: id, type: "LOGO" },
+        });
+        const media = await tx.brandMedia.create({
+          data: {
+            brandId: id,
+            type: "LOGO",
+            url: logoUrl,
+            title: `Logo from ${logoSource}`,
+          },
+        });
+        return media;
       });
-      const media = await db.brandMedia.create({
-        data: {
-          brandId: id,
-          type: "LOGO",
-          url: logoUrl,
-          title: `Logo from ${logoSource}`,
-        },
-      });
-      mediaId = media.id;
+      mediaId = result.id;
     }
 
     // 3. Audit log — records source + before/after logoUrl.

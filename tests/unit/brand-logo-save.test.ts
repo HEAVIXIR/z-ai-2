@@ -6,6 +6,8 @@
  *   - invalid source → 400
  *   - Brand.verification is NOT changed by logo update
  *   - BrandMedia is persisted (no silent error swallowing)
+ *   - fallback only runs for missing-constraint errors, NOT all errors
+ *   - fallback uses transaction for atomicity
  *   - response includes source
  *
  * All tests are mocked — no real DB or AI calls.
@@ -20,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   brandMediaUpsert: vi.fn(),
   brandMediaDeleteMany: vi.fn(),
   brandMediaCreate: vi.fn(),
+  transaction: vi.fn(),
   logAudit: vi.fn(),
   getCurrentUser: vi.fn(),
   hasPermission: vi.fn(),
@@ -37,6 +40,7 @@ vi.mock("@/lib/db", () => ({
       deleteMany: mocks.brandMediaDeleteMany,
       create: mocks.brandMediaCreate,
     },
+    $transaction: mocks.transaction,
   },
 }));
 
@@ -91,6 +95,8 @@ describe("PUT /api/admin/brands/[id]/logo", () => {
     mocks.logAudit.mockResolvedValue({});
   });
 
+  // ── Source whitelist ──────────────────────────────────────
+
   it("accepts source=AI_SEARCH and persists it", async () => {
     const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png", source: "AI_SEARCH" });
     const res = await PUT(req as any, ctx);
@@ -134,29 +140,26 @@ describe("PUT /api/admin/brands/[id]/logo", () => {
   it("rejects empty source string with 400", async () => {
     const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png", source: "" });
     const res = await PUT(req as any, ctx);
-    // Empty string → trimmed → "" → uppercased → "" → not in whitelist
-    // But the default path should catch this: rawSource defaults to "MANUAL"
-    // when the trimmed value is empty... wait, let me check the code.
-    // Actually: rawSource = "".trim().toUpperCase() = "" → not in VALID_LOGO_SOURCES → 400
-    const body = await res.json();
     expect(res.status).toBe(400);
   });
+
+  // ── Verification independence ─────────────────────────────
 
   it("does NOT change Brand.verification", async () => {
     const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png", source: "AI_SEARCH" });
     await PUT(req as any, ctx);
 
-    // brand.update should only set logoUrl, not verification
     const updateCall = mocks.brandUpdate.mock.calls[0]?.[0];
     expect(updateCall?.data?.logoUrl).toBe("https://example.com/logo.png");
     expect(updateCall?.data?.verification).toBeUndefined();
   });
 
+  // ── BrandMedia persistence ────────────────────────────────
+
   it("persists BrandMedia with the correct source in title", async () => {
     const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png", source: "AI_SEARCH" });
     await PUT(req as any, ctx);
 
-    // BrandMedia upsert should be called with source in title
     expect(mocks.brandMediaUpsert).toHaveBeenCalledTimes(1);
     const upsertCall = mocks.brandMediaUpsert.mock.calls[0]?.[0];
     expect(upsertCall?.create?.title).toBe("Logo from AI_SEARCH");
@@ -164,36 +167,95 @@ describe("PUT /api/admin/brands/[id]/logo", () => {
     expect(upsertCall?.create?.type).toBe("LOGO");
   });
 
-  it("falls back to deleteMany+create when upsert fails (no @@unique constraint)", async () => {
-    // Simulate the case where BrandMedia has no @@unique([brandId, type])
-    mocks.brandMediaUpsert.mockRejectedValue(new Error("unique constraint not found"));
-    mocks.brandMediaDeleteMany.mockResolvedValue({ count: 0 });
-    mocks.brandMediaCreate.mockResolvedValue({ id: "media-fallback" });
+  // ── Fallback: only for missing constraint ─────────────────
+
+  it("falls back to transaction when upsert fails with missing-constraint error (P2021)", async () => {
+    // P2021 = "The table does not have a unique constraint"
+    const constraintErr = Object.assign(new Error("Unknown argument `brandId_type`"), {
+      code: "P2021",
+    });
+    mocks.brandMediaUpsert.mockRejectedValue(constraintErr);
+    mocks.transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
+      // Simulate the transaction: provide a mock tx with deleteMany + create
+      const tx = {
+        brandMedia: {
+          deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+          create: vi.fn().mockResolvedValue({ id: "media-tx" }),
+        },
+      };
+      return fn(tx);
+    });
 
     const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png", source: "AI_SEARCH" });
     const res = await PUT(req as any, ctx);
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(mocks.brandMediaDeleteMany).toHaveBeenCalledTimes(1);
-    expect(mocks.brandMediaCreate).toHaveBeenCalledTimes(1);
-    const createCall = mocks.brandMediaCreate.mock.calls[0]?.[0];
-    expect(createCall?.data?.title).toBe("Logo from AI_SEARCH");
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
   });
 
-  it("propagates BrandMedia errors instead of swallowing them", async () => {
-    // Both upsert AND fallback fail
-    mocks.brandMediaUpsert.mockRejectedValue(new Error("upsert failed"));
-    mocks.brandMediaDeleteMany.mockRejectedValue(new Error("delete failed"));
+  it("falls back to transaction when upsert fails with P2009", async () => {
+    const constraintErr = Object.assign(new Error("Unknown argument"), { code: "P2009" });
+    mocks.brandMediaUpsert.mockRejectedValue(constraintErr);
+    mocks.transaction.mockImplementation(async (fn: (tx: any) => Promise<any>) => {
+      const tx = {
+        brandMedia: {
+          deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+          create: vi.fn().mockResolvedValue({ id: "media-tx" }),
+        },
+      };
+      return fn(tx);
+    });
+
+    const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png", source: "MANUAL" });
+    const res = await PUT(req as any, ctx);
+
+    expect(res.status).toBe(200);
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT fall back for connection errors — propagates without deleteMany", async () => {
+    // A connection error should NOT trigger the fallback (which deletes old logo)
+    const connErr = Object.assign(new Error("Connection lost"), { code: "P1001" });
+    mocks.brandMediaUpsert.mockRejectedValue(connErr);
 
     const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png", source: "AI_SEARCH" });
     const res = await PUT(req as any, ctx);
     const body = await res.json();
 
-    // The error should surface as a 500, NOT be silently swallowed
+    // Should be 500 (error propagated), NOT 200 (fallback)
     expect(res.status).toBe(500);
-    expect(body.error).toContain("delete failed");
+    // deleteMany should NOT be called — old logo preserved
+    expect(mocks.brandMediaDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
+
+  it("does NOT fall back for timeout errors — propagates without deleteMany", async () => {
+    const timeoutErr = Object.assign(new Error("Transaction timed out"), { code: "P2028" });
+    mocks.brandMediaUpsert.mockRejectedValue(timeoutErr);
+
+    const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png", source: "AI_SEARCH" });
+    const res = await PUT(req as any, ctx);
+
+    expect(res.status).toBe(500);
+    expect(mocks.brandMediaDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it("propagates transaction errors (fallback create fails)", async () => {
+    const constraintErr = Object.assign(new Error("Unknown argument `brandId_type`"), { code: "P2021" });
+    mocks.brandMediaUpsert.mockRejectedValue(constraintErr);
+    mocks.transaction.mockRejectedValue(new Error("create failed in transaction"));
+
+    const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png", source: "AI_SEARCH" });
+    const res = await PUT(req as any, ctx);
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toContain("create failed");
+  });
+
+  // ── Audit log ─────────────────────────────────────────────
 
   it("records audit log with source and before/after logoUrl", async () => {
     mocks.brandFindUnique.mockResolvedValue({
@@ -216,30 +278,26 @@ describe("PUT /api/admin/brands/[id]/logo", () => {
     expect(auditCall?.reason).toContain("AI-suggested");
   });
 
+  // ── Error cases ───────────────────────────────────────────
+
   it("returns 404 when brand does not exist", async () => {
     mocks.brandFindUnique.mockResolvedValue(null);
-
     const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png" });
     const res = await PUT(req as any, ctx);
-
     expect(res.status).toBe(404);
   });
 
   it("returns 401 when not authenticated", async () => {
     mocks.getCurrentUser.mockResolvedValue(null);
-
     const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png" });
     const res = await PUT(req as any, ctx);
-
     expect(res.status).toBe(401);
   });
 
   it("returns 403 when lacking brand.update permission", async () => {
     mocks.hasPermission.mockResolvedValue(false);
-
     const [req, ctx] = makeRequest({ logoUrl: "https://example.com/logo.png" });
     const res = await PUT(req as any, ctx);
-
     expect(res.status).toBe(403);
   });
 });
