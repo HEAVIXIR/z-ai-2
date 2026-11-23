@@ -43,18 +43,31 @@ export default function LoginForm() {
       try {
         data = JSON.parse(responseText);
       } catch {
-        setError(`پاسخ سرور قابل‌خواندن نیست (HTTP ${res.status}). لطفاً بعداً تلاش کنید.`);
+        setError(
+          res.status === 503
+            ? "سرور پیش‌نمایش هنگام پردازش ورود با خطای 503 متوقف شد؛ این خطا به معنی اشتباه بودن رمز عبور نیست."
+            : `پاسخ سرور قابل‌خواندن نیست (HTTP ${res.status}). لطفاً بعداً تلاش کنید.`,
+        );
         return;
       }
       if (!res.ok || !data.ok) {
-        setError(data.error || `ورود ناموفق بود (HTTP ${res.status}).`);
+        setError(
+          data.error ||
+            (res.status === 503
+              ? "سرور پیش‌نمایش هنگام پردازش ورود با خطای 503 متوقف شد؛ این خطا به معنی اشتباه بودن رمز عبور نیست."
+              : `ورود ناموفق بود (HTTP ${res.status}).`),
+        );
         return;
       }
       const requestedRedirect = safeInternalRedirect(sp.get("redirect"), "");
       router.push(requestedRedirect || (data.role === "admin" ? "/admin/dashboard" : "/dashboard"));
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? "ارتباط با سرور برقرار نشد. اتصال را بررسی و دوباره تلاش کنید." : "خطای غیرمنتظره در ارتباط با سرور.");
+      setError(
+        err instanceof Error
+          ? "ارتباط با سرور پیش‌نمایش قطع شد. این خطا لزوماً به معنی اشتباه بودن رمز عبور نیست؛ اتصال یا پاسخ‌دهی سرویس را بررسی کنید."
+          : "خطای غیرمنتظره در ارتباط با سرور پیش‌نمایش.",
+      );
     } finally { setLoading(false); }
   }
 
