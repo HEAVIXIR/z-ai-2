@@ -92,7 +92,7 @@ export default async function HomePage() {
   // DB level, so the result is deterministic.
   const [allBrands, allCategories, homeCategoryConfigRow, siteSettings,
     featuredRows, verifiedStrictRows, verifiedInclusiveRows, latestRows,
-    activeListings, brandCount, categoryCount, featuredCount,
+    listingStatsRows, brandCount,
     requestRows, articleRows, hotSearchRows, homeSections, heroConfig,
   ] = await Promise.all([
     withHomepageQueryDiagnostics("brand.top", getCachedTopBrands),
@@ -131,16 +131,26 @@ export default async function HomePage() {
       take: 10,
       include: listingInclude as any,
     })),
-    withHomepageQueryDiagnostics("listing.published-count", () => db.listing.count({ where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } } })),
+    // One grouped read replaces the independent published + featured counts.
+    // The category count is derived from the already-fetched active catalog rows.
+    withHomepageQueryDiagnostics("listing.stats", () => db.listing.groupBy({
+      by: ["featured"],
+      where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
+      _count: { _all: true },
+    })),
     withHomepageQueryDiagnostics("brand.active-count", getCachedBrandCount),
-    withHomepageQueryDiagnostics("category.root-count", () => db.category.count({ where: { active: true, parentId: null, layer: "CATALOG" } })),
-    withHomepageQueryDiagnostics("listing.featured-count", () => db.listing.count({ where: { status: "PUBLISHED", featured: true, listingType: { in: [...SUPPLY_LISTING_TYPES] } } })),
     withHomepageQueryDiagnostics("request.active", getCachedActiveRequests),
     withHomepageQueryDiagnostics("article.published", getCachedArticles),
     withHomepageQueryDiagnostics("search.hot", getCachedHotSearches),
     withHomepageQueryDiagnostics("homepage.sections", getCachedHomePageSections),
     withHomepageQueryDiagnostics("homepage.hero-config", getCachedHeroConfig),
   ]);
+  // Derive homepage statistics from the grouped listing query and the
+  // already-loaded active catalog. This avoids two extra PPG round trips.
+  const activeListings = listingStatsRows.reduce((sum, row) => sum + row._count._all, 0);
+  const featuredCount = listingStatsRows.find((row) => row.featured)?._count._all ?? 0;
+  const categoryCount = allCategories.filter((category) => category.parentId === null).length;
+
   // Falls back to generation 1 when no admin configuration exists.
   const homeCategoryConfig = {
     generation: homeCategoryConfigRow?.homeCategoryGeneration ?? 1,
