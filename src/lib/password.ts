@@ -1,5 +1,3 @@
-import bcrypt from "bcryptjs";
-
 const PBKDF2_ITERATIONS = 600_000;
 const PBKDF2_KEY_LENGTH_BITS = 256;
 const PBKDF2_SALT_LENGTH_BYTES = 16;
@@ -108,7 +106,11 @@ export async function verifyPassword(
       process.env.HEAVIX_AUTH_ALLOW_LEGACY_BCRYPT !== "false";
     const allowLegacyBcrypt = options.allowLegacyBcrypt ?? runtimeAllowsLegacy;
     if (!allowLegacyBcrypt) return false;
-    return bcrypt.compare(password, hash);
+    // Load the legacy implementation only on Node/Vercel. Cloudflare Preview
+    // never imports or executes bcrypt under its 10 ms Free-plan CPU ceiling.
+    const bcryptModule = await import("bcryptjs");
+    const compare = bcryptModule.compare ?? bcryptModule.default.compare;
+    return compare(password, hash);
   }
 
   return false;
