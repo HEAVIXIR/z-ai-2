@@ -248,7 +248,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
   // 1. PERMISSION CONTRACTS (route-only — RBAC is enforced in routes)
   // ═══════════════════════════════════════════════════════════════
   describe('1. Permission Wiring', () => {
-    it('should have exactly 54 admin store route files', () => {
+    it('should have exactly 58 admin store route files', () => {
       // T-A-DEEP-STORE: 28 routes originally.
       // T1+T2-DEEP: +6 new routes (warehouses/route, warehouses/[id],
       // inventory/reserve, inventory/release, inventory/low-stock,
@@ -265,10 +265,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       //   logistics/dashboard, shipments/[id]/{assign,pickup,deliver,
       //   exception}) → 51; opening inventory allocation +1 → 52; paired warehouse transfer +1 → 53; transfer-part search endpoint +1 → 54.
       const files = listRouteFiles();
-      expect(files.length).toBe(55);
+      expect(files.length).toBe(58);
     });
 
-    it('should have 98 requirePermission calls across all store routes', () => {
+    it('should have 103 requirePermission calls across all store routes', () => {
       // T-A-DEEP-STORE: 53 originally.
       // T1+T2-DEEP: +10 new (warehouses 2+3, reserve 1, release 1,
       // low-stock 1, returns/[id]/items 2) → 63.
@@ -287,7 +287,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/requirePermission\(user\.id,/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(100);
+      expect(count).toBe(103);
     });
 
     it('should have 23 store.read requirePermission calls', () => {
@@ -594,10 +594,10 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const outboxMatches = content.match(/await enqueueAuditOutbox\(/g);
         count += (logMatches ? logMatches.length : 0) + (outboxMatches ? outboxMatches.length : 0);
       }
-      expect(count).toBe(74);
+      expect(count).toBe(75);
     });
 
-    it('counts 67 Store DB writes across routes + services, including transactions', () => {
+    it('counts 68 Store DB writes across routes + services, including transactions', () => {
       // Count root-client and transaction-client writes, including conditional
       // updateMany/deleteMany operations. A single domain audit may cover
       // several SQL writes in one transaction; audit hooks are checked below.
@@ -607,7 +607,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         const matches = content.match(/(?:storeDb|tx)\.\w+\.(create|update|updateMany|delete|deleteMany|upsert)\(/g);
         count += matches ? matches.length : 0;
       }
-      expect(count).toBe(67);
+      expect(count).toBe(68);
     });
 
     it('every mutation file imports logAudit from @/lib/audit', () => {
@@ -782,7 +782,7 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (74) cover the 67 counted database write calls', () => {
+    it('total audits (75) cover the 68 counted database write calls', () => {
       const files = readAllStoreFiles();
       let totalMut = 0;
       let totalAudit = 0;
@@ -794,8 +794,8 @@ describe('Phase Store-2C — Store Control Plane Contract Tests', () => {
         totalAudit += logMatches.length + outboxMatches.length;
       }
       expect(totalAudit).toBeGreaterThanOrEqual(totalMut);
-      expect(totalMut).toBe(67);
-      expect(totalAudit).toBe(74);
+      expect(totalMut).toBe(68);
+      expect(totalAudit).toBe(75);
     });
   });
 

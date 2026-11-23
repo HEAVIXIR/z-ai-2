@@ -220,10 +220,15 @@ export default function StorePartsPage() {
       if (!json.success) throw new Error(json.error || "خطا");
       const savedPartId = json.data?.id ?? editing?.id ?? null;
       const pendingMedia = Number(json.mediaPendingCount) || 0;
+      const cleanupPending = Number(json.mediaCleanupPendingCount) || 0;
       setMediaRepairPartId(pendingMedia > 0 && savedPartId ? savedPartId : null);
       setMediaRepairPending(pendingMedia);
       setModalOpen(false);
-      setToast(pendingMedia > 0 ? "قطعه ذخیره شد؛ اتصال برخی تصاویر نیاز به بازیابی دارد." : editing ? "قطعه به‌روزرسانی شد" : "قطعه ایجاد شد");
+      setToast(pendingMedia > 0
+        ? "قطعه ذخیره شد؛ اتصال برخی تصاویر نیاز به بازیابی دارد."
+        : cleanupPending > 0
+          ? "قطعه ذخیره شد؛ پاکسازی برخی تصاویر حذف‌شده در صف باقی مانده است."
+          : editing ? "قطعه به‌روزرسانی شد" : "قطعه ایجاد شد");
       await load();
     } catch (e: any) {
       setToast(e.message);

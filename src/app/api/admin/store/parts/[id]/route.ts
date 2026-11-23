@@ -193,7 +193,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       },
     });
 
-    return NextResponse.json({ success: true, data: serialize(part) });
+    const mediaResult = await attachStagedPartImages(stagedMediaAssets, part.id, user.id);
+    let mediaCleanupPendingCount = 0;
+    if (nextImageUrls) {
+      const removedUrls = parseStoredPartImageUrls(existing.images).filter((url) => !nextImageUrls!.includes(url));
+      const cleanupResult = await cleanupPartMediaUrls(removedUrls, id, user.id);
+      mediaCleanupPendingCount = cleanupResult.pendingCount;
+    }
+    return NextResponse.json({
+      success: true,
+      data: serialize(part),
+      mediaStatus: mediaResult.pendingCount > 0 ? "PENDING" : "ATTACHED",
+      mediaPendingCount: mediaResult.pendingCount,
+      mediaCleanupPendingCount,
+    });
   } catch (e: any) {
     console.error("[store/parts PATCH] error:", e);
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
@@ -221,6 +234,15 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const cleanup = await cleanupPartMediaUrls(existingImageUrls, id, user.id);
     if (cleanup.pendingCount > 0) {
       await storeDb.part.update({ where: { id }, data: { images: JSON.stringify(cleanup.pendingUrls) } });
+      await logAudit({
+        actorId: user.id,
+        actorType: "ADMIN",
+        action: "store.part.update",
+        entityType: "Part",
+        entityId: id,
+        before: { images: existing.images },
+        after: { images: JSON.stringify(cleanup.pendingUrls), mediaCleanupPending: true },
+      });
       return NextResponse.json({
         success: false,
         error: "حذف قطعه تا پایان پاکسازی تصاویر متصل کامل نشد؛ دوباره تلاش کنید.",

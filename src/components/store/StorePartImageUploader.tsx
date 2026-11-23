@@ -52,6 +52,7 @@ export default function StorePartImageUploader({ images, onChange }: Props) {
       }
       onChange(next);
     } catch (cause) {
+      onChange(next);
       setError(cause instanceof Error ? cause.message : "بارگذاری تصویر ناموفق بود.");
     } finally {
       setUploading(false);

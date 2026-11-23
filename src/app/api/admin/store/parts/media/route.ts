@@ -11,6 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_UPLOAD_REQUEST_BYTES = MAX_UPLOAD_BYTES + 256 * 1024;
+const ADMIN_MEDIA_ACTOR = "ADMIN" as const;
 
 /**
  * POST /api/admin/store/parts/media
@@ -62,7 +63,7 @@ export async function POST(request: Request) {
     const result = await uploadAsset({
       file: Buffer.from(await file.arrayBuffer()),
       uploadedBy: user.id,
-      actorType: "ADMIN",
+      actorType: ADMIN_MEDIA_ACTOR,
       originalFilename: file.name,
       entityType: "Part",
       visibility: "PRIVATE",

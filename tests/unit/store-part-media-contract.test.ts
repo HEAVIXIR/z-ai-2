@@ -19,6 +19,9 @@ describe("Store Part media lifecycle contract", () => {
     expect(create).toContain("validatePartImageUrls(images, user.id)");
     expect(create).toContain("attachStagedPartImages(mediaValidation.staged, part.id, user.id)");
     expect(create).toContain("mediaPendingCount");
+    const update = read("src/app/api/admin/store/parts/[id]/route.ts");
+    expect(update).toContain("attachStagedPartImages(stagedMediaAssets, part.id, user.id)");
+    expect(update).toContain("cleanupPartMediaUrls(removedUrls, id, user.id)");
   });
 
   it("supports attachment retry and cleanup of stale or unreferenced Part assets", () => {
