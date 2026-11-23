@@ -34,7 +34,7 @@
  */
 import { db } from "../src/lib/db";
 import { assertTestSeedTarget } from "./test-seed-guard";
-import bcrypt from "bcryptjs";
+import { hashPassword } from "../src/lib/password";
 
 async function main() {
   assertTestSeedTarget("seed-test-fixtures.ts");
@@ -55,7 +55,7 @@ async function main() {
   // `test-fixture-` email prefix so they are trivially distinguishable
   // from real registrations and can be removed without touching real rows.
   console.log("1. Seeding BUYER test-fixture users...");
-  const fixturePasswordHash = await bcrypt.hash("TestFixtureBuyer#2026", 10);
+  const fixturePasswordHash = await hashPassword("TestFixtureBuyer#2026");
   const fixtureUserSpecs = [
     { mobile: "09120000001", email: "test-fixture-buyer-1@heavix.local", firstName: "TestFixture", lastName: "BuyerOne" },
     { mobile: "09120000002", email: "test-fixture-buyer-2@heavix.local", firstName: "TestFixture", lastName: "BuyerTwo" },
