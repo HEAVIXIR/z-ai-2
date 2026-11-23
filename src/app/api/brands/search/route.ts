@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { searchBrands } from "@/lib/search";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,13 +25,21 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const rawQ = url.searchParams.get("q")?.trim() ?? "";
-    if (!rawQ) {
-      return NextResponse.json({ brands: [] });
-    }
-
-    // Always search the canonical global catalog; category is deliberately
-    // not a visibility filter for brands.
-    const brands = await searchBrands(rawQ, { take: 20 });
+    // Empty query powers the initial picker drawer: show active global suggestions.
+    // Typed queries search the full catalog and never apply a category visibility filter.
+    const brands = rawQ
+      ? await searchBrands(rawQ, { take: 20 })
+      : await db.brand.findMany({
+          where: { active: true, status: "ACTIVE" },
+          take: 20,
+          orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
+          select: {
+            id: true, slug: true, name: true, nameEn: true, shortName: true,
+            country: true, logoUrl: true, type: true, status: true,
+            verification: true, featured: true,
+            _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+          },
+        }).then((rows) => rows.map((b) => ({ ...b, listingsCount: b._count.listings })));
 
     // Backward-compat: the original endpoint returned `_count: { listings }`.
     // Map `listingsCount` back to that shape so existing clients
