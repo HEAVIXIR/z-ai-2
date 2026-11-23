@@ -32,7 +32,7 @@ const TRANSACTIONS = [
   { key: "QUOTE",           nameFa: "پیشنهاد قیمت",    nameEn: "Quote",            icon: "file-text",  sortOrder: 4 },
   { key: "AUCTION",         nameFa: "مزایده",          nameEn: "Auction",          icon: "gavel",      sortOrder: 5 },
   { key: "SERVICE_REQUEST", nameFa: "درخواست خدمت",    nameEn: "Service Request",  icon: "wrench",     sortOrder: 6 },
-  { key: "SERVICE_OFFER",   nameFa: "ارائه خدمات",     nameEn: "Service Offer",    icon: "wrench",     sortOrder: 7 },
+  { key: "SERVICE_OFFER",   nameFa: "ارائه خدمت",      nameEn: "Service Offer",    icon: "handshake",  sortOrder: 7 },
 ];
 
 // ════════════════════════════════════════════════════════════
@@ -971,7 +971,8 @@ async function main() {
     await db.transactionType.upsert({
       where: { key: t.key },
       create: t,
-      update: {},
+      // Reactivate only the newly introduced supply-side service type if a dormant row exists.
+      update: t.key === "SERVICE_OFFER" ? { active: true } : {},
     });
   }
 
