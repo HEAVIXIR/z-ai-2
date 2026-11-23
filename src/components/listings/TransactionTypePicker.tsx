@@ -59,7 +59,7 @@ export default function TransactionTypePicker({
           id: "local-wanted-fallback", key: "WANTED", nameFa: "درخواست خرید", nameEn: "Wanted",
           description: null, icon: null, sortOrder: 30,
         };
-        const normalized = received.map((item) => ({
+        const normalized: TransactionTypeOption[] = received.map((item) => ({
           ...item,
           nameFa: canonicalLabels[item.key] ?? item.nameFa,
           icon: canonicalIcons[item.key] ?? item.icon ?? ICON_FALLBACK[item.key] ?? "🛒",
