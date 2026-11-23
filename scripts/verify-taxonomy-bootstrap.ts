@@ -42,9 +42,18 @@ async function main() {
     where: { slug: "excavator" },
     select: { id: true, active: true },
   });
-  const excavatorAttributeLinks = excavator
-    ? await db.categoryAttribute.count({ where: { categoryId: excavator.id, active: true } })
-    : 0;
+  const excavatorAttributeRows = excavator
+    ? await db.categoryAttribute.findMany({
+        where: { categoryId: excavator.id, active: true },
+        select: { attribute: { select: { key: true } } },
+      })
+    : [];
+  const excavatorAttributeLinks = excavatorAttributeRows.length;
+  const excavatorAttributeKeys = new Set(
+    excavatorAttributeRows.map((link) => link.attribute.key).filter((key): key is string => Boolean(key)),
+  );
+  const requiredExcavatorKeys = ["operating_weight", "engine_power", "operating_hours", "bucket_capacity", "condition"];
+  const missingExcavatorKeys = requiredExcavatorKeys.filter((key) => !excavatorAttributeKeys.has(key));
 
   const counts = {
     transactionTypes,
@@ -62,6 +71,7 @@ async function main() {
     provinces,
     cities,
     excavatorAttributeLinks,
+    excavatorRequiredAttributeKeys: requiredExcavatorKeys.length - missingExcavatorKeys.length,
   };
   console.log("HEAVIX taxonomy bootstrap counts:", JSON.stringify(counts, null, 2));
 
@@ -82,6 +92,7 @@ async function main() {
   if (cities < 100) failures.push("expected at least 100 seeded cities");
   if (!excavator?.active) failures.push("expected an active excavator category");
   if (excavatorAttributeLinks < 5) failures.push("expected at least 5 active direct attribute links for excavator");
+  if (missingExcavatorKeys.length) failures.push(`excavator is missing active required attributes: ${missingExcavatorKeys.join(", ")}`);
   if (brandCategoryLinks < 1) failures.push("expected brand/category links");
   if (services < 12) failures.push("expected at least 12 service catalog entries");
   if (failures.length) {
