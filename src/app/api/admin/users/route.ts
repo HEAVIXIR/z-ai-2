@@ -235,8 +235,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // P0-1: bcrypt-hash the password (cost 10). The previous base64
-    // obfuscation was NOT a hash and was trivially reversible — replaced.
+    // Store new passwords using the shared Worker-compatible PBKDF2 format.
     const passwordHash = await hashPassword(password);
 
     // P0-2: admin CAN set the role (admin-gated endpoint). Validate it
