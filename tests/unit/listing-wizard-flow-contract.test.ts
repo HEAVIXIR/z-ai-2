@@ -62,7 +62,8 @@ describe("HEAVIX listing wizard end-to-end source contract", () => {
     expect(page).toContain('body.description = [form.shortDesc.trim(), form.description.trim()]');
     expect(page).toContain('transactionType === "WANTED" || transactionType === "SERVICE_REQUEST"');
     expect(page).toContain('const endpoint = isDemandSubmission ? "/api/wanted" : "/api/listings"');
-    expect(page).toContain("if (isWantedServiceRequest || isServiceRequest)");
+    expect(page).toContain("if (isServiceRequest)");
+    expect(page).not.toContain("isWantedServiceRequest");
     expect(page).not.toContain('data-testid="wanted-media-disabled"');
     expect(page).toContain("<ListingImageUploader");
     expect(page).not.toContain('{transactionType !== "WANTED" && (');
