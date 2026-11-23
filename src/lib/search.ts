@@ -467,7 +467,6 @@ export async function searchBrands(
   // lower-case English queries work even before an alias backfill completes.
   const where: PrismaWhere = {
     active: true,
-    status: "ACTIVE",
     OR: [
       { name: { contains: rawQ, mode: "insensitive" } },
       { name: { contains: normQ, mode: "insensitive" } },
