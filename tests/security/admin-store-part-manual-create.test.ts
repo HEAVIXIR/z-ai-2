@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   partFindUnique: vi.fn(),
   partCreate: vi.fn(),
   audit: vi.fn(),
+  parsePartImageUrls: vi.fn(),
+  validatePartImageUrls: vi.fn(),
+  attachStagedPartImages: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ getCurrentUser: async () => mocks.user }));
@@ -24,6 +27,11 @@ vi.mock("@/lib/store-db", () => ({
   },
 }));
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.audit }));
+vi.mock("@/lib/store-part-media", () => ({
+  parsePartImageUrls: mocks.parsePartImageUrls,
+  validatePartImageUrls: mocks.validatePartImageUrls,
+  attachStagedPartImages: mocks.attachStagedPartImages,
+}));
 
 import { POST } from "@/app/api/admin/store/parts/route";
 
@@ -71,6 +79,9 @@ describe("manual Store part creation", () => {
       brand: include?.brand ? { id: "brand-1", name: "Brand", slug: "brand" } : null,
     }));
     mocks.audit.mockResolvedValue(undefined);
+    mocks.parsePartImageUrls.mockImplementation((value: unknown) => value === undefined || value === null ? [] : Array.isArray(value) ? value : null);
+    mocks.validatePartImageUrls.mockResolvedValue({ ok: true, staged: [] });
+    mocks.attachStagedPartImages.mockResolvedValue({ attachedCount: 0, pendingCount: 0 });
   });
 
   it("creates a part without a source URL or any AI provider dependency", async () => {
@@ -158,6 +169,26 @@ describe("manual Store part creation", () => {
     const csrfRejected = await POST(request(validPart));
     expect(csrfRejected.status).toBe(403);
     expect(mocks.categoryFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("rejects a media asset that failed the Part ownership check before creating the Part", async () => {
+    mocks.validatePartImageUrls.mockResolvedValueOnce({ ok: false, status: 403, error: "ownership mismatch" });
+    const response = await POST(request({ ...validPart, images: ["/api/media/0123456789abcdef01234567"] }));
+    expect(response.status).toBe(403);
+    expect(mocks.partCreate).not.toHaveBeenCalled();
+    expect(mocks.attachStagedPartImages).not.toHaveBeenCalled();
+  });
+
+  it("attaches private staged Part media only after the Part row has been created", async () => {
+    const staged = { id: "0123456789abcdef01234567" } as any;
+    mocks.validatePartImageUrls.mockResolvedValueOnce({ ok: true, staged: [staged] });
+    mocks.attachStagedPartImages.mockResolvedValueOnce({ attachedCount: 1, pendingCount: 0 });
+    const response = await POST(request({ ...validPart, images: ["/api/media/0123456789abcdef01234567"] }));
+    expect(response.status).toBe(201);
+    expect(mocks.partCreate).toHaveBeenCalledTimes(1);
+    expect(mocks.attachStagedPartImages).toHaveBeenCalledWith([staged], "part-1", "admin-1");
+    expect(mocks.partCreate.mock.invocationCallOrder[0]).toBeLessThan(mocks.attachStagedPartImages.mock.invocationCallOrder[0]);
+    expect(await response.json()).toMatchObject({ mediaStatus: "ATTACHED", mediaPendingCount: 0 });
   });
 
   it("keeps the manual route independent of paid AI gateways", () => {

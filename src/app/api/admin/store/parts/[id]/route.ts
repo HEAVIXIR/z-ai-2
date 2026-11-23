@@ -131,11 +131,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     let nextImageUrls: string[] | null = null;
     let stagedMediaAssets: import("@/lib/media-service").MediaAsset[] = [];
     if (Object.prototype.hasOwnProperty.call(body, "images")) {
-      const parsedImages = parsePartImageUrls(body.images);
+      const existingImageUrls = parseStoredPartImageUrls(existing.images);
+      const parsedImages = parsePartImageUrls(body.images, existingImageUrls);
       if (!parsedImages) {
         return NextResponse.json({ success: false, error: "فهرست تصاویر نامعتبر است؛ فقط ۲۰ تصویر داخلی رسانه مجاز است." }, { status: 400 });
       }
-      const validation = await validatePartImageUrls(parsedImages, user.id, id);
+      const validation = await validatePartImageUrls(parsedImages, user.id, id, existingImageUrls);
       if (!validation.ok) {
         return NextResponse.json({ success: false, error: validation.error }, { status: validation.status });
       }

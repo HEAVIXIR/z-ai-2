@@ -19,12 +19,12 @@ export function parseStoredPartImageUrls(raw: string | null | undefined): string
   }
 }
 
-export function parsePartImageUrls(value: unknown): string[] | null {
+export function parsePartImageUrls(value: unknown, allowedExistingUrls: string[] = []): string[] | null {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || value.length > MAX_STORE_PART_IMAGES) return null;
   const urls = value.map((item) => typeof item === "string" ? item.trim() : "");
   if (
-    urls.some((url) => !MEDIA_URL.test(url)) ||
+    urls.some((url) => !MEDIA_URL.test(url) && !allowedExistingUrls.includes(url)) ||
     new Set(urls).size !== urls.length
   ) {
     return null;
@@ -40,9 +40,11 @@ export async function validatePartImageUrls(
   urls: string[],
   userId: string,
   partId?: string,
+  allowedExistingUrls: string[] = [],
 ): Promise<PartMediaValidation> {
   const staged: MediaAsset[] = [];
   for (const url of urls) {
+    if (allowedExistingUrls.includes(url)) continue;
     const match = MEDIA_URL.exec(url);
     if (!match) {
       return { ok: false, status: 403, error: "تصاویر قطعه باید از مسیر امن رسانه بارگذاری شده باشند." };
