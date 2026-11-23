@@ -30,7 +30,7 @@ export async function GET(req: Request) {
     const brands = rawQ
       ? await searchBrands(rawQ, { take: 20 })
       : await db.brand.findMany({
-          where: { active: true, status: "ACTIVE" },
+          where: { active: true },
           take: 20,
           orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
           select: {
