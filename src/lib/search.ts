@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { normalizeAliasValue } from "@/lib/brand-alias";
+import { BRAND_UNAVAILABLE_STATUSES } from "@/lib/brand-labels";
 import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 
 /* ============================================================
@@ -467,6 +468,7 @@ export async function searchBrands(
   // lower-case English queries work even before an alias backfill completes.
   const where: PrismaWhere = {
     active: true,
+    status: { notIn: [...BRAND_UNAVAILABLE_STATUSES] },
     OR: [
       { name: { contains: rawQ, mode: "insensitive" } },
       { name: { contains: normQ, mode: "insensitive" } },
