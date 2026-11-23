@@ -73,20 +73,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       },
     });
     if (!part) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
-    const mediaResult = await attachStagedPartImages(stagedMediaAssets, part.id, user.id);
-    let mediaCleanupPendingCount = 0;
-    if (nextImageUrls) {
-      const removedUrls = parseStoredPartImageUrls(existing.images).filter((url) => !nextImageUrls!.includes(url));
-      const cleanup = await cleanupPartMediaUrls(removedUrls, id, user.id);
-      mediaCleanupPendingCount = cleanup.pendingCount;
-    }
-    return NextResponse.json({
-      success: true,
-      data: serialize(part),
-      mediaStatus: mediaResult.pendingCount > 0 ? "PENDING" : "ATTACHED",
-      mediaPendingCount: mediaResult.pendingCount,
-      mediaCleanupPendingCount,
-    });
+    return NextResponse.json({ success: true, data: serialize(part) });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
   }
@@ -193,7 +180,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       },
     });
 
-    return NextResponse.json({ success: true, data: serialize(part) });
+    const mediaResult = await attachStagedPartImages(stagedMediaAssets, part.id, user.id);
+    let mediaCleanupPendingCount = 0;
+    if (nextImageUrls) {
+      const removedUrls = parseStoredPartImageUrls(existing.images).filter((url) => !nextImageUrls!.includes(url));
+      const cleanupResult = await cleanupPartMediaUrls(removedUrls, id, user.id);
+      mediaCleanupPendingCount = cleanupResult.pendingCount;
+    }
+    return NextResponse.json({
+      success: true,
+      data: serialize(part),
+      mediaStatus: mediaResult.pendingCount > 0 ? "PENDING" : "ATTACHED",
+      mediaPendingCount: mediaResult.pendingCount,
+      mediaCleanupPendingCount,
+    });
   } catch (e: any) {
     console.error("[store/parts PATCH] error:", e);
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
