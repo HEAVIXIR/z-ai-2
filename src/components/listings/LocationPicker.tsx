@@ -363,36 +363,37 @@ export default function LocationPicker({
         {(Boolean(value.latitude?.trim()) !== Boolean(value.longitude?.trim())) && (
           <p role="alert" className="mt-2 text-xs text-red-300">برای ثبت نقطهٔ دقیق، هر دو مختصات عرض و طول باید وارد شوند.</p>
         )}
-        {value.latitude?.trim() && value.longitude?.trim() && (
-          hasValidExactPoint ? (
-            <>
-              <p className="mt-2 text-[11px] text-emerald-300">
-                نقطهٔ واردشده: {latitude.toFixed(6)} ، {longitude.toFixed(6)}
-              </p>
-              <InteractiveLocationMap
-                latitude={value.latitude}
-                longitude={value.longitude}
-                onChange={(point) => onChange({
-                  ...value,
-                  latitude: point.latitude.toFixed(6),
-                  longitude: point.longitude.toFixed(6),
-                })}
-                onClear={() => onChange({ ...value, latitude: "", longitude: "" })}
-              />
-              <a
-                href={exactPointOpenUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-flex text-[11px] font-bold text-[#F58220] underline underline-offset-4"
-              >
-                بازکردن نقطه در نقشهٔ کامل
-              </a>
-            </>
-          ) : (
-            <p role="alert" className="mt-2 text-xs text-red-300">
-              مختصات واردشده خارج از محدودهٔ معتبر جغرافیایی است.
-            </p>
-          )
+        {hasValidExactPoint && (
+          <p className="mt-2 text-[11px] text-emerald-300">
+            نقطهٔ انتخاب‌شده: {latitude.toFixed(6)} ، {longitude.toFixed(6)}
+          </p>
+        )}
+        {((!value.latitude?.trim() && !value.longitude?.trim()) || hasValidExactPoint) && (
+          <InteractiveLocationMap
+            latitude={value.latitude}
+            longitude={value.longitude}
+            onChange={(point) => onChange({
+              ...value,
+              latitude: point.latitude.toFixed(6),
+              longitude: point.longitude.toFixed(6),
+            })}
+            onClear={() => onChange({ ...value, latitude: "", longitude: "" })}
+          />
+        )}
+        {hasValidExactPoint && (
+          <a
+            href={exactPointOpenUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex text-[11px] font-bold text-[#F58220] underline underline-offset-4"
+          >
+            بازکردن نقطه در نقشهٔ کامل
+          </a>
+        )}
+        {value.latitude?.trim() && value.longitude?.trim() && !hasValidExactPoint && (
+          <p role="alert" className="mt-2 text-xs text-red-300">
+            مختصات واردشده خارج از محدودهٔ معتبر جغرافیایی است.
+          </p>
         )}
       </div>
       )}
