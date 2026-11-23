@@ -105,9 +105,8 @@ describe("HEAVIX global brand registry integration", () => {
     expect(nav).not.toContain("href: '/admin/brand-families'");
     expect(nav).not.toContain("href: '/admin/home/trusted-brands'");
     expect(navApi).toContain("LEGACY_BRAND_NAV_HREFS");
-    expect(hub).toContain("مرکز یکپارچه مدیریت برندها");
-    expect(hub).toContain("/admin/brand-families");
-    expect(hub).toContain("/admin/home/trusted-brands");
+    // V2: hub is now a redirect to /admin/taxonomy/brands (single management center)
+    expect(hub).toContain('redirect("/admin/taxonomy/brands")');
     expect(sections).toContain('rows.filter((row) => row.key !== "brands")');
     expect(sections).not.toContain('{ key: "brands", title: "برندهای معتبر"');
   });

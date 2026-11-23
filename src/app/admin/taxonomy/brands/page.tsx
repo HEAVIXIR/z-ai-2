@@ -67,7 +67,7 @@ export default async function TaxonomyBrandsPage({
   } satisfies Prisma.BrandWhereInput;
 
   // Load one bounded page; the count keeps the full 600+ brand catalog navigable.
-  const [brands, totalBrands, industries, categoriesCount] = await Promise.all([
+  const [brands, totalBrands, industries, categoriesCount, activeCount, verifiedCount, familiesCount] = await Promise.all([
     db.brand.findMany({
       where,
       orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
@@ -92,6 +92,9 @@ export default async function TaxonomyBrandsPage({
       select: { key: true, nameFa: true, nameEn: true },
     }),
     db.category.count(),
+    db.brand.count({ where: { active: true } }),
+    db.brand.count({ where: { verification: "VERIFIED" } }),
+    db.brandFamily.count(),
   ]);
   const totalPages = Math.max(1, Math.ceil(totalBrands / pageSize));
   const pageUrl = (targetPage: number) => {
@@ -184,6 +187,20 @@ export default async function TaxonomyBrandsPage({
   return (
     <div className="space-y-6">
       <BrandManagementNav active="brands" />
+      {/* Stats header — consolidated from the old /admin/brands hub */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {[
+          { label: "کل برندها", value: totalBrands },
+          { label: "فعال", value: activeCount },
+          { label: "تأییدشده", value: verifiedCount },
+          { label: "خانواده‌ها", value: familiesCount },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-2xl border border-zinc-200 bg-white p-4">
+            <div className="text-xs font-bold text-zinc-500">{label}</div>
+            <p className="mt-2 text-2xl font-black tabular-nums text-zinc-900">{toFa(value)}</p>
+          </div>
+        ))}
+      </div>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black text-zinc-900">برندها</h1>
