@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { readFileSync } from "node:fs";
-import path from "path";
+import path from "node:path";
 
 // Inline jSquash WASM assets so Node/Vitest does not treat .wasm as JS.
 const wasmDataUrlPlugin = {
@@ -17,11 +17,8 @@ const wasmDataUrlPlugin = {
 /* ============================================================
    Vitest — Security test config (Track E)
    ------------------------------------------------------------
-   Used by `bun run test:security` (see package.json).
-   Runs only the security suite, which lives under
-   `tests/security/**`. If that directory doesn't exist yet,
-   vitest simply reports "No test files found" instead of
-   failing to load a config.
+   Used by `bun run test:security`.
+   Runs the security suite plus the root-level CSRF contract tests.
    ============================================================ */
 
 export default defineConfig({
@@ -31,9 +28,10 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
-    // STEP 13.28: include .tsx so JSX-based security tests (e.g. the
-    // /rfq/[id] page safeRfq wiring test) are picked up.
-    include: ["tests/security/**/*.test.{ts,tsx}"],
+    include: [
+      "tests/security/**/*.test.{ts,tsx}",
+      "tests/csrf.test.ts",
+    ],
   },
   resolve: {
     alias: {
