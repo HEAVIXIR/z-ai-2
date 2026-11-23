@@ -1294,3 +1294,48 @@ The B2 media infrastructure is robust:
 - Added operational dual-mode design/handoff note (planned) and placeholder-only .z-ai-config.example. Do not bake credentials into tracked files or Worker bundles; runtime-safe secret/config injection must be verified before enabling deployed ZAI.
 - No Preview/Production deployment, DB migration/seed/write, paid provider, Cloudflare Build, DNS, or Worker activation.
 - Next: implement no-ZAI manual Marketplace listing API/UI and manual Store entry form; fix/diagnose secure ZAI config resolution separately.
+
+## 2026-11-23 — Manual-entry hardening, zero-spend SCRAPER gate and exact-head runtime acceptance
+
+### Reconciliation against the previous handoff
+
+- The 2026-11-22 next-action list described the no-ZAI manual Marketplace path and Store manual-entry UI as still missing. A direct source audit on the active Integration branch found both already present: the admin manual Marketplace listing page/API and the Store Parts Admin create/edit form/API. No duplicate UI or endpoint was created.
+- The Marketplace manual admin route is separate from provider-backed scraping, uses admin authorization/CSRF/bounded validation, creates pending records with provenance/audit, and does not import the AI gateway.
+- The Store Parts Admin page already has a manual create form; sourceUrl is optional. The page has no image upload UI, which remains a real product gap.
+
+### Code changes
+
+- Hardened `POST /api/admin/store/parts`:
+  - bounded JSON body (512 KiB);
+  - required name/SKU/category and bounded optional text;
+  - safe HTTP(S)-only optional sourceUrl (manual entry does not require a source URL);
+  - category existence and active-brand checks;
+  - finite/nonnegative price, integer stock/threshold and maximum stock bounds;
+  - bounded images/compatibleCars arrays and strict boolean fields;
+  - duplicate SKU conflict response (409);
+  - generic server error response and audit metadata.
+- Added `tests/security/admin-store-part-manual-create.test.ts` covering manual create without source URL, contact-for-price, category/brand validation, invalid numeric input, oversized body, duplicate SKU, CSRF/RBAC, audit and no AI gateway dependency.
+- Set the SCRAPER seed policy to `active=false` and `costCeilingUsd=0`; seeding now also keeps an existing SCRAPER row disabled at zero cost.
+- Added a runtime fail-closed gate: `HEAVIX_AI_SCRAPER_ENABLED=true` is required before SCRAPER policy lookup; an active DB policy with a positive cost ceiling is also required. The check happens before quota/global-budget reservation. `.env.example` defaults the flag to false.
+- Added unit, preflight-order and source-contract tests proving that an active/funded SCRAPER policy is still denied without explicit runtime opt-in and no quota/budget work occurs.
+- Corrected stale TransactionTypePicker contract assertions and retained the Store permission-contract syntax required by the route matrix.
+
+### Verification
+
+- Exact-head CI: run #4734 / GitHub run `45139405587`, commit `886058ca0953110e218c656e2afdd4c4b28f3912`, **SUCCESS**. Active jobs passed: verify (TypeScript, lint, security, contract/unit, E2E, PostgreSQL disposable migration/backup proofs, production build), phase-tests, audit-transaction, TLS, Workerd smoke, Docker/Caddy proof and Cloudflare compatibility report-only. Legacy archive inventory and Preview read-only paired migration diagnostics were skipped.
+- OpenNext real-route Workerd proof: run #1364 / `45139413139`, same exact commit, **SUCCESS**.
+- Isolated Integration Preview: run #211 / `45139405586`, same exact commit, **SUCCESS**. Root HTTP 200; /api/health HTTP 200 after two attempts; App DB and Store DB both up; taxonomy and excavator detail HTTP 200. Stable URL: https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev
+- B2 source audit: current media service uses the B2 adapter; ListingImageUploader uses /api/media/staging; listing POST enforces imagePolicy.maxImages and rejects excess instead of truncating. Existing B2 object proof is older than this code head; no live B2 write/read/delete was performed.
+
+### Safety and remaining gates
+
+- No live database migration, seed or write. CI migration/seed/backup proofs used disposable test databases only.
+- No ZAI credentials were read or used; no AI provider was invoked. SCRAPER remains disabled unless both explicit runtime flag and positive DB policy are configured.
+- No B2 object write/read/delete was performed; no secret values were read.
+- The successful Integration Preview is isolated and non-production. It does not prove Admin/Seller login, manual listing browser submission, seller media E2E or canonical Preview database identity.
+- Canonical Preview OID mismatch remains a separate blocker; no OID secret was changed.
+- PR #340 remains Draft/Open; no merge to main, Production deployment or DNS change.
+
+### Next action
+
+Implement the Store Part B2 media lifecycle (private staged upload, Part attachment, active-Part public read gate, cleanup/retry, audit, UI and tests), then perform owner-guided current-Worker B2 binding/key-scope verification and protected object proof. Keep canonical Preview OID, WANTED schema work and full Brand Management Center consolidation behind their separate approval/data-integrity gates.
