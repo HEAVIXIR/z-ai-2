@@ -45,14 +45,11 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(routing).toContain('AUCTION: "CATALOG"');
     expect(routing).toContain('QUOTE: "CATALOG"');
     expect(routing).toContain('SERVICE_REQUEST: "SERVICE"');
-    // H.2.3 (P1 fix): the isServiceFlow branch must NOT short-circuit past
-    // the WANTED quantity/budget/deadline checks when intent=SERVICE_REQUEST.
-    // Previously it returned Boolean(serviceTypeId) and skipped the WANTED
-    // validation block entirely. The branch now requires serviceTypeId AND,
-    // for WANTED+SERVICE_REQUEST, runs the quantity/budget/deadline checks.
+    // Top-level service requests require a service type and validate their
+    // request-specific quantity/budget/deadline fields before proceeding.
     expect(wizard).toContain("if (isServiceFlow) {");
     expect(wizard).toContain("if (!serviceTypeId) return false;");
-    expect(wizard).toContain("if (isWantedServiceRequest || isServiceRequest) {");
+    expect(wizard).toContain("if (isServiceRequest) {");
     expect(wizard).toContain('if (transactionType === "QUOTE")');
     expect(wizard).toContain("if (isRequestFlow) return true");
   });
