@@ -3,7 +3,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const expectedNextVersions = new Set(["16.4.3", "16.4.5"]);
+// Next 16.4.6 was verified against the exact source tokens below; the
+// occurrence-count checks remain the hard compatibility gate.
+const expectedNextVersions = new Set(["16.4.3", "16.4.5", "16.4.6"]);
 const targetConcurrency = 16;
 const nftPath = require.resolve("next/dist/compiled/@vercel/nft");
 const nextPackagePath = path.resolve(path.dirname(nftPath), "../../../../package.json");
