@@ -1,6 +1,6 @@
 /* HEAVIX Taxonomy Seed V1.1 — HBR §3-§19
    Idempotent seed that populates:
-   - 6 TransactionTypes (§18)
+   - 7 TransactionTypes (§18)
    - 9  ServiceTypes (§19)
    - 16 ApplicationIndustries (§17)
    - Full Category tree V1.1 (§3-§16): 14 roots (7 CATALOG + 4 MARKETPLACE + 2 SERVICE + 1 FALLBACK)
