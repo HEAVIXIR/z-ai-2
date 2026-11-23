@@ -26,7 +26,7 @@ describe("HEAVIX global brand registry integration", () => {
     const brandSearch = search.slice(start, end);
     expect(brandSearch).toContain("active: true");
     expect(brandSearch).not.toContain('status: "ACTIVE"');
-    expect(brandSearch).not.toContain("categoryId");
+    expect(brandSearch).not.toContain("categories:");
     const listingApi = read("src/app/api/listings/route.ts");
     expect(listingApi).toContain("if (!brand || !brand.active)");
     expect(listingApi).not.toContain("brand.status !== \"ACTIVE\"");
