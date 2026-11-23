@@ -56,7 +56,7 @@ export default async function BrandsDirectoryPage({
     typeof sp.country === "string" ? sp.country : undefined;
   const typeFilter = typeof sp.type === "string" ? sp.type : undefined;
 
-  const where: any = {};
+  const where: any = { active: true };
   if (industryFilter) where.industries = { some: { industry: industryFilter } };
   if (countryFilter) where.country = countryFilter;
   if (typeFilter) where.type = typeFilter;
