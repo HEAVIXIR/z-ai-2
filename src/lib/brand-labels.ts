@@ -5,6 +5,22 @@
  * to render consistent Persian badges for type / status / verification.
  */
 
+/**
+ * Statuses that must never be selectable in marketplace listings.
+ * Legacy, historical, acquired, merged, discontinued, regional and unknown
+ * brands remain selectable when their independent `active` flag is true.
+ */
+export const BRAND_UNAVAILABLE_STATUSES = ["PENDING_REVIEW", "INACTIVE", "ARCHIVED"] as const;
+
+export function isBrandSelectable(
+  brand: { active?: boolean | null; status?: string | null } | null | undefined,
+): boolean {
+  return !!brand &&
+    brand.active === true &&
+    !BRAND_UNAVAILABLE_STATUSES.includes(
+      (brand.status ?? "ACTIVE") as (typeof BRAND_UNAVAILABLE_STATUSES)[number],
+    );
+}
 /** Brand type key → Persian label. */
 export const BRAND_TYPE_LABELS: Record<string, string> = {
   MACHINE_BRAND: "ماشین‌آلات",
