@@ -303,6 +303,8 @@ export default function NewListingPage() {
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (brandWrapRef.current && !brandWrapRef.current.contains(e.target as Node)) {
+        brandAbort.current?.abort();
+        setBrandLoading(false);
         setBrandOpen(false);
       }
     };
@@ -355,6 +357,7 @@ export default function NewListingPage() {
       setCategoryPath([]);
       setBrandId("");
       setBrandQuery("");
+      setBrandBrowseKey(0);
       setBrandResults([]);
       setBrandOpen(false);
       setModelName("");
@@ -377,6 +380,7 @@ export default function NewListingPage() {
     setCategoryPath([]);
     setBrandId("");
     setBrandQuery("");
+    setBrandBrowseKey(0);
     setBrandResults([]);
     setBrandOpen(false);
     setModelName("");
