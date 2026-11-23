@@ -112,7 +112,7 @@ describe("Store Part media public-read lifecycle", () => {
       visibility: "PUBLIC",
       entityId: null,
     });
-    mocks.partFindFirst.mockResolvedValue({ id: "part-legacy" });
+    mocks.partFindFirst.mockResolvedValue({ id: "part-legacy", active: true });
 
     const response = await GET(request(), context());
     expect(response.status).toBe(302);
