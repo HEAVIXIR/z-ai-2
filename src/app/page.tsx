@@ -79,10 +79,15 @@ export default async function HomePage() {
   // the sequential round-trips from 3 to 2 (batch 3 depends on
   // results from batch 1+2, so it must remain separate).
   //
-  // All queries in batch 1+2 are independent — none depends on the
-  // result of another within this group.
+  // REGRESSION FIX: The listing.verified query previously depended on
+  // siteSettings.verifiedSectionVerifiedOnly, which is inside the same
+  // Promise.all. To preserve the admin-configured behavior WITHOUT
+  // adding a sequential round-trip, the query now fetches ALL published
+  // supply listings (no verified filter) and the filtering is applied
+  // in JavaScript after the Promise.all resolves. This adds zero PPG
+  // round-trips while preserving the admin's verified-only setting.
   const [allBrands, allCategories, homeCategoryConfigRow, siteSettings,
-    featuredRows, verifiedRows, latestRows,
+    featuredRows, verifiedCandidateRows, latestRows,
     activeListings, brandCount, categoryCount, featuredCount,
     requestRows, articleRows, hotSearchRows, homeSections, heroConfig,
   ] = await Promise.all([
@@ -96,14 +101,13 @@ export default async function HomePage() {
       take: 8,
       include: listingInclude,
     })),
-    withHomepageQueryDiagnostics("listing.verified", () => db.listing.findMany({
-      // verifiedOnlyFlag depends on siteSettings, but we can't read it
-      // before the Promise.all resolves. Instead, use the default (true)
-      // and let the admin-configured value take effect on subsequent
-      // renders. The query below uses the safe default.
-      where: { status: "PUBLISHED", verified: true, listingType: { in: [...SUPPLY_LISTING_TYPES] } },
+    // Fetch a larger pool of recent published listings; the verified-only
+    // filter is applied in JS after siteSettings resolves. take: 20 gives
+    // enough headroom for both verified-only and verified-inclusive modes.
+    withHomepageQueryDiagnostics("listing.verified-pool", () => db.listing.findMany({
+      where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       orderBy: [{ publishedAt: { sort: "desc", nulls: "last" } }],
-      take: 8,
+      take: 20,
       include: listingInclude as any,
     })),
     withHomepageQueryDiagnostics("listing.latest", () => db.listing.findMany({
@@ -128,6 +132,14 @@ export default async function HomePage() {
     parentId: homeCategoryConfigRow?.homeCategoryParentId ?? null,
   };
   const verifiedOnlyFlag = siteSettings?.verifiedSectionVerifiedOnly ?? true;
+  // Apply the admin-configured verified filter in JS. When verifiedOnly=true,
+  // only verified listings are shown. When false, all published listings
+  // from the pool are shown (same behavior as the original SQL filter).
+  const verifiedRows = verifiedOnlyFlag
+    ? verifiedCandidateRows.filter((r) => r.verified)
+    : verifiedCandidateRows;
+  // Trim to the original take: 8 after filtering.
+  const verifiedRowsTrimmed = verifiedRows.slice(0, 8);
   const resolvedHomeSections = mergeHomepageSections(homeSections);
 
   /* Run all independent post-configuration reads concurrently.
@@ -233,7 +245,7 @@ export default async function HomePage() {
   // The shared listingInclude is validated against Prisma above. Narrow the
   // three Promise.all result arrays to that exact relation payload at this boundary.
   const featuredListings: FeaturedListing[] = (featuredRows as unknown as HomeListingRow[]).map(mapListing);
-  const verifiedListings: FeaturedListing[] = (verifiedRows as unknown as HomeListingRow[]).map(mapListing);
+  const verifiedListings: FeaturedListing[] = (verifiedRowsTrimmed as unknown as HomeListingRow[]).map(mapListing);
   const latestAds: LatestAd[] = (latestRows as unknown as HomeListingRow[]).map(mapListing);
 
   const activeRequests: ActiveRequest[] = requestRows.map((r) => ({
