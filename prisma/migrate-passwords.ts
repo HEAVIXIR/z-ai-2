@@ -64,7 +64,7 @@ async function main(): Promise<void> {
     (user) => user.passwordHash.startsWith("pbkdf2$") && !isPbkdf2Hash(user.passwordHash),
   );
   const unsupportedBcrypt = users.filter(
-    (user) => /^\\$2[aby]\\$/.test(user.passwordHash) && !isLegacyBcryptHash(user.passwordHash),
+    (user) => /^\$2[aby]\$/.test(user.passwordHash) && !isLegacyBcryptHash(user.passwordHash),
   );
   if (malformedPbkdf2.length > 0 || unsupportedBcrypt.length > 0) {
     console.error(
