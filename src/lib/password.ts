@@ -25,8 +25,17 @@ function fromBase64Url(value: string): Uint8Array | null {
   }
 }
 
+const MIN_LEGACY_BCRYPT_COST = 4;
+const MAX_LEGACY_BCRYPT_COST = 14;
+
 export function isLegacyBcryptHash(hash: string): boolean {
-  return /^\$2[aby]\$\d{2}\$/.test(hash);
+  if (typeof hash !== "string") return false;
+  const match = /^\$2[aby]\$(\d{2})\$[./A-Za-z0-9]{53}$/.exec(hash);
+  if (!match) return false;
+  const cost = Number(match[1]);
+  // Do not let a stored credential choose an excessive bcrypt work factor
+  // on Node/Vercel login requests. Historical HEAVIX hashes use cost 10.
+  return cost >= MIN_LEGACY_BCRYPT_COST && cost <= MAX_LEGACY_BCRYPT_COST;
 }
 
 export function isPbkdf2Hash(hash: string): boolean {
