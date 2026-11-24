@@ -13,7 +13,7 @@ if (cloneSectionStart < 0) throw new Error("Canonical clone section marker is mi
 const baseTemplateSection = source.slice(0, cloneSectionStart);
 const cloneSection = source.slice(cloneSectionStart);
 const baseTemplateSlugs = new Set(
-  [...baseTemplateSection.matchAll(/slug:\\s*"([^"]+)"/g)].map((entry) => entry[1]),
+  [...baseTemplateSection.matchAll(/slug:\s*"([^"]+)"/g)].map((entry) => entry[1]),
 );
 
 const definedSlugPattern = /slug:\s*"([^"]+)"/g;
