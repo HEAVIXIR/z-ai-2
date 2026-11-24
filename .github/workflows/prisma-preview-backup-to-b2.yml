@@ -283,6 +283,9 @@ jobs:
       - name: Upload encrypted objects and verify B2 read-back
         shell: bash
         env:
+          RBAC_SEED: ${{ inputs.rbac_seed }}
+          BRAND_SEED: ${{ inputs.brand_seed }}
+          MODEL_NAME_MIGRATION: ${{ inputs.model_name_migration }}
           B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
           B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
@@ -316,6 +319,9 @@ jobs:
             echo "backup_run_id=$GITHUB_RUN_ID"
             echo "backup_run_attempt=$GITHUB_RUN_ATTEMPT"
             echo "backup_prefix=$PREFIX"
+            echo "rbac_seed=$RBAC_SEED"
+            echo "brand_seed=$BRAND_SEED"
+            echo "model_name_migration=$MODEL_NAME_MIGRATION"
             cat "$WORK/ENCRYPTED_SHA256SUMS"
           } > "$EVIDENCE/backup-evidence.txt"
           chmod 600 "$EVIDENCE/backup-evidence.txt"

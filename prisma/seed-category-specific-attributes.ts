@@ -3518,6 +3518,11 @@ async function main() {
   if (process.env.HEAVIX_ENV !== "preview") {
     throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
   }
+  if (process.env.HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED !== "YES") {
+    throw new Error(
+      "Refusing technical-form seed: explicit HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED=YES is required.",
+    );
+  }
 
   // Fail closed unless the exact dedicated App Preview database is proven.
   const expectedSystem = process.env.HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER;
