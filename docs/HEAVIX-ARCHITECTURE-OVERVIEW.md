@@ -186,7 +186,7 @@ HEAVIX
 - **Listings:** 31 (all with images)
 - **Industries:** 39 brand industries + 16 application industries
 - **Locations:** Iran + 31 provinces + 179 cities
-- **Users:** 2 (password hashes may be legacy bcrypt or PBKDF2-HMAC-SHA256; successful Node login migrates legacy hashes)
+- **Users:** 2 (PBKDF2-HMAC-SHA256; legacy bcrypt is upgraded after successful Node/Vercel login)
 - **Models:** Role/Permission/RolePermission/UserRole (5 roles, 20 permissions)
 - **Security:** PBKDF2-HMAC-SHA256 + legacy bcrypt migration + secure sessions + RBAC + AuditLog + rate limiting + upload hardening
 - **Tests:** 70 passing, 0 failing
