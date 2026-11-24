@@ -96,8 +96,10 @@ Keep the existing `HomePageSection.config` JSON storage. New numeric overrides l
 The exact JSON shape must be validated before implementation, but the semantics are fixed:
 
 - A section numeric value applies only to that side and that breakpoint.
-- A nested `spacing[bp][side]` value of `null` or an absent value means “no numeric override”. If a valid legacy flat string exists for that side, that legacy section override remains the compatibility fallback; otherwise the value inherits the global setting for the same breakpoint.
-- An empty legacy string `""` is normalized to “no section override” and therefore inherits the global setting when no numeric override exists. It is not a numeric zero.
+- A nested `spacing[bp][side]` value of `null` and an absent nested key both mean “no numeric section override” at runtime. They remain distinct JSON representations and must remain distinguishable in the typed editor state and serialized JSON.
+- When the nested value is `null` or absent, a valid legacy flat string remains eligible and takes precedence over the global value. If no valid legacy flat string exists, the value inherits the global setting for the same breakpoint; if that global value is null/invalid, the literal fallback applies.
+- An empty legacy string `""` is normalized to “no legacy section override” and therefore falls through to the global setting when no numeric override exists. It is not a numeric zero.
+- Explicit `null` is never converted to `""`; absent keys are not materialized as null; and unknown keys at both config-root and design levels must be preserved.
 - Valid legacy `design.paddingTop` and `design.paddingBottom` strings remain supported as breakpoint-agnostic section overrides. When a nested numeric value and a legacy flat string coexist for the same side/breakpoint, the nested numeric value wins; the legacy string is used only where no valid nested numeric override exists.
 - Invalid legacy strings are ignored by the renderer; they must never be interpolated into unsafe CSS.
 - Global relational fields have `NULL` or numeric values; “absent column” is not a distinct persisted value. An absent singleton row means no global defaults.
@@ -106,7 +108,11 @@ The exact JSON shape must be validated before implementation, but the semantics 
 
 The editor must use typed state that keeps legacy flat design strings, nested spacing values and unknown keys separate. A serializer may intentionally normalize an empty legacy string to an absent override, but that normalization must be explicit and tested; do not claim byte-for-byte round-trip preservation when normalization occurs.
 
-Create, full replacement and PATCH/partial-update behavior must be specified separately before implementation. In particular, omission in a PATCH must mean “leave unchanged”, while explicit `null` must mean “clear this override / inherit” according to the section/global rules above.
+Persistence operation contract:
+- Global settings `PUT` is a full replacement. All six keys are required and each must be an explicit valid number or `null`; an omitted key returns HTTP 400. No PATCH endpoint is approved.
+- The existing section-config `PUT` persists the complete config object supplied by the editor. A key omitted from that JSON is absent; explicit nested `null` is preserved; empty legacy strings normalize to absent as specified above.
+- The editor must parse and serialize the complete root config and design object while preserving unknown keys. It must never perform a lossy partial reconstruction from only visible fields.
+- No partial-update/PATCH semantics are approved by this ADR. If PATCH is proposed later, its absent/null behavior requires a separate explicit decision and tests.
 
 ### 2.5 Resolution precedence — independent breakpoints (Option B)
 
@@ -185,7 +191,44 @@ The following are mandatory before implementation acceptance:
 6. E2E proof that updating settings changes the homepage after cache invalidation and does not affect unrelated routes or users.
 7. Re-audit of wrapper usage, legacy orphan status, CMS pageType route coverage and the actual responsive breakpoint tokens.
 
-The Phase 0.4.3.6 report claimed 50 designed cases (48 inventoried plus two singleton cases), with zero executed. The two singleton cases still require explicit unique IDs and expected outcomes, and the complete 50-case inventory must be reconciled in the next read-only review. **All reported cases remain NOT RUN; no test pass is implied by this ADR.**
+The Phase 0.4.3.6 report claimed 50 cases. This ADR expands that inventory to **56 unique planned cases** because the accepted persistence contract now explicitly requires coverage for global PUT completeness, null/legacy precedence, and malformed-JSON fail-closed behavior. The two singleton cases previously counted but not individually named are assigned stable IDs `T-S1` and `T-S2`.
+
+| Group | IDs | Count |
+|---|---|---:|
+| Legacy string backward compatibility | T1, T2, T13 | 3 |
+| Numeric override | T3, T4, T12 | 3 |
+| Mixed numeric + legacy | T5, T6, T7, T27 | 4 |
+| Inherit global | T8, T9, T9a, T9b, T19, T24 | 6 |
+| Responsive tablet | T16, T17, T18, T20 | 4 |
+| Responsive mobile | T22, T23, T25 | 3 |
+| Out-of-bounds / invalid numeric | T11, T32, T34 | 3 |
+| Invalid legacy string | T15 | 1 |
+| Round-trip / serialization | T29, T30, T31 | 3 |
+| Permission denial | T36 | 1 |
+| Breakpoint independence | T-B1, T-B2, T-B3, T-B4 | 4 |
+| CSS variable bug scenarios | T-BUG1, T-BUG2 | 2 |
+| Global renderer validation | T-G1, T-G2, T-G3, T-G4 | 4 |
+| JSON round-trip / malformed JSON | T-RT1, T-RT2, T-RT3, T-RT4, T-RT5 | 5 |
+| Function signature / legacy resolver | T-SIG1, T-SIG2, T-SIG3 | 3 |
+| Singleton enforcement | T-S1, T-S2 | 2 |
+| Global PUT completeness | T-PUT1, T-PUT2 | 2 |
+| Null/legacy precedence | T-NULL1, T-NULL2, T-NULL3 | 3 |
+| **Total** | **56 unique IDs** | **56** |
+
+Singleton expectations:
+- `T-S1`: the endpoint rejects a client-supplied non-`main` identifier (HTTP 400); only `id = "main"` can be upserted.
+- `T-S2`: after the future migration, a direct insert/update with `id != 'main'` is rejected by the database CHECK constraint in a disposable test database.
+
+Additional persistence-contract expectations:
+- `T-PUT1`: global PUT missing any one of the six required keys returns HTTP 400 and performs no partial write.
+- `T-PUT2`: global PUT with all six keys explicitly present as valid numbers or null upserts `main` and round-trips all six values.
+- `T-NULL1`: nested section null + valid legacy flat string + global value resolves to the legacy string (null means no numeric override; legacy fallback remains eligible).
+- `T-NULL2`: absent nested section key + valid legacy flat string + global value resolves to the legacy string.
+- `T-NULL3`: empty legacy flat string + global value resolves to the global value; empty string is normalized to absent.
+- `T-RT2` must preserve unknown keys at both config-root and design levels.
+- `T-RT5`: malformed config JSON fails closed; editor does not replace it with an empty object or save destructively.
+
+The inventory count is design evidence only. **56 planned, 0 executed, 0 PASS, 0 FAIL; all NOT RUN.** The four breakpoint-independence cases must list every section and global input explicitly in Phase 0.4.3.7.
 
 ## 7. Implementation gate
 
