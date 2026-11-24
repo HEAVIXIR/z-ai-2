@@ -96,9 +96,9 @@ Keep the existing `HomePageSection.config` JSON storage. New numeric overrides l
 The exact JSON shape must be validated before implementation, but the semantics are fixed:
 
 - A section numeric value applies only to that side and that breakpoint.
-- Section `null` and absent values mean “inherit the global value for the same breakpoint”.
-- An empty legacy string `""` is normalized to “no section override” and therefore inherits. It is not a numeric zero.
-- Valid legacy `design.paddingTop` and `design.paddingBottom` strings remain supported as breakpoint-agnostic section overrides.
+- A nested `spacing[bp][side]` value of `null` or an absent value means “no numeric override”. If a valid legacy flat string exists for that side, that legacy section override remains the compatibility fallback; otherwise the value inherits the global setting for the same breakpoint.
+- An empty legacy string `""` is normalized to “no section override” and therefore inherits the global setting when no numeric override exists. It is not a numeric zero.
+- Valid legacy `design.paddingTop` and `design.paddingBottom` strings remain supported as breakpoint-agnostic section overrides. When a nested numeric value and a legacy flat string coexist for the same side/breakpoint, the nested numeric value wins; the legacy string is used only where no valid nested numeric override exists.
 - Invalid legacy strings are ignored by the renderer; they must never be interpolated into unsafe CSS.
 - Global relational fields have `NULL` or numeric values; “absent column” is not a distinct persisted value. An absent singleton row means no global defaults.
 - Global empty strings are rejected at the API boundary and are never stored in the numeric columns.
