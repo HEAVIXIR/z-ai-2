@@ -8,13 +8,15 @@ describe("HEAVIX global brand registry integration", () => {
   it("opens the global brand picker with suggestions and keeps model as free text after brand", () => {
     const wizard = read("src/app/listings/new/page.tsx");
     const brandField = wizard.indexOf("برند مرتبط (اختیاری)");
-    const modelField = wizard.indexOf("مدل (اختیاری)");
+    const modelField = wizard.indexOf("انتخاب مدل ثبت‌شده (اختیاری)");
     expect(brandField).toBeGreaterThan(-1);
     expect(modelField).toBeGreaterThan(brandField);
     expect(wizard).toContain('setBrandBrowseKey((key) => key + 1)');
     expect(wizard).toContain('const searchUrl = q');
     expect(wizard).toContain('"/api/brands/search"');
     expect(wizard).toContain('setModelName(e.target.value.slice(0, 120))');
+    expect(wizard).toContain("modelOptions.map((item) => (");
+    expect(wizard).toContain("setModelId(e.target.value)");
     expect(wizard).toContain("BRAND_STATUS_LABELS[r.status].label");
     const statusLabels = read("src/lib/brand-labels.ts");
     expect(statusLabels).toContain('LEGACY: { label: "میراثی"');
