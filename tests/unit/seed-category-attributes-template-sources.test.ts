@@ -8,6 +8,14 @@ const source = readFileSync(
 );
 
 // Extract all template definition slugs: patterns like { slug: "xxx", label: ...
+const cloneSectionStart = source.indexOf("// Canonical 16-family machine tree:");
+if (cloneSectionStart < 0) throw new Error("Canonical clone section marker is missing");
+const baseTemplateSection = source.slice(0, cloneSectionStart);
+const cloneSection = source.slice(cloneSectionStart);
+const baseTemplateSlugs = new Set(
+  [...baseTemplateSection.matchAll(/slug:\\s*"([^"]+)"/g)].map((entry) => entry[1]),
+);
+
 const definedSlugPattern = /slug:\s*"([^"]+)"/g;
 const definedSlugs = new Set<string>();
 let match: RegExpExecArray | null;
@@ -31,9 +39,25 @@ describe("seed-category-specific-attributes: template source integrity", () => {
     expect(cloneSources.length).toBeGreaterThanOrEqual(80);
   });
 
-  it("every cloneTemplate source slug exists in defined templates", () => {
-    const missing = cloneSources.filter((slug) => !definedSlugs.has(slug));
+  it("every cloneTemplate source is registered before clone expressions are evaluated", () => {
+    const missing = cloneSources.filter((slug) => !baseTemplateSlugs.has(slug));
     expect(missing).toEqual([]);
+  });
+
+  it("keeps motor-grader and other late family bases ahead of the clone section", () => {
+    for (const slug of [
+      "motor-grader",
+      "backhoe-loader-standard",
+      "hydraulic-shovel",
+      "dump-truck",
+      "rigid-mining-truck",
+      "asphalt-recycling",
+      "underground-dump-truck",
+      "generator",
+    ]) {
+      expect(baseTemplateSlugs.has(slug), slug).toBe(true);
+    }
+    expect(cloneSection).toContain('cloneTemplate("motor-grader", "compact-grader"');
   });
 
   it("does not reference the removed bare 'excavator' source slug", () => {
