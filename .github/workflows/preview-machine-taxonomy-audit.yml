@@ -1,0 +1,143 @@
+name: HEAVIX — read-only Preview machine taxonomy audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: "Successful paired encrypted B2 Preview backup run ID (evidence artifact required)"
+        required: true
+        type: string
+      confirm_preview_only:
+        description: "Explicitly confirm this is a read-only Preview audit"
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: heavix-preview-machine-taxonomy-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Audit Preview machine taxonomy and technical forms
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15' && inputs.confirm_preview_only == true
+    runs-on: ubuntu-latest
+    environment: preview-backup
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+      HEAVIX_ENV: preview
+      HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER: "7701427422680793119"
+      HEAVIX_EXPECTED_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+      HEAVIX_TAXONOMY_AUDIT_REPORT: artifacts/taxonomy-preview-audit.json
+
+    steps:
+      - name: Enforce exact branch, Preview confirmation and audit-only inputs
+        shell: bash
+        env:
+          CONFIRM_PREVIEW_ONLY: ${{ inputs.confirm_preview_only }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$CONFIRM_PREVIEW_ONLY" = "true"
+          test -n "$DATABASE_URL"
+          test -n "$HEAVIX_EXPECTED_PREVIEW_DATABASE_OID"
+          [[ "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          echo "Read-only Preview audit scope confirmed."
+
+      - name: Verify successful paired encrypted B2 Preview backup
+        id: verify-backup
+        uses: actions/github-script@v7
+        env:
+          BACKUP_RUN_ID_INPUT: ${{ inputs.backup_run_id }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const runId = Number(process.env.BACKUP_RUN_ID_INPUT);
+            if (!Number.isSafeInteger(runId) || runId <= 0) {
+              throw new Error("backup_run_id must be a positive GitHub Actions run ID.");
+            }
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+            });
+            if (!String(run.path || "").startsWith(".github/workflows/prisma-preview-backup-to-b2.yml") ||
+                run.event !== "workflow_dispatch" ||
+                run.head_branch !== "integration/preview-readiness-workerd-2026-11-15" ||
+                run.conclusion !== "success") {
+              throw new Error("A successful manual paired B2 Preview backup on the exact Integration branch is required.");
+            }
+            const ageMs = Date.now() - Date.parse(run.created_at);
+            if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 72 * 60 * 60 * 1000) {
+              throw new Error("Backup run is outside the 72-hour evidence window.");
+            }
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+              per_page: 100,
+            });
+            const evidence = artifacts.artifacts.find(
+              (artifact) => artifact.name === "heavix-preview-paired-backup-evidence" && !artifact.expired,
+            );
+            if (!evidence) {
+              throw new Error("The backup run has no unexpired paired-backup evidence artifact.");
+            }
+            core.setOutput("backup_sha", run.head_sha);
+            core.notice("Verified Preview backup run " + runId + "; evidence artifact " + evidence.id + " is unexpired.");
+
+      - name: Checkout exact Integration branch commit
+        uses: actions/checkout@v4
+        with:
+          ref: integration/preview-readiness-workerd-2026-11-15
+
+      - name: Verify checked-out commit and backup evidence
+        shell: bash
+        env:
+          VERIFIED_BACKUP_SHA: ${{ steps.verify-backup.outputs.backup_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -n "$VERIFIED_BACKUP_SHA"
+          echo "Checked out exact workflow commit: $GITHUB_SHA"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install dependencies and generate App Prisma client
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+
+      - name: Run taxonomy audit in enforced PostgreSQL read-only transaction
+        run: bunx tsx prisma/audit-machine-taxonomy-preview.ts
+
+      - name: Publish audit report
+        if: always() && hashFiles('artifacts/taxonomy-preview-audit.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-preview-machine-taxonomy-audit
+          path: artifacts/taxonomy-preview-audit.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Add audit summary
+        if: always() && hashFiles('artifacts/taxonomy-preview-audit.json') != ''
+        shell: bash
+        run: |
+          {
+            echo "## Preview machine taxonomy audit"
+            echo
+            echo "- Mode: read-only PostgreSQL transaction"
+            echo "- Database writes: none"
+            echo "- Taxonomy apply: not invoked"
+            echo "- Report: heavix-preview-machine-taxonomy-audit artifact"
+          } >> "$GITHUB_STEP_SUMMARY"
