@@ -23,6 +23,8 @@ describe("password.hashPassword", () => {
     expect(hash.startsWith("pbkdf2$sha256$600000$")).toBe(true);
     expect(isPbkdf2Hash(hash)).toBe(true);
     expect(hash.length).toBeGreaterThan(70);
+    expect(isPbkdf2Hash("pbkdf2$sha256$600000$bad$bad")).toBe(false);
+    expect(isPbkdf2Hash("pbkdf2$sha256$999999$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")).toBe(false);
   });
 
   it("produces DIFFERENT hashes for the same input (random salt)", async () => {
