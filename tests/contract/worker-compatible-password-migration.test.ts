@@ -11,7 +11,7 @@ describe("Worker-compatible password hash migration", () => {
     expect(password).toContain('name: "PBKDF2"');
     expect(password).toContain('hash: "SHA-256"');
     expect(password).toContain("crypto.subtle.deriveBits");
-    expect(password).toContain('return "pbkdf2$sha256$"');
+    expect(password).toContain("return `pbkdf2$sha256$");
   });
 
   it("keeps legacy bcrypt verification opt-in and disabled by the Cloudflare Preview config", () => {
