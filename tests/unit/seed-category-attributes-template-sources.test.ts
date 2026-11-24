@@ -102,6 +102,24 @@ describe("seed-category-specific-attributes: template source integrity", () => {
     expect(source).toContain("templates.push(...uniquePartsLeafForms);");
   });
 
+  it("deduplicates canonical machine clones against supplemental terminal leaf forms", () => {
+    const terminalStart = source.indexOf("const missingTerminalLeafForms: Template[] = [");
+    const terminalEnd = source.indexOf("const duplicateAddedLeafSlugs", terminalStart);
+    expect(terminalStart).toBeGreaterThanOrEqual(0);
+    expect(terminalEnd).toBeGreaterThan(terminalStart);
+
+    const terminalBlock = source.slice(terminalStart, terminalEnd);
+    const terminalSlugs = [
+      ...terminalBlock.matchAll(/leafForm\\(\\s*"([^"]+)"/g),
+    ].map((entry) => entry[1]);
+    const overlap = terminalSlugs.filter((slug) => canonicalTargets.includes(slug));
+
+    expect(overlap.length).toBeGreaterThanOrEqual(80);
+    expect(source).toContain("const existingTemplateSlugsForLeafForms = new Set(templates.map((template) => template.slug));");
+    expect(source).toContain("const uniqueMissingTerminalLeafForms = missingTerminalLeafForms.filter(");
+    expect(source).toContain("templates.push(...uniqueMissingTerminalLeafForms);");
+  });
+
   it("no duplicate template slugs in definitions", () => {
     const allSlugs: string[] = [];
     const slugPattern = /slug:\s*"([^"]+)"/g;
