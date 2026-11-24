@@ -56,6 +56,29 @@ function recoverPlaintext(stored: string): { plaintext: string; source: string }
 
 async function main(): Promise<void> {
   const applyRequested = process.argv.includes("--apply");
+
+  // Validate the requested mutation target BEFORE opening a read against it.
+  // This prevents an accidental --apply invocation from even enumerating
+  // credentials on an unintended DATABASE_URL host.
+  if (applyRequested) {
+    const databaseUrl = process.env.DATABASE_URL;
+    const expectedHost = process.env.HEAVIX_PASSWORD_MIGRATION_EXPECTED_DB_HOST?.trim();
+    const backupRef = process.env.HEAVIX_PASSWORD_MIGRATION_BACKUP_REF?.trim();
+    let actualHost = "";
+    try {
+      actualHost = databaseUrl ? new URL(databaseUrl).host : "";
+    } catch {
+      actualHost = "";
+    }
+    if (!actualHost || !expectedHost || actualHost !== expectedHost || !backupRef) {
+      console.error("[migrate-passwords] APPLY refused: DATABASE_URL host must exactly match HEAVIX_PASSWORD_MIGRATION_EXPECTED_DB_HOST and HEAVIX_PASSWORD_MIGRATION_BACKUP_REF must be set.");
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`[migrate-passwords] confirmed database host: ${actualHost}`);
+    console.log("[migrate-passwords] backup/recovery reference supplied; restoreability must have been verified independently.");
+  }
+
   const users = await db.user.findMany({
     select: { id: true, passwordHash: true },
   });
@@ -89,23 +112,6 @@ async function main(): Promise<void> {
     console.log("[migrate-passwords] pass --apply only after verifying the target and a restorable backup.");
     return;
   }
-
-  const databaseUrl = process.env.DATABASE_URL;
-  const expectedHost = process.env.HEAVIX_PASSWORD_MIGRATION_EXPECTED_DB_HOST?.trim();
-  const backupRef = process.env.HEAVIX_PASSWORD_MIGRATION_BACKUP_REF?.trim();
-  let actualHost = "";
-  try {
-    actualHost = databaseUrl ? new URL(databaseUrl).host : "";
-  } catch {
-    actualHost = "";
-  }
-  if (!actualHost || !expectedHost || actualHost !== expectedHost || !backupRef) {
-    console.error("[migrate-passwords] APPLY refused: DATABASE_URL host must exactly match HEAVIX_PASSWORD_MIGRATION_EXPECTED_DB_HOST and HEAVIX_PASSWORD_MIGRATION_BACKUP_REF must be set.");
-    process.exitCode = 1;
-    return;
-  }
-  console.log(`[migrate-passwords] confirmed database host: ${actualHost}`);
-  console.log("[migrate-passwords] backup/recovery reference supplied; restoreability must have been verified independently.");
 
   if (toMigrate.length === 0) {
     console.log("[migrate-passwords] nothing to do. All passwords use a supported hash format.");
