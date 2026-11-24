@@ -39,4 +39,14 @@ describe("Worker-compatible password hash migration", () => {
     expect(migration).toContain("await hashPassword(recovered.plaintext)");
     expect(migration).not.toContain("bcrypt.hash(");
   });
+
+  it("defaults credential migration to dry-run and requires target, backup reference, and CAS for writes", () => {
+    const migration = read("prisma/migrate-passwords.ts");
+    expect(migration).toContain('process.argv.includes("--apply")');
+    expect(migration).toContain("HEAVIX_PASSWORD_MIGRATION_EXPECTED_DB_HOST");
+    expect(migration).toContain("HEAVIX_PASSWORD_MIGRATION_BACKUP_REF");
+    expect(migration).toContain("where: { id: user.id, passwordHash: user.passwordHash }");
+    expect(migration).toContain("write.count !== 1");
+    expect(migration).toContain("dry run only; no credentials were changed");
+  });
 });
