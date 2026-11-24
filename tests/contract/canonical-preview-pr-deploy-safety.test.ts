@@ -39,7 +39,9 @@ describe("PR #376 canonical Preview deployment safety", () => {
   });
 
   it("runs a read-only password hash inventory and requires explicit bcrypt-reset acknowledgement", () => {
-    expect(workflow).toContain("bunx tsx prisma/migrate-passwords.ts");
+    expect(workflow).toContain("bunx tsx prisma/preview-password-hash-inventory.ts");
+    expect(workflow).toContain("HEAVIX_APP_PREVIEW_DATABASE_OID");
+    expect(workflow).toContain("HEAVIX_EXPECTED_SYSTEM_IDENTIFIER");
     expect(workflow).toContain("PBKDF2 hashes:");
     expect(workflow).toContain("supported bcrypt:");
     expect(workflow).toContain("Refusing deployment: ");
@@ -47,6 +49,8 @@ describe("PR #376 canonical Preview deployment safety", () => {
     expect(workflow).toContain("unsupported/legacy hashes");
     expect(workflow).toContain("password reset");
     expect(workflow).not.toContain("migrate-passwords.ts --apply");
+    expect(workflow).not.toContain("prisma/migrate-passwords.ts");
+    expect(workflow).toContain("no user identifiers or password hashes");
   });
 
   it("syncs only the verified App/Store Preview DB bindings in the same Preview deployment", () => {
