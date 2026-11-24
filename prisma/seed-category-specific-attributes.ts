@@ -1305,7 +1305,7 @@ function cloneTemplate(
 // to the shared L2 family fields. L2 terminal categories receive full forms.
 templates.push(
   cloneTemplate("long-reach", "excavator-long-reach", "Long Reach Excavator", ["boom_reach", "max_digging_depth"]),
-  cloneTemplate("excavator", "excavator-mining", "Mining Excavator", ["operating_weight", "bucket_capacity", "payload_capacity"]),
+  cloneTemplate("mining-excavator", "excavator-mining", "Mining Excavator", ["operating_weight", "bucket_capacity", "payload_capacity"]),
   cloneTemplate("excavator-chain", "excavator-demolition", "Demolition Excavator", ["demolition_reach", "hydraulic_flow"], [
     f("demolition_reach", "برد کاری تخریب", "Demolition Reach", "DECIMAL", { unit: "M" }),
     f("hydraulic_flow", "دبی هیدرولیک متعلقات", "Attachment Hydraulic Flow", "DECIMAL", { unit: "LPM" }),
