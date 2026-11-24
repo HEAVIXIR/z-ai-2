@@ -1301,6 +1301,72 @@ function cloneTemplate(
   };
 }
 
+// Base family templates must be registered before cloneTemplate calls are evaluated.
+templates.push(
+  { slug: "motor-grader", label: "Motor Grader", required: ["moldboard_width", "engine_power_kw"], fields: [
+      f("moldboard_width", "عرض تیغه گریدر", "Moldboard Width", "DECIMAL", { unit: "M", filterable: true }),
+      f("moldboard_height", "ارتفاع تیغه", "Moldboard Height", "DECIMAL", { unit: "MM" }),
+      f("circle_rotation", "زاویه چرخش دایره", "Circle Rotation", "DECIMAL", { unit: "DEG" }),
+      f("articulation_angle", "زاویه مفصل", "Articulation Angle", "DECIMAL", { unit: "DEG" }),
+      f("front_axle_oscillation", "نوسان محور جلو", "Front Axle Oscillation", "DECIMAL", { unit: "DEG" }),
+      f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+    ]},
+  { slug: "backhoe-loader-standard", label: "Standard Backhoe Loader", required: ["loader_bucket_capacity", "backhoe_digging_depth"], fields: [
+      f("loader_bucket_capacity", "ظرفیت باکت جلو", "Loader Bucket Capacity", "DECIMAL", { unit: "M3" }),
+      f("backhoe_bucket_capacity", "ظرفیت باکت عقب", "Backhoe Bucket Capacity", "DECIMAL", { unit: "M3" }),
+      f("backhoe_digging_depth", "عمق حفاری عقب", "Backhoe Digging Depth", "DECIMAL", { unit: "M" }),
+      f("loader_lift_capacity", "ظرفیت بالابری جلو", "Loader Lift Capacity", "DECIMAL", { unit: "KG" }),
+      f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+      f("drive_configuration", "آرایش محرک", "Drive Configuration", "SELECT", { options: ["4x2", "4x4"] }),
+    ]},
+  { slug: "hydraulic-shovel", label: "Hydraulic Mining Shovel", required: ["shovel_capacity", "digging_force"], fields: [
+      f("shovel_capacity", "ظرفیت جام", "Shovel Capacity", "DECIMAL", { unit: "M3", filterable: true }),
+      f("digging_force", "نیروی حفاری", "Digging Force", "DECIMAL", { unit: "KN" }),
+      f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
+      f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+      f("swing_speed", "سرعت گردش", "Swing Speed", "DECIMAL", { unit: "RPM" }),
+      f("crowd_force", "نیروی پیشروی", "Crowd Force", "DECIMAL", { unit: "KN" }),
+    ]},
+  { slug: "dump-truck", label: "Dump Truck Family", required: ["rated_payload_ton", "body_volume", "axle_configuration"], fields: [
+      f("rated_payload_ton", "ظرفیت بار اسمی", "Rated Payload", "DECIMAL", { unit: "TON", filterable: true, card: true }),
+      f("body_volume", "حجم اتاق بار", "Body Volume", "DECIMAL", { unit: "M3" }),
+      f("gross_vehicle_weight", "وزن ناخالص مجاز", "Gross Vehicle Weight", "DECIMAL", { unit: "TON" }),
+      f("axle_configuration", "آرایش محورها", "Axle Configuration", "TEXT"),
+      f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
+      f("gradeability_percent", "قابلیت عبور از شیب", "Gradeability", "DECIMAL", { unit: "%" }),
+      f("retarder_type", "نوع ریتاردر", "Retarder Type", "TEXT"),
+    ]},
+  { slug: "rigid-mining-truck", label: "Rigid Mining Dump Truck", required: ["rigid_frame_type"], fields: [
+      f("rigid_frame_type", "نوع شاسی صلب", "Rigid Frame Type", "TEXT"),
+      f("front_axle_load", "بار محور جلو", "Front Axle Load", "DECIMAL", { unit: "TON" }),
+      f("rear_axle_load", "بار محور عقب", "Rear Axle Load", "DECIMAL", { unit: "TON" }),
+      f("dump_body_type", "نوع اتاق کمپرسی", "Dump Body Type", "SELECT", { options: ["استاندارد", "سنگین معدن", "گرم‌شونده"] }),
+    ]},
+  { slug: "asphalt-recycling", label: "Asphalt Recycling Machine", required: ["milling_width", "recycling_depth"], fields: [
+      f("milling_width", "عرض بازیافت/تراش", "Milling Width", "DECIMAL", { unit: "M" }),
+      f("recycling_depth", "عمق بازیافت", "Recycling Depth", "DECIMAL", { unit: "MM" }),
+      f("recycling_capacity", "ظرفیت بازیافت", "Recycling Capacity", "DECIMAL", { unit: "T/H" }),
+      f("binder_dosing_system", "سامانه تزریق قیر/بایندر", "Binder Dosing System", "TEXT"),
+      f("mixing_chamber_type", "نوع محفظه اختلاط", "Mixing Chamber Type", "TEXT"),
+    ]},
+  { slug: "underground-dump-truck", label: "Underground Dump Truck", required: ["overall_height_mm"], fields: [
+      f("overall_height_mm", "ارتفاع کلی", "Overall Height", "DECIMAL", { unit: "MM" }),
+      f("overall_width_mm", "عرض کلی", "Overall Width", "DECIMAL", { unit: "MM" }),
+      f("turning_radius", "شعاع گردش", "Turning Radius", "DECIMAL", { unit: "M" }),
+      f("low_profile_body", "اتاق کم‌ارتفاع", "Low Profile Body", "BOOLEAN"),
+      f("underground_clearance", "فاصله آزاد تونل", "Underground Clearance", "DECIMAL", { unit: "M" }),
+    ]},
+  { slug: "generator", label: "Industrial Generator Set", required: ["rated_power_kw", "output_voltage_v", "frequency_hz"], fields: [
+      f("rated_power_kw", "توان نامی", "Rated Power", "DECIMAL", { unit: "KW", filterable: true }),
+      f("standby_power_kw", "توان اضطراری", "Standby Power", "DECIMAL", { unit: "KW" }),
+      f("output_voltage_v", "ولتاژ خروجی", "Output Voltage", "DECIMAL", { unit: "V" }),
+      f("frequency_hz", "فرکانس", "Frequency", "INTEGER", { unit: "HZ" }),
+      f("phase_count", "تعداد فاز", "Phase Count", "INTEGER"),
+      f("power_factor", "ضریب توان", "Power Factor", "DECIMAL"),
+      f("cooling_type", "نوع خنک‌کاری", "Cooling Type", "TEXT"),
+    ]}
+);
+
 // Canonical 16-family machine tree: exact L3 forms add subtype-specific fields
 // to the shared L2 family fields. L2 terminal categories receive full forms.
 templates.push(
@@ -1409,15 +1475,7 @@ templates.push(
   ]},
 
   // Motor grader family and its six distinct configurations.
-  { slug: "motor-grader", label: "Motor Grader", required: ["moldboard_width", "engine_power_kw"], fields: [
-    f("moldboard_width", "عرض تیغه گریدر", "Moldboard Width", "DECIMAL", { unit: "M", filterable: true }),
-    f("moldboard_height", "ارتفاع تیغه", "Moldboard Height", "DECIMAL", { unit: "MM" }),
-    f("circle_rotation", "زاویه چرخش دایره", "Circle Rotation", "DECIMAL", { unit: "DEG" }),
-    f("articulation_angle", "زاویه مفصل", "Articulation Angle", "DECIMAL", { unit: "DEG" }),
-    f("front_axle_oscillation", "نوسان محور جلو", "Front Axle Oscillation", "DECIMAL", { unit: "DEG" }),
-    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
-  ]},
-  cloneTemplate("motor-grader", "compact-grader", "Compact Motor Grader", ["moldboard_width", "operating_weight"], [
+    cloneTemplate("motor-grader", "compact-grader", "Compact Motor Grader", ["moldboard_width", "operating_weight"], [
     f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
     f("transport_width", "عرض حمل", "Transport Width", "DECIMAL", { unit: "M" }),
     f("turning_radius", "شعاع گردش", "Turning Radius", "DECIMAL", { unit: "M" }),
@@ -1442,15 +1500,7 @@ templates.push(
   ]),
 
   // Backhoe loader variants.
-  { slug: "backhoe-loader-standard", label: "Standard Backhoe Loader", required: ["loader_bucket_capacity", "backhoe_digging_depth"], fields: [
-    f("loader_bucket_capacity", "ظرفیت باکت جلو", "Loader Bucket Capacity", "DECIMAL", { unit: "M3" }),
-    f("backhoe_bucket_capacity", "ظرفیت باکت عقب", "Backhoe Bucket Capacity", "DECIMAL", { unit: "M3" }),
-    f("backhoe_digging_depth", "عمق حفاری عقب", "Backhoe Digging Depth", "DECIMAL", { unit: "M" }),
-    f("loader_lift_capacity", "ظرفیت بالابری جلو", "Loader Lift Capacity", "DECIMAL", { unit: "KG" }),
-    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
-    f("drive_configuration", "آرایش محرک", "Drive Configuration", "SELECT", { options: ["4x2", "4x4"] }),
-  ]},
-  cloneTemplate("backhoe-loader-standard", "backhoe-4wd", "4WD Backhoe Loader", ["loader_bucket_capacity", "backhoe_digging_depth"], [
+    cloneTemplate("backhoe-loader-standard", "backhoe-4wd", "4WD Backhoe Loader", ["loader_bucket_capacity", "backhoe_digging_depth"], [
     f("four_wheel_drive", "چهارچرخ محرک", "Four Wheel Drive", "BOOLEAN"),
     f("axle_differential_lock", "قفل دیفرانسیل", "Axle Differential Lock", "BOOLEAN"),
   ]),
@@ -1551,16 +1601,7 @@ templates.push(
 
 templates.push(
   // L2 parent forms for complete inheritance into subtype leaves.
-  { slug: "dump-truck", label: "Dump Truck Family", required: ["rated_payload_ton", "body_volume", "axle_configuration"], fields: [
-    f("rated_payload_ton", "ظرفیت بار اسمی", "Rated Payload", "DECIMAL", { unit: "TON", filterable: true, card: true }),
-    f("body_volume", "حجم اتاق بار", "Body Volume", "DECIMAL", { unit: "M3" }),
-    f("gross_vehicle_weight", "وزن ناخالص مجاز", "Gross Vehicle Weight", "DECIMAL", { unit: "TON" }),
-    f("axle_configuration", "آرایش محورها", "Axle Configuration", "TEXT"),
-    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
-    f("gradeability_percent", "قابلیت عبور از شیب", "Gradeability", "DECIMAL", { unit: "%" }),
-    f("retarder_type", "نوع ریتاردر", "Retarder Type", "TEXT"),
-  ]},
-  { slug: "fuel-station-equipment", label: "Fuel Station Equipment Family", required: ["product_type", "certification"], fields: [
+    { slug: "fuel-station-equipment", label: "Fuel Station Equipment Family", required: ["product_type", "certification"], fields: [
     f("product_type", "نوع فرآورده", "Fuel Product", "MULTI_SELECT", { options: ["بنزین", "گازوئیل", "نفت سفید", "سوخت هواپیما", "CNG", "AdBlue"] }),
     f("certification", "استانداردها و تأییدیه‌ها", "Certification", "TEXT"),
     f("hazardous_area_rating", "کلاس ناحیه خطرناک", "Hazardous Area Rating", "TEXT"),
@@ -1570,26 +1611,13 @@ templates.push(
   ]},
 
   // Mining haulage variants inherit the mining-dump-truck family fields.
-  { slug: "rigid-mining-truck", label: "Rigid Mining Dump Truck", required: ["rigid_frame_type"], fields: [
-    f("rigid_frame_type", "نوع شاسی صلب", "Rigid Frame Type", "TEXT"),
-    f("front_axle_load", "بار محور جلو", "Front Axle Load", "DECIMAL", { unit: "TON" }),
-    f("rear_axle_load", "بار محور عقب", "Rear Axle Load", "DECIMAL", { unit: "TON" }),
-    f("dump_body_type", "نوع اتاق کمپرسی", "Dump Body Type", "SELECT", { options: ["استاندارد", "سنگین معدن", "گرم‌شونده"] }),
-  ]},
-  { slug: "articulated-mining-truck", label: "Articulated Mining Truck", required: ["articulation_angle"], fields: [
+    { slug: "articulated-mining-truck", label: "Articulated Mining Truck", required: ["articulation_angle"], fields: [
     f("articulation_angle", "زاویه مفصل", "Articulation Angle", "DECIMAL", { unit: "DEG" }),
     f("all_wheel_drive", "محرک تمام چرخ", "All Wheel Drive", "BOOLEAN"),
     f("body_volume", "حجم اتاق بار", "Body Volume", "DECIMAL", { unit: "M3" }),
     f("turning_radius", "شعاع گردش", "Turning Radius", "DECIMAL", { unit: "M" }),
   ]},
-  { slug: "underground-dump-truck", label: "Underground Dump Truck", required: ["overall_height_mm"], fields: [
-    f("overall_height_mm", "ارتفاع کلی", "Overall Height", "DECIMAL", { unit: "MM" }),
-    f("overall_width_mm", "عرض کلی", "Overall Width", "DECIMAL", { unit: "MM" }),
-    f("turning_radius", "شعاع گردش", "Turning Radius", "DECIMAL", { unit: "M" }),
-    f("low_profile_body", "اتاق کم‌ارتفاع", "Low Profile Body", "BOOLEAN"),
-    f("underground_clearance", "فاصله آزاد تونل", "Underground Clearance", "DECIMAL", { unit: "M" }),
-  ]},
-  { slug: "electric-mining-truck", label: "Electric Mining Truck", required: ["battery_capacity_kwh"], fields: [
+    { slug: "electric-mining-truck", label: "Electric Mining Truck", required: ["battery_capacity_kwh"], fields: [
     f("battery_capacity_kwh", "ظرفیت باتری", "Battery Capacity", "DECIMAL", { unit: "KWH" }),
     f("motor_power_kw", "توان موتور محرک", "Drive Motor Power", "DECIMAL", { unit: "KW" }),
     f("charging_time", "زمان شارژ", "Charging Time", "DECIMAL", { unit: "HOUR" }),
@@ -1616,15 +1644,7 @@ templates.push(
   ]},
 
   // Mining shovels and loading machinery.
-  { slug: "hydraulic-shovel", label: "Hydraulic Mining Shovel", required: ["shovel_capacity", "digging_force"], fields: [
-    f("shovel_capacity", "ظرفیت جام", "Shovel Capacity", "DECIMAL", { unit: "M3", filterable: true }),
-    f("digging_force", "نیروی حفاری", "Digging Force", "DECIMAL", { unit: "KN" }),
-    f("operating_weight", "وزن عملیاتی", "Operating Weight", "DECIMAL", { unit: "TON" }),
-    f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
-    f("swing_speed", "سرعت گردش", "Swing Speed", "DECIMAL", { unit: "RPM" }),
-    f("crowd_force", "نیروی پیشروی", "Crowd Force", "DECIMAL", { unit: "KN" }),
-  ]},
-  { slug: "electric-rope-shovel", label: "Electric Rope Shovel", required: ["shovel_capacity", "hoist_rope_pull"], fields: [
+    { slug: "electric-rope-shovel", label: "Electric Rope Shovel", required: ["shovel_capacity", "hoist_rope_pull"], fields: [
     f("shovel_capacity", "ظرفیت جام", "Shovel Capacity", "DECIMAL", { unit: "M3", filterable: true }),
     f("hoist_rope_pull", "کشش سیم‌بکسل بالابر", "Hoist Rope Pull", "DECIMAL", { unit: "KN" }),
     f("crowd_force", "نیروی پیشروی", "Crowd Force", "DECIMAL", { unit: "KN" }),
@@ -1894,14 +1914,7 @@ templates.push(
     f("heating_system", "سیستم گرم‌کن", "Heating System", "TEXT"),
     f("pump_flow_lpm", "دبی پمپ", "Pump Flow", "DECIMAL", { unit: "LPM" }),
   ]},
-  { slug: "asphalt-recycling", label: "Asphalt Recycling Machine", required: ["milling_width", "recycling_depth"], fields: [
-    f("milling_width", "عرض بازیافت/تراش", "Milling Width", "DECIMAL", { unit: "M" }),
-    f("recycling_depth", "عمق بازیافت", "Recycling Depth", "DECIMAL", { unit: "MM" }),
-    f("recycling_capacity", "ظرفیت بازیافت", "Recycling Capacity", "DECIMAL", { unit: "T/H" }),
-    f("binder_dosing_system", "سامانه تزریق قیر/بایندر", "Binder Dosing System", "TEXT"),
-    f("mixing_chamber_type", "نوع محفظه اختلاط", "Mixing Chamber Type", "TEXT"),
-  ]},
-  { slug: "bitumen-equipment", label: "Bitumen Handling Equipment", required: ["equipment_type", "heating_method"], fields: [
+    { slug: "bitumen-equipment", label: "Bitumen Handling Equipment", required: ["equipment_type", "heating_method"], fields: [
     f("equipment_type", "نوع تجهیزات قیر", "Equipment Type", "SELECT", { options: ["مخزن", "پمپ انتقال", "سیستم گرمایش", "واحد امولسیون", "توزین"] }),
     f("heating_method", "روش گرمایش", "Heating Method", "SELECT", { options: ["روغن داغ", "برقی", "مشعل مستقیم"] }),
     f("storage_capacity_l", "ظرفیت ذخیره", "Storage Capacity", "DECIMAL", { unit: "L" }),
@@ -2259,16 +2272,7 @@ templates.push(
   ]},
 
   // Power, energy and mobile utility machinery.
-  { slug: "generator", label: "Industrial Generator Set", required: ["rated_power_kw", "output_voltage_v", "frequency_hz"], fields: [
-    f("rated_power_kw", "توان نامی", "Rated Power", "DECIMAL", { unit: "KW", filterable: true }),
-    f("standby_power_kw", "توان اضطراری", "Standby Power", "DECIMAL", { unit: "KW" }),
-    f("output_voltage_v", "ولتاژ خروجی", "Output Voltage", "DECIMAL", { unit: "V" }),
-    f("frequency_hz", "فرکانس", "Frequency", "INTEGER", { unit: "HZ" }),
-    f("phase_count", "تعداد فاز", "Phase Count", "INTEGER"),
-    f("power_factor", "ضریب توان", "Power Factor", "DECIMAL"),
-    f("cooling_type", "نوع خنک‌کاری", "Cooling Type", "TEXT"),
-  ]},
-  cloneTemplate("generator", "diesel-generator", "Diesel Generator", ["rated_power_kw", "output_voltage_v", "frequency_hz"], [
+    cloneTemplate("generator", "diesel-generator", "Diesel Generator", ["rated_power_kw", "output_voltage_v", "frequency_hz"], [
     f("engine_power_kw", "توان موتور", "Engine Power", "DECIMAL", { unit: "KW" }),
     f("fuel_tank_capacity", "ظرفیت مخزن سوخت", "Fuel Tank Capacity", "DECIMAL", { unit: "L" }),
     f("fuel_consumption", "مصرف سوخت", "Fuel Consumption", "TEXT"),
