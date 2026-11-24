@@ -280,6 +280,39 @@ export async function applyIranLocationSeed(
   }, { maxWait: 10_000, timeout: 120_000 });
 }
 
+export async function assertPreviewLocationDatabaseIdentity(
+  db: PrismaClient,
+  env: Record<string, string | undefined>,
+): Promise<void> {
+  const expectedDatabaseOid = env.HEAVIX_APP_PREVIEW_DATABASE_OID?.trim() ?? "";
+  const expectedSystemIdentifier = env.HEAVIX_EXPECTED_SYSTEM_IDENTIFIER?.trim() ?? "";
+  const isDigits = (value: string) =>
+    value.length > 0 && [...value].every((character) => character >= "0" && character <= "9");
+  if (!isDigits(expectedDatabaseOid) || !isDigits(expectedSystemIdentifier)) {
+    throw new Error("Location seed requires the pinned App Preview database OID and PostgreSQL system identifier.");
+  }
+
+  const rows = await db.$queryRawUnsafe<Array<{
+    databaseName: string;
+    databaseOid: string;
+    systemIdentifier: string;
+  }>>(
+    "SELECT current_database() AS \\"databaseName\\", " +
+    "(SELECT oid::text FROM pg_database WHERE datname = current_database()) AS \\"databaseOid\\", " +
+    "(SELECT system_identifier::text FROM pg_control_system()) AS \\"systemIdentifier\\"",
+  );
+  const identity = rows[0];
+  if (
+    !identity ||
+    identity.databaseName !== "postgres" ||
+    identity.databaseOid !== expectedDatabaseOid ||
+    identity.systemIdentifier !== expectedSystemIdentifier
+  ) {
+    throw new Error("Location seed refused: connected database does not match the pinned App Preview identity.");
+  }
+  console.log("[iran-location-seed] PASS: exact App Preview database identity verified.");
+}
+
 async function main() {
   const datasetPath = resolve(process.cwd(), "prisma/data/iran-locations-1404.json");
   const manifestPath = resolve(process.cwd(), "prisma/data/iran-locations-1404.manifest.json");
@@ -303,6 +336,7 @@ async function main() {
   assertPreviewLocationSeedApproval(plan, process.env, args);
   const db = new PrismaClient();
   try {
+    await assertPreviewLocationDatabaseIdentity(db, process.env);
     const result = await applyIranLocationSeed(db, dataset);
     console.log(JSON.stringify({
       mode: "PREVIEW_APPLIED",
