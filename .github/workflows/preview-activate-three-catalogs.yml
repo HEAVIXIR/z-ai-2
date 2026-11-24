@@ -1,0 +1,191 @@
+name: HEAVIX — activate isolated Preview catalogs
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: "Successful paired encrypted B2 backup workflow run ID (backup-only run; evidence artifact required)"
+        required: true
+        type: string
+      confirm_preview_only:
+        description: "Explicitly confirm this run is Preview-only"
+        required: true
+        type: boolean
+      seed_transaction_types:
+        description: "Seed the seven canonical TransactionType rows"
+        required: true
+        default: false
+        type: boolean
+      seed_technical_forms:
+        description: "Seed category-specific technical attribute forms"
+        required: true
+        default: false
+        type: boolean
+      seed_iran_locations:
+        description: "Seed Iran locations ONLY after manifest rights approval"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: heavix-preview-catalog-seeds
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: Seed selected App Preview catalogs
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15' && inputs.confirm_preview_only == true
+    runs-on: ubuntu-latest
+    environment: preview-backup
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+      HEAVIX_ENV: preview
+      HEAVIX_EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+      HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER: "7701427422680793119"
+      HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+      HEAVIX_EXPECTED_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+      HEAVIX_PREVIEW_TRANSACTION_TYPE_SEED_APPROVED: ${{ secrets.HEAVIX_PREVIEW_TRANSACTION_TYPE_SEED_APPROVED }}
+      HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED: ${{ secrets.HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED }}
+      HEAVIX_ALLOW_PREVIEW_LOCATION_SEED: ${{ secrets.HEAVIX_ALLOW_PREVIEW_LOCATION_SEED }}
+      HEAVIX_PREVIEW_LOCATION_SEED_APPROVED: ${{ secrets.HEAVIX_PREVIEW_LOCATION_SEED_APPROVED }}
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+
+    steps:
+      - name: Validate Preview-only scope and selected operations
+        shell: bash
+        env:
+          CONFIRM_PREVIEW_ONLY: ${{ inputs.confirm_preview_only }}
+          SEED_TRANSACTION_TYPES: ${{ inputs.seed_transaction_types }}
+          SEED_TECHNICAL_FORMS: ${{ inputs.seed_technical_forms }}
+          SEED_IRAN_LOCATIONS: ${{ inputs.seed_iran_locations }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$CONFIRM_PREVIEW_ONLY" = "true"
+          test -n "$DATABASE_URL"
+          test -n "$HEAVIX_APP_PREVIEW_DATABASE_OID"
+          [[ "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          if [[ "$SEED_TRANSACTION_TYPES" != "true" && "$SEED_TECHNICAL_FORMS" != "true" && "$SEED_IRAN_LOCATIONS" != "true" ]]; then
+            echo "Select at least one isolated seed operation."
+            exit 1
+          fi
+          echo "Preview-only scope confirmed. No Production or Store DB connection is configured."
+
+      - name: Verify successful paired-backup workflow run
+        id: verify-backup
+        uses: actions/github-script@v7
+        env:
+          BACKUP_RUN_ID_INPUT: ${{ inputs.backup_run_id }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const runId = Number(process.env.BACKUP_RUN_ID_INPUT);
+            if (!Number.isSafeInteger(runId) || runId <= 0) {
+              throw new Error("backup_run_id must be a positive GitHub Actions run ID.");
+            }
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+            });
+            if (!String(run.path || "").startsWith(".github/workflows/prisma-preview-backup-to-b2.yml")) {
+              throw new Error("The supplied run is not the paired encrypted B2 Preview backup workflow.");
+            }
+            if (run.event !== "workflow_dispatch" ||
+                run.head_branch !== "integration/preview-readiness-workerd-2026-11-15" ||
+                run.conclusion !== "success") {
+              throw new Error("Backup run must be a successful manual run on the exact Integration branch.");
+            }
+            const ageMs = Date.now() - Date.parse(run.created_at);
+            if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 72 * 60 * 60 * 1000) {
+              throw new Error("Backup run is older than the 72-hour evidence window.");
+            }
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+              per_page: 100,
+            });
+            const evidence = artifacts.artifacts.find(
+              (artifact) => artifact.name === "heavix-preview-paired-backup-evidence" && !artifact.expired,
+            );
+            if (!evidence) {
+              throw new Error("The successful backup run has no unexpired paired-backup evidence artifact.");
+            }
+            core.setOutput("backup_sha", run.head_sha);
+            core.notice(`Verified paired backup run ${runId} on ${run.head_sha}; evidence artifact ${evidence.id} is available.`);
+
+      - name: Download paired backup evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: heavix-preview-paired-backup-evidence
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.backup_run_id }}
+          path: ${{ runner.temp }}/heavix-preview-backup-evidence
+
+      - name: Validate backup evidence is backup-only and matches run
+        shell: bash
+        env:
+          VERIFIED_BACKUP_SHA: ${{ steps.verify-backup.outputs.backup_sha }}
+        run: |
+          set -euo pipefail
+          EVIDENCE="$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          test -s "$EVIDENCE"
+          grep -Fxq "format=heavix-preview-paired-backup-evidence-v1" "$EVIDENCE"
+          grep -Fxq "backup_sha=$VERIFIED_BACKUP_SHA" "$EVIDENCE"
+          grep -Fxq "backup_run_id=$BACKUP_RUN_ID" "$EVIDENCE"
+          grep -Fxq "rbac_seed=SKIP" "$EVIDENCE"
+          grep -Fxq "brand_seed=SKIP" "$EVIDENCE"
+          grep -Fxq "model_name_migration=SKIP" "$EVIDENCE"
+          grep -Eq '^backup_prefix=preview/paired/' "$EVIDENCE"
+          echo "PASS: paired B2 backup, read-back checksums and disposable restore were completed in a backup-only run."
+
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/preview-readiness-workerd-2026-11-15
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install dependencies and generate App Prisma client
+        run: |
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+
+      - name: Seed the seven canonical transaction types
+        if: inputs.seed_transaction_types == true
+        run: bunx tsx prisma/seed-transaction-types.ts --apply
+
+      - name: Seed category-specific technical forms
+        if: inputs.seed_technical_forms == true
+        run: bunx tsx prisma/seed-category-specific-attributes.ts --apply
+
+      - name: Seed Iran country, provinces and cities (rights-approved only)
+        if: inputs.seed_iran_locations == true
+        run: bunx tsx scripts/geospatial/seed-iran-location-catalog.ts --apply --confirm-preview-location-seed
+
+      - name: Final summary
+        if: success()
+        env:
+          SEED_TRANSACTION_TYPES: ${{ inputs.seed_transaction_types }}
+          SEED_TECHNICAL_FORMS: ${{ inputs.seed_technical_forms }}
+          SEED_IRAN_LOCATIONS: ${{ inputs.seed_iran_locations }}
+          VERIFIED_BACKUP_SHA: ${{ steps.verify-backup.outputs.backup_sha }}
+        run: |
+          {
+            echo "## Selected Preview catalog seeds"
+            echo
+            echo "- Backup run: $BACKUP_RUN_ID"
+            echo "- Backup source SHA: $VERIFIED_BACKUP_SHA"
+            echo "- TransactionType seed: $SEED_TRANSACTION_TYPES"
+            echo "- Category technical forms seed: $SEED_TECHNICAL_FORMS"
+            echo "- Iran location seed: $SEED_IRAN_LOCATIONS"
+            echo "- Production and Store DB: untouched"
+            echo "- Location seed requires both explicit secrets and manifest rights approval; current manifest is PENDING and will fail closed."
+          } >> "$GITHUB_STEP_SUMMARY"
