@@ -14,7 +14,8 @@ describe("HEAVIX global brand registry integration", () => {
     expect(wizard).toContain('setBrandBrowseKey((key) => key + 1)');
     expect(wizard).toContain('const searchUrl = q');
     expect(wizard).toContain('"/api/brands/search"');
-    expect(wizard).toContain('setModelName(e.target.value.slice(0, 120))');
+    expect(wizard).toContain("const nextName = event.target.value.slice(0, 120);");
+    expect(wizard).toContain("setModelName(nextName);");
     expect(wizard).toContain("modelOptions.map((item) => (");
     expect(wizard).toContain("setModelId(e.target.value)");
     expect(wizard).toContain("BRAND_STATUS_LABELS[r.status].label");
