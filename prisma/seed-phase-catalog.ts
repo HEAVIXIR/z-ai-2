@@ -51,7 +51,7 @@
  */
 import { db } from "../src/lib/db";
 import { assertTestSeedTarget } from "./test-seed-guard";
-import bcrypt from "bcryptjs";
+import { hashPassword } from "../src/lib/password";
 
 // ════════════════════════════════════════════════════════════
 // DETERMINISTIC CONSTANTS
@@ -66,7 +66,7 @@ const SUBMITTED_AT = new Date("2026-01-10T00:00:00.000Z");
 const REVIEWED_AT = new Date("2026-01-12T00:00:00.000Z");
 const REVOKED_AT = new Date("2026-02-01T00:00:00.000Z");
 
-// Stable password hash (deterministic; bcrypt with fixed salt).
+// Fixture password hash uses the shared PBKDF2-HMAC-SHA256 helper.
 // Computed lazily inside main() because top-level await is not supported
 // with the CJS output format used by tsx.
 // Note: the value is not used for real auth — these are test fixtures.
@@ -96,7 +96,7 @@ async function main() {
 
   // Compute the fixture password hash now (top-level await is not supported
   // under the CJS output format used by tsx).
-  FIXTURE_PASSWORD_HASH = await bcrypt.hash("PhaseCatTestFixtures#2026", 10);
+  FIXTURE_PASSWORD_HASH = await hashPassword("PhaseCatTestFixtures#2026");
 
   // ── 0. Reference admin (must already exist from seed-user-roles) ──
   const adminMobile = process.env.ADMIN_USERNAME ?? "ci-admin";
@@ -225,7 +225,7 @@ async function main() {
 
   // ════════════════════════════════════════════════════════════
   // 3. TRANSACTION TYPES (phase1 #9)
-  // 7 canonical types: SALE, RENT, WANTED, QUOTE, AUCTION, SERVICE_REQUEST, SERVICE_OFFER
+  // 6 types: SALE, RENT, WANTED, QUOTE, AUCTION, SERVICE_REQUEST
   // ════════════════════════════════════════════════════════════
   console.log("\n3. Seeding TransactionTypes...");
   const txTypes = [
@@ -234,8 +234,7 @@ async function main() {
     { key: "WANTED", nameFa: "درخواست خرید", nameEn: "Wanted", sortOrder: 3 },
     { key: "QUOTE", nameFa: "استعلام قیمت", nameEn: "Quote", sortOrder: 4 },
     { key: "AUCTION", nameFa: "حراجی", nameEn: "Auction", sortOrder: 5 },
-    { key: "SERVICE_REQUEST", nameFa: "درخواست خدمت", nameEn: "Service Request", sortOrder: 6 },
-    { key: "SERVICE_OFFER", nameFa: "ارائه خدمت", nameEn: "Service Offer", sortOrder: 7 },
+    { key: "SERVICE_REQUEST", nameFa: "درخواست خدمات", nameEn: "Service Request", sortOrder: 6 },
   ];
   const txTypeIds: Record<string, string> = {};
   for (const t of txTypes) {
@@ -252,7 +251,7 @@ async function main() {
     });
     txTypeIds[t.key] = row.id;
   }
-  console.log(`  ✓ ${Object.keys(txTypeIds).length} transaction types (canonical target: 7)`);
+  console.log(`  ✓ ${Object.keys(txTypeIds).length} transaction types`);
 
   // ════════════════════════════════════════════════════════════
   // 4. ATTRIBUTE DEFINITIONS (phase1 #4, #5, #11 + phase4 #18, #19)
@@ -1096,7 +1095,6 @@ async function main() {
     categoryAttribute: await db.categoryAttribute.count(),
     categoryAttributeFilterable: await db.categoryAttribute.count({ where: { filterable: true } }),
     transactionType: await db.transactionType.count(),
-    activeTransactionType: await db.transactionType.count({ where: { active: true } }),
     attributeDefinition: await db.attributeDefinition.count(),
     attributeDefinitionFilterable: await db.attributeDefinition.count({ where: { filterable: true } }),
     attributeDefinitionSearchable: await db.attributeDefinition.count({ where: { searchable: true } }),
@@ -1143,8 +1141,7 @@ async function main() {
     category: ">0",
     categoryAttribute: ">0",
     categoryAttributeFilterable: ">0",
-    transactionType: ">=7 (all canonical transaction types)",
-    activeTransactionType: ">=7 (all canonical transaction types active)",
+    transactionType: ">=4 (SALE,RENT,WANTED,AUCTION)",
     attributeDefinition: ">0",
     attributeDefinitionFilterable: ">0",
     attributeDefinitionSearchable: ">0",
