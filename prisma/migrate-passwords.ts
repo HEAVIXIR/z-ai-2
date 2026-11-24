@@ -99,13 +99,18 @@ async function main(): Promise<void> {
     return;
   }
 
+  const pbkdf2Count = users.filter((user) => isPbkdf2Hash(user.passwordHash)).length;
+  const legacyBcryptCount = users.filter((user) => isLegacyBcryptHash(user.passwordHash)).length;
   const toMigrate = users.filter((user) => !looksLikeSupportedHash(user.passwordHash));
-  const alreadySupported = users.length - toMigrate.length;
 
   console.log(`[migrate-passwords] mode:               ${applyRequested ? "APPLY" : "DRY RUN"}`);
   console.log(`[migrate-passwords] total users:        ${users.length}`);
-  console.log(`[migrate-passwords] already supported:  ${alreadySupported}`);
-  console.log(`[migrate-passwords] need migration:     ${toMigrate.length}`);
+  console.log(`[migrate-passwords] PBKDF2 hashes:      ${pbkdf2Count}`);
+  console.log(`[migrate-passwords] supported bcrypt:   ${legacyBcryptCount}`);
+  console.log(`[migrate-passwords] unsupported/legacy: ${toMigrate.length}`);
+  if (legacyBcryptCount > 0) {
+    console.log("[migrate-passwords] IMPORTANT: supported bcrypt hashes are not migrated by this script; accounts with bcrypt require a password reset or an explicitly approved legacy-bcrypt path.");
+  }
 
   if (!applyRequested) {
     console.log("[migrate-passwords] dry run only; no credentials were changed.");
