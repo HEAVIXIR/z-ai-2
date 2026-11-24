@@ -55,7 +55,8 @@ describe("Listing wizard seven-step source contract", () => {
     expect(wizard).toContain("modelId={modelId || null}");
     expect(wizard).toContain('const [modelName, setModelName] = useState<string>("");');
     expect(wizard).toContain("value={modelName}");
-    expect(wizard).toContain("setModelName(e.target.value.slice(0, 120))");
+    expect(wizard).toContain("const nextName = event.target.value.slice(0, 120);");
+    expect(wizard).toContain("setModelName(nextName);");
     expect(attributes).toContain("/api/categories/");
     expect(attributes).toContain("/attributes");
     expect(attributes).toContain("تلاش مجدد برای بارگذاری ویژگی‌ها");
