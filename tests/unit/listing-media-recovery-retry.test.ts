@@ -302,9 +302,9 @@ describe("canonical listing submission gates", () => {
     expect(listingApi).not.toContain("idempotencyKey: idempotencyKey ?? null");
   });
 
-  it("allows a successfully loaded category with no configured technical attributes", () => {
-    expect(wizard).toContain("return attributesLoaded && Object.keys(errs).length === 0;");
-    expect(wizard).not.toContain("attributesLoaded && attributeDefs.length > 0");
+  it("blocks catalog progression when the selected category has no configured technical attributes", () => {
+    expect(wizard).toContain("return attributesLoaded && (isServiceFlow || attributeDefs.length > 0) && Object.keys(errs).length === 0;");
+    expect(wizard).toContain("فرم فنی اختصاصی این دسته‌بندی هنوز به کاتالوگ فعال متصل نشده است");
   });
 
   it("enforces canonical province selection for supply listing creation", () => {

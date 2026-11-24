@@ -20,8 +20,13 @@ export async function GET(
   const url = new URL(req.url);
   const categoryId = url.searchParams.get("categoryId");
 
-  const where: Record<string, unknown> = { brandId: id, status: "ACTIVE" };
-  if (categoryId) where.categoryId = categoryId;
+  const where = {
+    brandId: id,
+    status: "ACTIVE",
+    ...(categoryId
+      ? { OR: [{ categoryId }, { modelCategories: { some: { categoryId } } }] }
+      : {}),
+  };
 
   const models = await db.productModel.findMany({
     where,

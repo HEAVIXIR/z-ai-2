@@ -93,6 +93,7 @@ type TaxRoot = {
 };
 
 type ServiceTypeOption = { id: string; key: string; nameFa: string; nameEn: string | null };
+type ProductModelOption = { id: string; name: string; nameEn: string | null; slug: string; categoryId: string };
 
 export default function NewListingPage() {
   const [step, setStep] = useState(1);
@@ -159,7 +160,12 @@ export default function NewListingPage() {
   const [attributesLoaded, setAttributesLoaded] = useState(false);
   const [attrErrors, setAttrErrors] = useState<Record<string, string>>({});
   const [brandId, setBrandId] = useState<string>("");
+  const [modelId, setModelId] = useState<string>("");
   const [modelName, setModelName] = useState<string>("");
+  const [modelOptions, setModelOptions] = useState<ProductModelOption[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelsRetryKey, setModelsRetryKey] = useState(0);
   const [location, setLocation] = useState<LocationValue>({
     countryId: "",
     provinceId: "",
@@ -320,6 +326,7 @@ export default function NewListingPage() {
     setForm((f) => ({ ...f, brandLabel: b.name }));
     setBrandOpen(false);
     setModelName("");
+    setModelId("");
     setAttributes({});
     setAttributeDefs([]);
     setAttributesLoaded(false);
@@ -340,6 +347,41 @@ export default function NewListingPage() {
   // Therefore every non-service flow selects from the canonical CATALOG tree, never the empty/vertical RENT root.
   const categoryRoots = isServiceFlow ? serviceRoots : catalogRoots;
 
+  // Registered ProductModels activate the final model-specific attribute layer.
+  // Free-text model names remain supported, but only a selected catalog model
+  // can load ProductModelAttribute overrides.
+  useEffect(() => {
+    if (!brandId || !categoryId || isServiceFlow) {
+      setModelOptions([]);
+      setModelsLoading(false);
+      setModelsError(null);
+      return;
+    }
+    let alive = true;
+    setModelsLoading(true);
+    setModelsError(null);
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/taxonomy/brands/${encodeURIComponent(brandId)}/models?categoryId=${encodeURIComponent(categoryId)}`,
+          { cache: "no-store" },
+        );
+        if (!response.ok) throw new Error("دریافت مدل‌های ثبت‌شده ناموفق بود.");
+        const payload = await response.json() as { data?: ProductModelOption[] };
+        if (!alive) return;
+        setModelOptions(payload.data ?? []);
+      } catch (error) {
+        if (alive) {
+          setModelOptions([]);
+          setModelsError(error instanceof Error ? error.message : "دریافت مدل‌ها ناموفق بود.");
+        }
+      } finally {
+        if (alive) setModelsLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [brandId, categoryId, isServiceFlow, modelsRetryKey]);
+
   // When the WANTED intent changes between buy and rent, clear any previously
   // selected catalog category so the user reselects against the right context.
   const handleWantedIntentChange = (nextIntent: "SALE" | "RENT" | "SALE_AND_RENT") => {
@@ -356,6 +398,7 @@ export default function NewListingPage() {
       setBrandResults([]);
       setBrandOpen(false);
       setModelName("");
+    setModelId("");
       setForm((f) => ({ ...f, brandLabel: "" }));
         setAttributes({});
       setAttributeDefs([]);
@@ -379,6 +422,7 @@ export default function NewListingPage() {
     setBrandResults([]);
     setBrandOpen(false);
     setModelName("");
+    setModelId("");
     setAttributes({});
     setAttributeDefs([]);
     setAttributesLoaded(false);
@@ -416,7 +460,7 @@ export default function NewListingPage() {
       const errs = validateAttributeFields(attributeDefs, attributes);
       // Fail closed: a selected category without a resolved technical form
       // must never pass review as if its specifications were complete.
-      return attributesLoaded && Object.keys(errs).length === 0;
+      return attributesLoaded && (isServiceFlow || attributeDefs.length > 0) && Object.keys(errs).length === 0;
     }
     if (step === 5) {
       if (!location.provinceId) return false;
@@ -574,6 +618,7 @@ export default function NewListingPage() {
         locationLongitude: ["SALE", "RENT", "AUCTION"].includes(transactionType) && location.longitude?.trim() ? Number(location.longitude) : undefined,
         brandId: brandId || undefined,
         categoryId: categoryId || undefined,
+        modelId: modelId || undefined,
         modelName: modelName.trim() || undefined,
         serialNumber: form.serialNumber || undefined,
         sellerName: form.sellerName || undefined,
@@ -962,6 +1007,7 @@ export default function NewListingPage() {
                             setAttributesLoaded(false);
                             setAttrErrors({});
                             setModelName("");
+    setModelId("");
                           }}
                         />
                       </div>
@@ -980,7 +1026,7 @@ export default function NewListingPage() {
                     <div className="mt-6">
                       <AttributeFields
                         categoryId={categoryId || null}
-                        modelId={null}
+                        modelId={modelId || null}
                         values={attributes}
                         onChange={(next) => {
                           setAttributes(next);
@@ -992,8 +1038,13 @@ export default function NewListingPage() {
                       />
                     </div>
                     {attributesLoaded && attributeDefs.length === 0 && (
-                      <div role="status" className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs leading-6 text-white/55">
-                        برای این دسته‌بندی ویژگی فنی فعالی تعریف نشده است؛ می‌توانید بدون مشخصات فنی ادامه دهید. در صورت نیاز، مدیر سامانه می‌تواند بعداً ویژگی‌های این دسته‌بندی را تنظیم کند.
+                      <div
+                        role={isServiceFlow ? "status" : "alert"}
+                        className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-xs leading-6 text-amber-100/80"
+                      >
+                        {isServiceFlow
+                          ? "برای این نوع خدمت هنوز ویژگی اختصاصی فعالی ثبت نشده است."
+                          : "فرم فنی اختصاصی این دسته‌بندی هنوز به کاتالوگ فعال متصل نشده است. برای جلوگیری از ثبت آگهی ناقص، ادامه تا فعال‌سازی فرم تخصصی غیرفعال است."}
                       </div>
                     )}
                     <p className="mt-4 text-[11px] text-white/40">
@@ -1024,6 +1075,7 @@ export default function NewListingPage() {
                               setBrandQuery(e.target.value);
                               setBrandId("");
                               setModelName("");
+    setModelId("");
                                                         setAttributes({});
                               setAttributeDefs([]);
                               setAttributesLoaded(false);
@@ -1051,6 +1103,7 @@ export default function NewListingPage() {
                                 setBrandQuery("");
                                 setBrandBrowseKey(0);
                                 setModelName("");
+    setModelId("");
                                 setForm((f) => ({ ...f, brandLabel: "" }));
                                 setBrandResults([]);
                                 setBrandOpen(false);
@@ -1137,20 +1190,54 @@ export default function NewListingPage() {
                         )}
                       </div>
 
-                      {/* Model is free text; it is not constrained by the central brand catalog. */}
-                      <div>
-                        <label className={labelCls}>مدل (اختیاری)</label>
+                      <div className="space-y-2">
+                        <label className={labelCls}>مدل دستگاه (اختیاری)</label>
+                        <select
+                          value={modelId}
+                          onChange={(event) => {
+                            const selected = modelOptions.find((item) => item.id === event.target.value);
+                            setModelId(selected?.id ?? "");
+                            setModelName(selected?.name ?? "");
+                            setAttributes({});
+                            setAttributeDefs([]);
+                            setAttributesLoaded(false);
+                            setAttrErrors({});
+                          }}
+                          disabled={!brandId || !categoryId || modelsLoading || isServiceFlow}
+                          className={inputCls}
+                        >
+                          <option value="">{modelsLoading ? "در حال دریافت مدل‌ها…" : "انتخاب مدل ثبت‌شده (اختیاری)"}</option>
+                          {modelOptions.map((item) => (
+                            <option key={item.id} value={item.id}>{item.name}{item.nameEn ? ` — ${item.nameEn}` : ""}</option>
+                          ))}
+                        </select>
+                        {modelsError && (
+                          <div role="alert" className="flex items-center justify-between gap-3 text-[10px] text-red-300">
+                            <span>{modelsError}</span>
+                            <button type="button" onClick={() => setModelsRetryKey((value) => value + 1)} className="underline">تلاش مجدد</button>
+                          </div>
+                        )}
                         <input
                           type="text"
                           value={modelName}
-                          onChange={(e) => setModelName(e.target.value.slice(0, 120))}
+                          onChange={(event) => {
+                            const nextName = event.target.value.slice(0, 120);
+                            if (modelId) {
+                              setModelId("");
+                              setAttributes({});
+                              setAttributeDefs([]);
+                              setAttributesLoaded(false);
+                              setAttrErrors({});
+                            }
+                            setModelName(nextName);
+                          }}
                           disabled={!brandId}
                           maxLength={120}
-                          placeholder={brandId ? "مدل را وارد کنید؛ مثلاً PC220 یا 320D" : "ابتدا برند را انتخاب کنید"}
+                          placeholder={brandId ? "یا مدل را آزاد وارد کنید؛ مثلاً PC220 یا 320D" : "ابتدا برند را انتخاب کنید"}
                           className={inputCls}
                         />
-                        <p className="mt-1 text-[10px] text-white/35">
-                          نام مدل آزاد است و لازم نیست از قبل در فهرست مرکزی ثبت شده باشد.
+                        <p className="text-[10px] text-white/35">
+                          انتخاب مدل ثبت‌شده، مشخصات اختصاصی همان مدل را نیز به فرم فنی اضافه می‌کند. اگر مدل در فهرست نیست، نام آن را آزاد وارد کنید.
                         </p>
                       </div>
 

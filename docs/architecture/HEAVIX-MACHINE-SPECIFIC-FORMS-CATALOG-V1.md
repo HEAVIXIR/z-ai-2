@@ -1,6 +1,6 @@
 # HEAVIX Machine-Specific Listing Forms — Catalog V1
 
-Status: implementation baseline on the listing-wizard feature branch. This document is not evidence that the catalog seed has been applied to any database.
+Status: implemented on the Integration listing-wizard branch. Exact leaf-category templates, inherited category-attribute resolution, and registered ProductModel overlays are implemented in code. Preview activation remains pending a verified paired backup and protected seed workflow run. This document is not evidence that the catalog seed has been applied to any database.
 
 ## Design contract
 

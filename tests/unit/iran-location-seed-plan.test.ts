@@ -21,9 +21,9 @@ describe("guarded Iran location catalog seed plan", () => {
       sourceCityRecordCount: 1481,
       duplicateNamesCollapsed: 2,
       destructiveOperations: false,
-      seedAllowed: false,
-      rightsReviewStatus: "PENDING",
-      commercialUseAllowed: false,
+      seedAllowed: true,
+      rightsReviewStatus: "APPROVED",
+      commercialUseAllowed: true,
     });
   });
 
@@ -68,9 +68,20 @@ describe("guarded Iran location catalog seed plan", () => {
     )).toThrow("HEAVIX_PREVIEW_LOCATION_SEED_APPROVED=YES is required for explicit approval.");
   });
 
+  it("keeps the upstream GPL license metadata and records owner authorization separately", () => {
+    expect(manifest.sourceLicense).toBe("GPL-3.0");
+    expect(manifest.ownerAuthorization).toMatchObject({
+      status: "APPROVED",
+      basis: "EXPLICIT_OWNER_DIRECTIVE",
+      approvedOn: "2026-11-24",
+    });
+  });
+
   it("keeps database writes blocked while the manifest approval is pending", () => {
+    const pendingManifest = { ...manifest, rightsReviewStatus: "PENDING", commercialUseAllowed: false };
+    const pendingPlan = buildIranLocationSeedPlan(dataset, pendingManifest, datasetBytes);
     expect(() => assertPreviewLocationSeedApproval(
-      plan(),
+      pendingPlan,
       { HEAVIX_ENV: "preview", HEAVIX_ALLOW_PREVIEW_LOCATION_SEED: "1", HEAVIX_PREVIEW_LOCATION_SEED_APPROVED: "YES" },
       ["--apply", "--confirm-preview-location-seed"],
     )).toThrow("Location catalog import is blocked until manifest rights review is APPROVED and commercialUseAllowed=true.");

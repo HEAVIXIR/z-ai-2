@@ -36,7 +36,7 @@ describe("HEAVIX Iran canonical location catalog", () => {
 
   it("reproduces the committed dataset and manifest from the existing source file", () => {
     const sourceBytes = readFileSync(resolve(process.cwd(), "prisma/data/iran-cities-1404.json"));
-    const generated = buildIranLocationCatalog(sourceBytes);
+    const generated = buildIranLocationCatalog(sourceBytes, manifest);
     const committedDataset = readFileSync(resolve(process.cwd(), "prisma/data/iran-locations-1404.json"));
     const committedManifest = readFileSync(resolve(process.cwd(), "prisma/data/iran-locations-1404.manifest.json"));
     expect(Buffer.from(generated.datasetBytes).equals(committedDataset)).toBe(true);
@@ -49,8 +49,14 @@ describe("HEAVIX Iran canonical location catalog", () => {
     expect(actual).toBe(manifest.sha256);
   });
 
-  it("keeps the import gate closed until a documented approval is recorded", () => {
-    expect(manifest.rightsReviewStatus).toBe("PENDING");
-    expect(manifest.commercialUseAllowed).toBe(false);
+  it("preserves the explicit owner authorization without changing upstream license metadata", () => {
+    expect(manifest.rightsReviewStatus).toBe("APPROVED");
+    expect(manifest.commercialUseAllowed).toBe(true);
+    expect(manifest.ownerAuthorization).toMatchObject({
+      status: "APPROVED",
+      basis: "EXPLICIT_OWNER_DIRECTIVE",
+      scope: expect.stringContaining("HEAVIX"),
+    });
+    expect(manifest.sourceLicense).toBe("GPL-3.0");
   });
 });

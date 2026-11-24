@@ -16,7 +16,9 @@ const gitBlobSha = (bytes) => createHash("sha1").update(`blob ${bytes.length}\0`
 const cityCode = (provinceSourceId, name) =>
   `IR-CITY-${provinceSourceId}-${Array.from(name).map((char) => char.codePointAt(0).toString(16)).join("-")}`;
 
-export function buildIranLocationCatalog(sourceBytes) {
+export function buildIranLocationCatalog(sourceBytes, existingManifest = null) {
+  // Preserve an explicit owner authorization across deterministic regeneration.
+  // Source-license metadata remains independently sourced and is never rewritten.
   const raw = Buffer.from(sourceBytes);
   const source = JSON.parse(raw.toString("utf8"));
   if (source.source !== "sajaddp/list-of-cities-in-Iran") throw new Error("Unexpected Iran city catalog source");
@@ -112,6 +114,11 @@ export function buildIranLocationCatalog(sourceBytes) {
   };
 
   const datasetBytes = Buffer.from(JSON.stringify(dataset, null, 2) + "\n", "utf8");
+  const ownerAuthorization =
+    existingManifest?.ownerAuthorization?.status === "APPROVED" &&
+    existingManifest.ownerAuthorization.basis === "EXPLICIT_OWNER_DIRECTIVE"
+      ? existingManifest.ownerAuthorization
+      : null;
   const manifest = {
     datasetFile: "iran-locations-1404.json",
     sha256: sha256(datasetBytes),
@@ -127,8 +134,9 @@ export function buildIranLocationCatalog(sourceBytes) {
     countries: 1,
     normalization: "Country → Province → City; county/district/village records are not modeled or exposed",
     duplicatePolicy: "Two same-name records in the same province were collapsed by the source snapshot to fit the existing province/name unique key.",
-    rightsReviewStatus: "PENDING",
-    commercialUseAllowed: false,
+    rightsReviewStatus: ownerAuthorization ? "APPROVED" : "PENDING",
+    commercialUseAllowed: Boolean(ownerAuthorization),
+    ...(ownerAuthorization ? { ownerAuthorization } : {}),
   };
   const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2) + "\n", "utf8");
   return { dataset, manifest, datasetBytes, manifestBytes };
@@ -139,8 +147,12 @@ async function main() {
   if (mode !== "--check" && mode !== "--write") {
     throw new Error("Usage: node scripts/geospatial/build-iran-location-catalog.mjs --check|--write");
   }
-  const sourceBytes = await readFile(SOURCE_PATH);
-  const generated = buildIranLocationCatalog(sourceBytes);
+  const [sourceBytes, existingManifestBytes] = await Promise.all([
+    readFile(SOURCE_PATH),
+    readFile(MANIFEST_PATH),
+  ]);
+  const existingManifest = JSON.parse(existingManifestBytes.toString("utf8"));
+  const generated = buildIranLocationCatalog(sourceBytes, existingManifest);
   if (mode === "--check") {
     const [currentDataset, currentManifest] = await Promise.all([
       readFile(DATASET_PATH),

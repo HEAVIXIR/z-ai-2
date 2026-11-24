@@ -22,7 +22,7 @@ on:
         default: false
         type: boolean
       seed_iran_locations:
-        description: "Seed Iran locations ONLY after manifest rights approval"
+        description: "Seed the owner-approved Iran country/province/city dataset into isolated Preview"
         required: true
         default: false
         type: boolean
@@ -49,10 +49,10 @@ jobs:
       HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER: "7701427422680793119"
       HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
       HEAVIX_EXPECTED_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
-      HEAVIX_PREVIEW_TRANSACTION_TYPE_SEED_APPROVED: ${{ secrets.HEAVIX_PREVIEW_TRANSACTION_TYPE_SEED_APPROVED }}
-      HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED: ${{ secrets.HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED }}
-      HEAVIX_ALLOW_PREVIEW_LOCATION_SEED: ${{ secrets.HEAVIX_ALLOW_PREVIEW_LOCATION_SEED }}
-      HEAVIX_PREVIEW_LOCATION_SEED_APPROVED: ${{ secrets.HEAVIX_PREVIEW_LOCATION_SEED_APPROVED }}
+      HEAVIX_PREVIEW_TRANSACTION_TYPE_SEED_APPROVED: ${{ inputs.seed_transaction_types && 'YES' || 'NO' }}
+      HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED: ${{ inputs.seed_technical_forms && 'YES' || 'NO' }}
+      HEAVIX_ALLOW_PREVIEW_LOCATION_SEED: ${{ inputs.seed_iran_locations && '1' || '0' }}
+      HEAVIX_PREVIEW_LOCATION_SEED_APPROVED: ${{ inputs.seed_iran_locations && 'YES' || 'NO' }}
       BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
 
     steps:
@@ -187,5 +187,5 @@ jobs:
             echo "- Category technical forms seed: $SEED_TECHNICAL_FORMS"
             echo "- Iran location seed: $SEED_IRAN_LOCATIONS"
             echo "- Production and Store DB: untouched"
-            echo "- Location seed requires both explicit secrets and manifest rights approval; current manifest is PENDING and will fail closed."
+            echo "- Iran location dataset: owner-authorized for HEAVIX use; upstream GPL-3.0 source metadata is preserved."
           } >> "$GITHUB_STEP_SUMMARY"

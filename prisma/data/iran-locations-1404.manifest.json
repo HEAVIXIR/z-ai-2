@@ -13,6 +13,13 @@
   "countries": 1,
   "normalization": "Country → Province → City; county/district/village records are not modeled or exposed",
   "duplicatePolicy": "Two same-name records in the same province were collapsed by the source snapshot to fit the existing province/name unique key.",
-  "rightsReviewStatus": "PENDING",
-  "commercialUseAllowed": false
+  "rightsReviewStatus": "APPROVED",
+  "commercialUseAllowed": true,
+  "ownerAuthorization": {
+    "status": "APPROVED",
+    "basis": "EXPLICIT_OWNER_DIRECTIVE",
+    "approvedOn": "2026-11-24",
+    "scope": "HEAVIX project use of this Iran country/province/city dataset, including Preview catalog seeding and marketplace location selection",
+    "note": "This records the project owner's authorization for HEAVIX use. The upstream sourceLicense remains GPL-3.0 and is not modified or relicensed by this project metadata."
+  }
 }

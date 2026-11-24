@@ -553,6 +553,12 @@ export async function POST(req: Request) {
       if (!body.brandId || model.brandId !== String(body.brandId)) {
         return NextResponse.json({ error: "مدل انتخاب‌شده به برند انتخابی تعلق ندارد." }, { status: 400 });
       }
+      const modelMatchesCategory =
+        model.categoryId === String(body.categoryId) ||
+        model.modelCategories.some((link) => link.categoryId === String(body.categoryId));
+      if (!modelMatchesCategory) {
+        return NextResponse.json({ error: "مدل انتخاب‌شده به دسته‌بندی آگهی متصل نیست." }, { status: 400 });
+      }
     }
 
     // Image entitlements are resolved from the authenticated subscription.
