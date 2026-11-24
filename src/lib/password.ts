@@ -65,7 +65,7 @@ export async function hashPassword(password: string): Promise<string> {
   if (!password) throw new Error("Password is required");
   const salt = crypto.getRandomValues(new Uint8Array(PBKDF2_SALT_LENGTH_BYTES));
   const derived = await derivePbkdf2(password, salt);
-  return \`pbkdf2$sha256$\${PBKDF2_ITERATIONS}$\${toBase64Url(salt)}$\${toBase64Url(derived)}\`;
+  return `pbkdf2$sha256$${PBKDF2_ITERATIONS}$${toBase64Url(salt)}$${toBase64Url(derived)}`;
 }
 
 async function verifyPbkdf2Password(password: string, hash: string): Promise<boolean> {
