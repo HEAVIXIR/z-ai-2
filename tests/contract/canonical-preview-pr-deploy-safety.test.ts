@@ -12,6 +12,8 @@ describe("PR #376 canonical Preview deployment safety", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toMatch(/^\s*push:/m);
     expect(workflow).toContain("inputs.confirm_preview_only == true");
+    expect(workflow).toContain("accept_bcrypt_password_reset:");
+    expect(workflow).toContain("ACCEPT_BCRYPT_PASSWORD_RESET");
     expect(workflow).toContain("github.ref == 'refs/heads/main'");
     expect(workflow).toContain("environment:");
     expect(workflow).toContain("name: preview-backup");
@@ -34,6 +36,15 @@ describe("PR #376 canonical Preview deployment safety", () => {
     expect(workflow).toContain('grep -Fxq "rbac_seed=SKIP"');
     expect(workflow).toContain('grep -Fxq "brand_seed=SKIP"');
     expect(workflow).toContain('grep -Fxq "model_name_migration=SKIP"');
+  });
+
+  it("runs a read-only password hash inventory and requires explicit bcrypt-reset acknowledgement", () => {
+    expect(workflow).toContain("bunx tsx prisma/migrate-passwords.ts");
+    expect(workflow).toContain("PBKDF2 hashes:");
+    expect(workflow).toContain("supported bcrypt:");
+    expect(workflow).toContain("Refusing deployment: ");
+    expect(workflow).toContain("password reset");
+    expect(workflow).not.toContain("migrate-passwords.ts --apply");
   });
 
   it("syncs only the verified App/Store Preview DB bindings in the same Preview deployment", () => {
