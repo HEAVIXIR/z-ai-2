@@ -3351,9 +3351,6 @@ if (duplicatePartsLeafSlugs.length) {
 // canonical clone when a slug already exists, and add only the remaining parts
 // templates. This is deterministic and additive (no category or DB changes).
 const existingTemplateSlugs = new Set(templates.map((template) => template.slug));
-const overlappingPartsLeafSlugs = partsLeafForms
-  .map((template) => template.slug)
-  .filter((slug) => existingTemplateSlugs.has(slug));
 const uniquePartsLeafForms = partsLeafForms.filter(
   (template) => !existingTemplateSlugs.has(template.slug),
 );
