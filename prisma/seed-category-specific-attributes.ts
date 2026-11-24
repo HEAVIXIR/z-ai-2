@@ -3252,7 +3252,14 @@ const duplicateAddedLeafSlugs = missingTerminalLeafForms
 if (duplicateAddedLeafSlugs.length) {
   throw new Error(`Duplicate supplemental leaf form slugs: ${duplicateAddedLeafSlugs.join(", ")}`);
 }
-templates.push(...missingTerminalLeafForms);
+// Canonical machine-family clones already provide the authoritative templates for
+// many of these terminal slugs. Keep those definitions and append only genuinely
+// missing leaf forms; this prevents duplicate slugs before the global preflight.
+const existingTemplateSlugsForLeafForms = new Set(templates.map((template) => template.slug));
+const uniqueMissingTerminalLeafForms = missingTerminalLeafForms.filter(
+  (template) => !existingTemplateSlugsForLeafForms.has(template.slug),
+);
+templates.push(...uniqueMissingTerminalLeafForms);
 
 // Dedicated technical forms for all terminal spare-parts categories.
 // Shared equipment identity fields remain in the common listing flow.
