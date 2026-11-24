@@ -27,6 +27,15 @@ type CategoryRow = {
   layer: string | null; domain: string | null; level: number | null; taxPath: string | null;
 };
 
+type LegacyBranchAudit = {
+  slug: string;
+  active: boolean;
+  totalListings: number;
+  directListings: number;
+  unmappedCategorySlugs: string[];
+  safeForDeactivationPreflight: boolean;
+};
+
 function extractSlugProperties(filePath: string, variableName: string): string[] {
   const sourceText = readFileSync(filePath, "utf8");
   const source = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -173,7 +182,7 @@ async function main() {
         where: { slug: { in: legacyL1Slugs } },
         select: { id: true, parentId: true, slug: true, active: true, layer: true, domain: true, level: true, taxPath: true },
       }) as CategoryRow[];
-      const legacyBranches = [];
+      const legacyBranches: LegacyBranchAudit[] = [];
       for (const legacy of legacyRoots) {
         const descendants = await collectSubtree(tx, legacy.id);
         const branchIds = [legacy.id, ...descendants.map((row) => row.id)];
