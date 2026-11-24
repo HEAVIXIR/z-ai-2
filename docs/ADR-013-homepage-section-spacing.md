@@ -4,7 +4,7 @@
 - **Date:** 2026-11-24
 - **Decision authority:** Delegated owner representative, recorded in Issue #348 comment `7127163835`
 - **Related epic:** [Issue #348 — HEAVIX Dynamic Homepage & Content Builder](https://github.com/HEAVIXIR/z-ai-2/issues/348)
-- **Numbering namespace:** Root `docs/ADR-*.md` series. The separate `docs/architecture/ADR-*` path is not treated as the same numbering namespace.
+- **Numbering namespace:** Root `docs/ADR-*.md` series. The separate `docs/architecture/ADR-*` path is not treated as the same numbering namespace. The root series currently contains two ADR-005 files; ADR-013 was verified unused in Main and Integration, but the ADR index/duplicate-number cleanup remains technical debt.
 
 ## 1. Context
 
@@ -13,7 +13,7 @@ HEAVIX already renders the homepage from the existing `HomePageSection` records 
 Current implementation evidence at Integration SHA `bb9f522a963ad70116a389fc316b5453e0e213b2`:
 
 - `src/components/home/HomepageSectionFrame.tsx` defines legacy `paddingTop` and `paddingBottom` as strings and applies them through `safeLength` to the section frame.
-- `src/app/admin/homepage-layout/page.tsx` loads design values using `String(v ?? "")`. That conversion collapses `null` and missing values to empty strings and stringifies nested objects, so it cannot safely round-trip the proposed nested responsive spacing structure.
+- `src/app/admin/homepage-layout/page.tsx` loads each present design entry using `String(v ?? "")`. This converts explicit `null` values to empty strings and stringifies nested objects (for example, to `[object Object]`); keys absent from the JSON remain absent. The conversion therefore loses explicit-null versus empty-string information and cannot safely round-trip the proposed nested responsive spacing structure.
 - `src/app/api/admin/homepage-sections/route.ts` already uses `admin.homepage.manage`, writes immediately, records audit events and invalidates the homepage sections cache tag.
 - `src/app/page.tsx` renders the existing sections inside the current `<main className="flex-1">`; a `.homepage-root` class does not currently exist and must be deliberately introduced if this design is implemented.
 - The current section API does not provide a draft/publish/schedule/rollback lifecycle.
