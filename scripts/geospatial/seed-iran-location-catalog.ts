@@ -304,7 +304,6 @@ export async function assertPreviewLocationDatabaseIdentity(
   const identity = rows[0];
   if (
     !identity ||
-    identity.databaseName !== "postgres" ||
     identity.databaseOid !== expectedDatabaseOid ||
     identity.systemIdentifier !== expectedSystemIdentifier
   ) {
