@@ -5,6 +5,7 @@ on:
   pull_request:
     branches:
       - main
+      - integration/preview-readiness-workerd-2026-11-15
     paths:
       - "open-next.config.ts"
       - "tsconfig.worker.json"
