@@ -17,7 +17,8 @@ describe("HEAVIX global brand registry integration", () => {
     expect(wizard).toContain("const nextName = event.target.value.slice(0, 120);");
     expect(wizard).toContain("setModelName(nextName);");
     expect(wizard).toContain("modelOptions.map((item) => (");
-    expect(wizard).toContain("setModelId(e.target.value)");
+    expect(wizard).toContain("modelOptions.find((item) => item.id === event.target.value)");
+    expect(wizard).toContain('setModelId(selected?.id ?? "")');
     expect(wizard).toContain("BRAND_STATUS_LABELS[r.status].label");
     const statusLabels = read("src/lib/brand-labels.ts");
     expect(statusLabels).toContain('LEGACY: { label: "میراثی"');
