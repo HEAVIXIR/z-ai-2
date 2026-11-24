@@ -50,7 +50,9 @@ describe("Listing wizard seven-step source contract", () => {
 
   it("loads the global brand registry, free-text model and inherited category attributes", () => {
     expect(wizard).toContain("/api/brands/search?q=");
-    expect(wizard).not.toContain("/api/taxonomy/brands/");
+    expect(wizard).toContain("/api/brands/search?q=");
+    expect(wizard).toContain("/api/taxonomy/brands/");
+    expect(wizard).toContain("modelId={modelId || null}");
     expect(wizard).toContain('const [modelName, setModelName] = useState<string>("");');
     expect(wizard).toContain("value={modelName}");
     expect(wizard).toContain("setModelName(e.target.value.slice(0, 120))");
@@ -62,8 +64,8 @@ describe("Listing wizard seven-step source contract", () => {
   it("surfaces global brand lookup failures with an explicit retry control", () => {
     expect(wizard).toContain("brandError");
     expect(wizard).toContain("setBrandRetryKey((key) => key + 1)");
-    expect(wizard).not.toContain("modelsError");
-    expect(wizard).not.toContain("setModelsRetryKey");
+    expect(wizard).toContain("modelsError");
+    expect(wizard).toContain("setModelsRetryKey((value) => value + 1)");
     expect(wizard).toContain("brandAbort.current?.abort()");
     expect(wizard).toContain("ctrl.signal.aborted");
   });
