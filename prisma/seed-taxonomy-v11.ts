@@ -791,9 +791,21 @@ async function main() {
     throw new Error("Choose only one isolated seed mode.");
   }
 
-  // Owner-authorized, narrowly scoped Iran location catalog path. The source
-  // manifest retains its original license metadata; this operational override
-  // does not alter or misrepresent that metadata.
+  // These legacy isolated modes are disabled because they do not enforce the
+  // dedicated approval/rights contracts. Use the narrowly scoped guarded
+  // scripts instead; the full taxonomy seed retains its own manifest rights gate.
+  if (transactionTypesOnly) {
+    throw new Error(
+      "The legacy TransactionType-only seed is disabled. Use prisma/seed-transaction-types.ts with explicit approval and exact Preview identity.",
+    );
+  }
+  if (locationsOnly) {
+    throw new Error(
+      "The legacy location-only seed is disabled because it bypasses the dataset rights gate. Use scripts/geospatial/seed-iran-location-catalog.ts after manifest rights approval.",
+    );
+  }
+
+  // Exact Preview database identity helper retained for the remaining legacy modes.
   async function assertExactPreviewDatabase() {
     const expectedSystem = process.env.HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER;
     const expectedOid = process.env.HEAVIX_EXPECTED_PREVIEW_DATABASE_OID;
