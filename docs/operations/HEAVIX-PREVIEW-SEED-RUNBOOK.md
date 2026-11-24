@@ -2,6 +2,56 @@
 
 This runbook is for a **verified isolated Preview database only**. It is not permission to run seeds, migrations, or deploy anything. Confirm the exact Prisma project, branch, database, and Cloudflare Preview binding before any apply operation.
 
+## Current execution addendum — 2026-11-24
+
+This section supersedes the older "do not run canonical seed sequence yet" status notes below where they conflict with the current owner-approved Preview workflow. Historical source audits remain useful provenance and are retained.
+
+### Current decisions and code path
+
+- The project owner explicitly authorized HEAVIX use of the committed Iran country/province/city dataset. The manifest records `rightsReviewStatus=APPROVED`, `commercialUseAllowed=true`, and the owner-authorization basis. The upstream `sourceLicense=GPL-3.0` field is preserved unchanged; this project metadata does not relicense the source.
+- Dataset scope is Iran only: 1 country, 31 provinces, 1,479 distinct city records from 1,481 source records (2 same-province duplicate names collapsed).
+- The machine-specific seed registry currently contains 360 unique template slugs (257 literal + 103 generated), with pre-write terminal-category coverage checks. Template count is not the same as the final unique AttributeDefinition count.
+- The category-attribute API resolves inherited CategoryAttribute rows from root to selected leaf. The listing wizard now also supports registered ProductModel selection so ProductModelAttribute overlays can be loaded; free-text model names remain supported without pretending they have a registered model overlay.
+- Catalog listing Step 4 is fail-closed: a CATALOG category with no active technical attributes cannot proceed to review. Service flows retain their existing empty-form behavior until their own form seed path is explicitly included.
+- PR #377 is merged to Integration. PR #379 (canonical Preview deployment workflow) and PR #380 (Main workflow registration) are merged. PR #381 (ADR-013) is merged.
+- PR #382 contains the owner-authorized location manifest, technical-form gate, registered model selector/overlay wiring, and Integration seed workflow update. PR #383 synchronizes the workflow registration on Main. Both remain subject to exact-head CI and independent review before merge.
+
+### Required protected execution sequence
+
+1. **Paired backup only** — manually dispatch `.github/workflows/prisma-preview-backup-to-b2.yml` on `integration/preview-readiness-workerd-2026-11-15` with:
+   - `target=PREVIEW_ONLY`
+   - `confirm=BACKUP_PREVIEW_ONLY`
+   - `rbac_seed=SKIP`
+   - `brand_seed=SKIP`
+   - `model_name_migration=SKIP`
+   Approve the `preview-backup` environment if GitHub requests it. Require a successful run, encrypted artifacts, read-back verification, and disposable restore verification. Record its run ID.
+
+2. **Canonical Preview deploy** — after the reviewed workflow registration is merged, dispatch `.github/workflows/heavix-pr376-canonical-preview-deploy.yml` from `main` with:
+   - `expected_head_sha=bc62b304fdeb54fbfd7e279d23a830de0a7a9b7a` (re-check current PR #376 head immediately before dispatch)
+   - `backup_run_id=<successful paired backup run ID>`
+   - `confirm_preview_only=true`
+   - `accept_legacy_password_reset=false`
+   Approve the protected environment. If read-only password inventory finds legacy hashes, deployment must stop; do not change the reset flag merely to bypass the gate.
+
+3. **Catalog activation** — after PRs #382 and #383 are merged, dispatch `.github/workflows/preview-activate-three-catalogs.yml` from `integration/preview-readiness-workerd-2026-11-15` with:
+   - `backup_run_id=<same successful paired backup run ID>`
+   - `confirm_preview_only=true`
+   - `seed_transaction_types=true`
+   - `seed_technical_forms=true`
+   - `seed_iran_locations=true`
+   Each boolean is an explicit per-seed approval; the protected `preview-backup` environment and exact App Preview DB identity checks remain mandatory.
+
+4. **Live verification** — verify `GET /api/health`, `GET /api/transaction-types`, `GET /api/locations`, and representative machine endpoints such as `/api/categories/cat-excavator/attributes`, `cat-loader`, and `cat-backhoe-loader`. Confirm `SERVICE_OFFER`, 1 country, 31 provinces, 1,479 cities, and non-empty specialist attribute arrays. Test a registered ProductModel overlay and a free-text model fallback separately.
+
+5. **End-to-end acceptance** — complete authenticated Listing Creation through transaction selection, category leaf, brand/model, technical form, location, details/media, review, POST, persisted typed attributes, moderation state, and seller/admin readback. Only then close the P0 listing gate.
+
+### Execution state at addendum time
+
+- No paired backup, canonical Preview deployment, migration, or catalog seed has yet been run in this execution sequence.
+- The previous live Integration Preview evidence still showed 6 transaction types (without `SERVICE_OFFER`), 0 countries, and empty representative technical attributes. These are the last verified values, not a claim about a fresh request after the current code changes.
+- The canonical Preview App DB binding previously returned health 503/root 500 due to the App DB identity mismatch. PR #379 supplies the guarded correction path but does not itself deploy.
+- Do not report any dataset or form as active in Preview until the protected workflows succeed and the live API checks confirm the persisted rows.
+
 ## Why this exists
 
 The legacy `db:seed` command only adds demo brands, machine categories, and sample listings. It does not populate transaction types, service types, model catalog, industries, or dynamic category forms. The canonical data is split across several scripts and must be applied in dependency order.
