@@ -31,7 +31,7 @@
 ### Admin
 
 - User-based admin authentication
-- PBKDF2-HMAC-SHA256 (600,000 iterations), with legacy bcrypt verification and lazy migration on Node/Vercel
+- PBKDF2-HMAC-SHA256 (600,000 iterations); legacy bcrypt verification and lazy migration on Node/Vercel
 - random session token
 - hashed session token in DB
 - session revocation
