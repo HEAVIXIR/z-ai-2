@@ -1,32 +1,23 @@
 /* ============================================================
-   prisma/migrate-passwords.ts — P0-1 one-time safety migration.
+   prisma/migrate-passwords.ts — guarded one-time credential migration.
 
-   Background:
-   - Before P0-1, `User.passwordHash` was stored as PLAINTEXT (the
-     raw password typed by the user) for public registrations, and as
-     a base64-of-`heavix:<password>` obfuscation for admin-created
-     users. Neither is a hash; both are trivially reversible.
+   SAFETY:
+   - Default mode is DRY RUN. It reports counts only and never writes.
+   - Mutation requires --apply, an explicit expected DATABASE_URL host,
+     and a non-empty backup/recovery reference supplied by the operator.
+   - The backup reference is an audit input, NOT proof that a backup is
+     valid or restorable. Verify restoreability independently before apply.
+   - Each write uses compare-and-swap against the exact original hash so a
+     concurrent password reset is never overwritten.
+   - Malformed PBKDF2 or unsupported bcrypt records stop the whole run.
 
-   What this script does:
-   - Finds every User whose `passwordHash` does NOT already look like a
-     bcrypt hash (bcrypt hashes start with `$2`, e.g. `$2a$10$...`).
-   - For each such user, recovers the original plaintext password:
-       • Plain `passwordHash` → use it as-is.
-       • Legacy `heavix:<pw>` base64 obfuscation → base64-decode and
-         strip the `heavix:` prefix to recover `<pw>`.
-       • Anything else → best-effort: hash whatever's there and warn.
-   - Hashes the recovered plaintext with bcrypt (cost 10, same as
-     `src/lib/password.ts`) and writes it back.
-   - Does NOT delete or skip any user — every user ends up with a
-     real bcrypt hash, so nobody gets locked out and nobody keeps a
-     plaintext password.
+   Apply example (only after independently verifying target + restore):
+     HEAVIX_PASSWORD_MIGRATION_EXPECTED_DB_HOST=<exact-db-host> \
+     HEAVIX_PASSWORD_MIGRATION_BACKUP_REF=<verified-backup-reference> \
+     bun run prisma/migrate-passwords.ts --apply
 
-   Run once:
-       bun run db:migrate-passwords
-   (or directly: `bun run prisma/migrate-passwords.ts`)
-
-   Idempotent: re-running is a no-op because every user will already
-   have a `$2…` hash on the second run.
+   This script is never run by CI and must not be executed against Production
+   without a separately approved and verified backup/recovery gate.
    ============================================================ */
 
 import { PrismaClient } from "@prisma/client";
@@ -64,18 +55,22 @@ function recoverPlaintext(stored: string): { plaintext: string; source: string }
 }
 
 async function main(): Promise<void> {
+  const applyRequested = process.argv.includes("--apply");
   const users = await db.user.findMany({
-    select: { id: true, email: true, mobile: true, passwordHash: true },
+    select: { id: true, passwordHash: true },
   });
 
   const malformedPbkdf2 = users.filter(
     (user) => user.passwordHash.startsWith("pbkdf2$") && !isPbkdf2Hash(user.passwordHash),
   );
-  if (malformedPbkdf2.length > 0) {
+  const unsupportedBcrypt = users.filter(
+    (user) => /^\\$2[aby]\\$/.test(user.passwordHash) && !isLegacyBcryptHash(user.passwordHash),
+  );
+  if (malformedPbkdf2.length > 0 || unsupportedBcrypt.length > 0) {
     console.error(
       "[migrate-passwords] Refusing to continue: " +
-      malformedPbkdf2.length +
-      " malformed PBKDF2 record(s) require manual review.",
+      malformedPbkdf2.length + " malformed PBKDF2 and " +
+      unsupportedBcrypt.length + " unsupported bcrypt record(s) require manual review.",
     );
     process.exitCode = 1;
     return;
@@ -84,9 +79,33 @@ async function main(): Promise<void> {
   const toMigrate = users.filter((user) => !looksLikeSupportedHash(user.passwordHash));
   const alreadySupported = users.length - toMigrate.length;
 
+  console.log(`[migrate-passwords] mode:               ${applyRequested ? "APPLY" : "DRY RUN"}`);
   console.log(`[migrate-passwords] total users:        ${users.length}`);
   console.log(`[migrate-passwords] already supported:  ${alreadySupported}`);
   console.log(`[migrate-passwords] need migration:     ${toMigrate.length}`);
+
+  if (!applyRequested) {
+    console.log("[migrate-passwords] dry run only; no credentials were changed.");
+    console.log("[migrate-passwords] pass --apply only after verifying the target and a restorable backup.");
+    return;
+  }
+
+  const databaseUrl = process.env.DATABASE_URL;
+  const expectedHost = process.env.HEAVIX_PASSWORD_MIGRATION_EXPECTED_DB_HOST?.trim();
+  const backupRef = process.env.HEAVIX_PASSWORD_MIGRATION_BACKUP_REF?.trim();
+  let actualHost = "";
+  try {
+    actualHost = databaseUrl ? new URL(databaseUrl).host : "";
+  } catch {
+    actualHost = "";
+  }
+  if (!actualHost || !expectedHost || actualHost !== expectedHost || !backupRef) {
+    console.error("[migrate-passwords] APPLY refused: DATABASE_URL host must exactly match HEAVIX_PASSWORD_MIGRATION_EXPECTED_DB_HOST and HEAVIX_PASSWORD_MIGRATION_BACKUP_REF must be set.");
+    process.exitCode = 1;
+    return;
+  }
+  console.log(`[migrate-passwords] confirmed database host: ${actualHost}`);
+  console.log("[migrate-passwords] backup/recovery reference supplied; restoreability must have been verified independently.");
 
   if (toMigrate.length === 0) {
     console.log("[migrate-passwords] nothing to do. All passwords use a supported hash format.");
@@ -102,10 +121,14 @@ async function main(): Promise<void> {
     try {
       const recovered = recoverPlaintext(user.passwordHash);
       const newHash = await hashPassword(recovered.plaintext);
-      await db.user.update({
-        where: { id: user.id },
+      const write = await db.user.updateMany({
+        where: { id: user.id, passwordHash: user.passwordHash },
         data: { passwordHash: newHash },
       });
+      if (write.count !== 1) {
+        failures.push({ reason: "credential changed concurrently; compare-and-swap skipped the write" });
+        continue;
+      }
       migrated += 1;
       if (recovered.source === "legacy-base64") recoveredFromLegacy += 1;
       else recoveredFromPlaintext += 1;
