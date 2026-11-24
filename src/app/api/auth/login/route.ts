@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createUserSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { verifyPassword } from "@/lib/password";
+import { hashPassword, isLegacyBcryptHash, verifyPassword } from "@/lib/password";
 import { logAudit } from "@/lib/audit";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { LOGIN } from "@/lib/rate-limit-presets";
@@ -65,8 +65,17 @@ export async function POST(req: Request) {
 
     if (!user) return NextResponse.json({ error: "کاربر یافت نشد یا رمز نادرست است" }, { status: 401 });
 
-    const passwordValid = await verifyPassword(String(password), user.passwordHash);
-    if (!passwordValid) return NextResponse.json({ error: "کاربر یافت نشد یا رمز نادرست است" }, { status: 401 });
+    const allowLegacyBcrypt = process.env.HEAVIX_AUTH_ALLOW_LEGACY_BCRYPT !== "false";
+    const legacyBcryptHash = isLegacyBcryptHash(user.passwordHash);
+    const passwordValid = await verifyPassword(String(password), user.passwordHash, { allowLegacyBcrypt });
+    if (!passwordValid) {
+      return NextResponse.json(
+        {
+          error: "کاربر یافت نشد یا رمز نادرست است. اگر همین حساب در Vercel Preview وارد می‌شود، یک بار آنجا وارد شوید و سپس در Cloudflare Preview دوباره تلاش کنید.",
+        },
+        { status: 401 },
+      );
+    }
 
     if (user.status === "BLOCKED") {
       return NextResponse.json({ error: "حساب کاربری شما مسدود شده است" }, { status: 403 });
@@ -76,6 +85,26 @@ export async function POST(req: Request) {
         { error: "ابتدا ایمیل خود را با کد ارسال‌شده تأیید کنید." },
         { status: 403 },
       );
+    }
+
+    // Compare-and-swap prevents a concurrent password reset or account suspension
+    // from being overwritten by a login that verified a stale password hash.
+    const migratedPasswordHash =
+      legacyBcryptHash && allowLegacyBcrypt ? await hashPassword(String(password)) : undefined;
+    const loginWrite = await db.user.updateMany({
+      where: {
+        id: user.id,
+        passwordHash: user.passwordHash,
+        status: "ACTIVE",
+        emailVerified: true,
+      },
+      data: {
+        lastLoginAt: new Date(),
+        ...(migratedPasswordHash ? { passwordHash: migratedPasswordHash } : {}),
+      },
+    });
+    if (loginWrite.count !== 1) {
+      return NextResponse.json({ error: "کاربر یافت نشد یا رمز نادرست است" }, { status: 401 });
     }
 
     // Resolve canonical RBAC roles in the initial user lookup. This avoids
@@ -102,10 +131,13 @@ export async function POST(req: Request) {
 
       const previousRole = user.role;
       await db.$transaction(async (tx) => {
-        await tx.user.update({
-          where: { id: user.id },
+        const activeOwner = await tx.user.updateMany({
+          where: { id: user.id, status: "ACTIVE", emailVerified: true },
           data: { role: "ADMIN" },
         });
+        if (activeOwner.count !== 1) {
+          throw new Error("Owner account is no longer active; Preview bootstrap denied.");
+        }
 
         // Delete the replaceable default roles directly; avoid a read-before-delete
         // round trip while keeping custom roles untouched.
@@ -137,10 +169,6 @@ export async function POST(req: Request) {
       });
     }
 
-    await db.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    });
     await createUserSession(user.id);
 
     const admin = roles.includes("ADMIN");

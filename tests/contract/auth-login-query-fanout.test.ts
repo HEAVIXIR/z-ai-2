@@ -18,7 +18,9 @@ describe("Login Worker query-fanout contract", () => {
 
   it("preserves password verification, CSRF, and canonical session creation", () => {
     expect(source).toContain("checkCsrf(req)");
-    expect(source).toContain("verifyPassword(String(password), user.passwordHash)");
+    expect(source).toContain("verifyPassword(String(password), user.passwordHash, { allowLegacyBcrypt })");
+    expect(source).toContain('process.env.HEAVIX_AUTH_ALLOW_LEGACY_BCRYPT !== "false"');
+    expect(source).toContain("isLegacyBcryptHash(user.passwordHash)");
     expect(source).toContain("await createUserSession(user.id)");
   });
 

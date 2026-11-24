@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { hashPassword, verifyPassword } from "@/lib/password";
+import bcrypt from "bcryptjs";
+import { hashPassword, isLegacyBcryptHash, isPbkdf2Hash, verifyPassword } from "@/lib/password";
 
 /* ============================================================
    Unit tests for src/lib/password.ts (P0-1, P1-20)
@@ -7,7 +8,7 @@ import { hashPassword, verifyPassword } from "@/lib/password";
    HEAVIX-P0-IMPLEMENTATION-PLAN.md   STEP 2 (Authentication)
    ------------------------------------------------------------
    Verifies:
-     • hashPassword produces a bcrypt hash starting with "$2"
+     • hashPassword produces a PBKDF2-HMAC-SHA256 hash
      • verifyPassword returns true for the correct password
      • verifyPassword returns false for a wrong password
      • hashPassword produces different hashes for the same input
@@ -16,13 +17,14 @@ import { hashPassword, verifyPassword } from "@/lib/password";
    ============================================================ */
 
 describe("password.hashPassword", () => {
-  it("produces a bcrypt hash with the $2 prefix", async () => {
+  it("produces a PBKDF2-HMAC-SHA256 hash with the fixed work factor", async () => {
     const hash = await hashPassword("S3cret-P@ss!");
     expect(typeof hash).toBe("string");
-    expect(hash.startsWith("$2")).toBe(true);
-    // bcrypt hash format: $2b$cost$22-char-salt-31-char-hash
-    expect(hash.length).toBeGreaterThanOrEqual(59);
-    expect(hash.length).toBeLessThanOrEqual(60);
+    expect(hash.startsWith("pbkdf2$sha256$600000$")).toBe(true);
+    expect(isPbkdf2Hash(hash)).toBe(true);
+    expect(hash.length).toBeGreaterThan(70);
+    expect(isPbkdf2Hash("pbkdf2$sha256$600000$bad$bad")).toBe(false);
+    expect(isPbkdf2Hash("pbkdf2$sha256$999999$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")).toBe(false);
   });
 
   it("produces DIFFERENT hashes for the same input (random salt)", async () => {
@@ -48,10 +50,21 @@ describe("password.verifyPassword", () => {
   });
 
   it("returns false when comparing against a malformed hash", async () => {
-    // bcrypt.compare returns false (never throws) when the hash is
-    // not a valid bcrypt string — verify that contract holds.
     const ok = await verifyPassword("anything", "not-a-real-hash");
     expect(ok).toBe(false);
+  });
+
+  it("recognizes legacy bcrypt and verifies it only when explicitly allowed", async () => {
+    const legacyHash = await bcrypt.hash("legacy-password", 4);
+    expect(isLegacyBcryptHash(legacyHash)).toBe(true);
+    expect(await verifyPassword("legacy-password", legacyHash, { allowLegacyBcrypt: true })).toBe(true);
+    expect(await verifyPassword("legacy-password", legacyHash, { allowLegacyBcrypt: false })).toBe(false);
+
+    // A malformed or excessive stored work factor must fail closed before
+    // bcryptjs is invoked, preventing credential-controlled CPU exhaustion.
+    const excessiveCostHash = legacyHash.replace("$04$", "$31$");
+    expect(isLegacyBcryptHash(excessiveCostHash)).toBe(false);
+    expect(await verifyPassword("legacy-password", excessiveCostHash, { allowLegacyBcrypt: true })).toBe(false);
   });
 });
 

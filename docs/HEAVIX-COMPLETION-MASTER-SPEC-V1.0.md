@@ -194,7 +194,7 @@ Audit باید Append-only باشد.
 ## 9-10. Registration, Password, Verification
 - ثبت‌نام عمومی فقط BUYER/SELLER
 - Account Lifecycle: PENDING → EMAIL_VERIFIED → ACTIVE → SUSPENDED → BLOCKED → DELETED/ANONYMIZED
-- bcrypt/Argon2id, password strength, breach-resistant
+- PBKDF2-HMAC-SHA256 (600,000 iterations), legacy bcrypt verification on Node/Vercel with lazy migration, password strength and breach-resistant handling
 - Verification code hash شده
 
 ---
