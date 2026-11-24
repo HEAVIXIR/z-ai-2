@@ -37,7 +37,7 @@ Category ≠ Transaction ≠ Service ≠ Industry ≠ Brand ≠ Model ≠ Locati
 Brand و Model مستقل‌اند.
 
 ### اصل ۴ — امنیت بر پایه Zero Trust
-- پسوردها هرگز plaintext ذخیره نشوند؛ قالب جدید PBKDF2-HMAC-SHA256 با ۶۰۰٬۰۰۰ تکرار است. هش‌های قدیمی bcrypt فقط در Node/Vercel تأیید و پس از ورود موفق به PBKDF2 مهاجرت می‌شوند.
+- پسوردها هرگز plaintext ذخیره نشوند؛ قالب جدید PBKDF2-HMAC-SHA256 با ۶۰۰٬۰۰۰ تکرار است و هش قدیمی bcrypt فقط در Node/Vercel تأیید و پس از ورود موفق مهاجرت می‌شود.
 - ثبت‌نام عمومی هرگز نقش ADMIN نسازد.
 - Admin session باید cryptographically secure باشد.
 - RBAC + Audit Log الزامی است.
