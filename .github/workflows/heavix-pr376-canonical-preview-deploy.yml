@@ -188,11 +188,13 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
           HEAVIX_ENV: preview
+          HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          HEAVIX_EXPECTED_SYSTEM_IDENTIFIER: ${{ secrets.HEAVIX_EXPECTED_SYSTEM_IDENTIFIER }}
           ACCEPT_LEGACY_PASSWORD_RESET: ${{ inputs.accept_legacy_password_reset }}
         run: |
           set -euo pipefail
           INVENTORY_LOG="$RUNNER_TEMP/heavix-preview-password-inventory.log"
-          bunx tsx prisma/migrate-passwords.ts 2>&1 | tee "$INVENTORY_LOG"
+          bunx tsx prisma/preview-password-hash-inventory.ts 2>&1 | tee "$INVENTORY_LOG"
           PBKDF2_COUNT="$(sed -n 's/.*PBKDF2 hashes:[[:space:]]*//p' "$INVENTORY_LOG" | tail -n 1)"
           BCRYPT_COUNT="$(sed -n 's/.*supported bcrypt:[[:space:]]*//p' "$INVENTORY_LOG" | tail -n 1)"
           LEGACY_COUNT="$(sed -n 's/.*unsupported\/legacy:[[:space:]]*//p' "$INVENTORY_LOG" | tail -n 1)"
@@ -206,7 +208,7 @@ jobs:
           echo "pbkdf2_count=$PBKDF2_COUNT" >> "$GITHUB_OUTPUT"
           echo "bcrypt_count=$BCRYPT_COUNT" >> "$GITHUB_OUTPUT"
           echo "legacy_count=$LEGACY_COUNT" >> "$GITHUB_OUTPUT"
-          echo "Read-only inventory complete. No password hashes changed."
+          echo "Read-only inventory complete. The script verified exact App Preview DB identity and emitted no user identifiers or password hashes; no password hashes changed."
 
       - name: Build OpenNext Worker
         run: |
