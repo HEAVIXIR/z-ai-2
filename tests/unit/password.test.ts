@@ -59,6 +59,12 @@ describe("password.verifyPassword", () => {
     expect(isLegacyBcryptHash(legacyHash)).toBe(true);
     expect(await verifyPassword("legacy-password", legacyHash, { allowLegacyBcrypt: true })).toBe(true);
     expect(await verifyPassword("legacy-password", legacyHash, { allowLegacyBcrypt: false })).toBe(false);
+
+    // A malformed or excessive stored work factor must fail closed before
+    // bcryptjs is invoked, preventing credential-controlled CPU exhaustion.
+    const excessiveCostHash = legacyHash.replace("$04$", "$31$");
+    expect(isLegacyBcryptHash(excessiveCostHash)).toBe(false);
+    expect(await verifyPassword("legacy-password", excessiveCostHash, { allowLegacyBcrypt: true })).toBe(false);
   });
 });
 
