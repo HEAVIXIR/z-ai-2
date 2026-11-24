@@ -90,10 +90,10 @@ describe("seed-category-specific-attributes: template source integrity", () => {
 
   it("deduplicates canonical machine clones against parts leaf forms", () => {
     const canonicalTargets = [
-      ...cloneSection.matchAll(/cloneTemplate\\("([^"]+)",\\s*"([^"]+)"/g),
+      ...cloneSection.matchAll(/cloneTemplate\("([^"]+)",\s*"([^"]+)/g),
     ].map((entry) => entry[2]);
     const partsLeafSlugs = [
-      ...source.matchAll(/leafForm\\(\\s*"([^"]+)"/g),
+      ...source.matchAll(/leafForm\(\s*"([^"]+)/g),
     ].map((entry) => entry[1]);
     const overlap = partsLeafSlugs.filter((slug) => canonicalTargets.includes(slug));
     expect(overlap.length).toBeGreaterThanOrEqual(80);
