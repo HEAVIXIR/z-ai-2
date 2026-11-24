@@ -14,7 +14,7 @@
 
 ### Users
 
-- Argon2id/bcrypt password hash
+- PBKDF2-HMAC-SHA256 (600,000 iterations) for Worker-compatible hashes; legacy bcrypt is verified on Node/Vercel and migrated after successful login
 - verified email/mobile states
 - session rotation
 - session revocation
