@@ -43,7 +43,8 @@ describe("PR #376 canonical Preview deployment safety", () => {
     expect(workflow).toContain("PBKDF2 hashes:");
     expect(workflow).toContain("supported bcrypt:");
     expect(workflow).toContain("Refusing deployment: ");
-    expect(workflow).toContain("bcrypt or unsupported legacy hashes");
+    expect(workflow).toContain("accounts use bcrypt");
+    expect(workflow).toContain("unsupported/legacy hashes");
     expect(workflow).toContain("password reset");
     expect(workflow).not.toContain("migrate-passwords.ts --apply");
   });
