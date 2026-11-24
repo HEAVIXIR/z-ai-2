@@ -110,7 +110,7 @@ describe("seed-category-specific-attributes: template source integrity", () => {
 
     const terminalBlock = source.slice(terminalStart, terminalEnd);
     const terminalSlugs = [
-      ...terminalBlock.matchAll(/leafForm\\(\\s*"([^"]+)"/g),
+      ...terminalBlock.matchAll(/leafForm[(]\\s*"([^"]+)"/g),
     ].map((entry) => entry[1]);
     const overlap = terminalSlugs.filter((slug) => canonicalTargets.includes(slug));
 
