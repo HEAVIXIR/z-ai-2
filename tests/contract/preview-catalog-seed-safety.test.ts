@@ -45,6 +45,9 @@ describe("Preview catalog seed safety contract", () => {
     expect(workflow).not.toContain("seed-taxonomy-v11.ts --apply --locations-only");
     expect(transactionTypeSeed).toContain('HEAVIX_PREVIEW_TRANSACTION_TYPE_SEED_APPROVED !== "YES"');
     expect(technicalFormsSeed).toContain('HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED !== "YES"');
+    expect(workflow).toContain("HEAVIX_PREVIEW_TRANSACTION_TYPE_SEED_APPROVED: ${{ inputs.seed_transaction_types && 'YES' || 'NO' }}");
+    expect(workflow).toContain("HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED: ${{ inputs.seed_technical_forms && 'YES' || 'NO' }}");
+    expect(workflow).toContain("HEAVIX_PREVIEW_LOCATION_SEED_APPROVED: ${{ inputs.seed_iran_locations && 'YES' || 'NO' }}");
   });
 
   it("keeps the location source rights gate and pins any permitted write to the exact Preview DB", () => {
