@@ -238,6 +238,7 @@ jobs:
           echo "version_id=$VERSION_ID" >> "$GITHUB_OUTPUT"
 
       - name: Verify canonical Preview root and App/Store DB health
+        id: verify-health
         shell: bash
         run: |
           set -euo pipefail
@@ -258,9 +259,15 @@ jobs:
           done
           test "$health_code" = "200"
           cat "$RUNNER_TEMP/heavix-preview-health.json"
+          echo "root_code=$root_code" >> "$GITHUB_OUTPUT"
+          echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
 
       - name: Report live catalog completeness (non-blocking until guarded seeds)
         shell: bash
+        env:
+          ROOT_CODE: ${{ steps.verify-health.outputs.root_code }}
+          HEALTH_CODE: ${{ steps.verify-health.outputs.health_code }}
+          WORKER_VERSION_ID: ${{ steps.deploy-preview.outputs.version_id }}
         run: |
           set -euo pipefail
           base="https://heavix-preview.heavixir.workers.dev"
@@ -278,8 +285,9 @@ jobs:
             echo "- Source SHA: $EXPECTED_HEAD_SHA"
             echo "- Worker: `heavix-preview`"
             echo "- URL: https://heavix-preview.heavixir.workers.dev"
-            echo "- Root: HTTP $root_code"
-            echo "- Health: HTTP $health_code; App DB and Store DB up"
+            echo "- Root: HTTP $ROOT_CODE"
+            echo "- Health: HTTP $HEALTH_CODE; App DB and Store DB up"
+            echo "- Worker version: ${WORKER_VERSION_ID:-not parsed from Wrangler output}"
             echo "- Active transaction types: $types_count"
             echo "- SERVICE_OFFER present: $service_offer"
             echo "- Countries in Preview: $countries_count"
