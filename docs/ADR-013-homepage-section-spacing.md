@@ -191,7 +191,7 @@ The following are mandatory before implementation acceptance:
 6. E2E proof that updating settings changes the homepage after cache invalidation and does not affect unrelated routes or users.
 7. Re-audit of wrapper usage, legacy orphan status, CMS pageType route coverage and the actual responsive breakpoint tokens.
 
-The 50 unique planned cases are enumerated below. The two singleton cases that were counted but not individually named in Phase 0.4.3.6 are assigned stable IDs `T-S1` and `T-S2` here.
+The Phase 0.4.3.6 report claimed 50 cases. This ADR expands that inventory to **56 unique planned cases** because the accepted persistence contract now explicitly requires coverage for global PUT completeness, null/legacy precedence, and malformed-JSON fail-closed behavior. The two singleton cases previously counted but not individually named are assigned stable IDs `T-S1` and `T-S2`.
 
 | Group | IDs | Count |
 |---|---|---:|
@@ -208,16 +208,27 @@ The 50 unique planned cases are enumerated below. The two singleton cases that w
 | Breakpoint independence | T-B1, T-B2, T-B3, T-B4 | 4 |
 | CSS variable bug scenarios | T-BUG1, T-BUG2 | 2 |
 | Global renderer validation | T-G1, T-G2, T-G3, T-G4 | 4 |
-| JSON round-trip | T-RT1, T-RT2, T-RT3, T-RT4 | 4 |
+| JSON round-trip / malformed JSON | T-RT1, T-RT2, T-RT3, T-RT4, T-RT5 | 5 |
 | Function signature / legacy resolver | T-SIG1, T-SIG2, T-SIG3 | 3 |
 | Singleton enforcement | T-S1, T-S2 | 2 |
-| **Total** | **50 unique IDs** | **50** |
+| Global PUT completeness | T-PUT1, T-PUT2 | 2 |
+| Null/legacy precedence | T-NULL1, T-NULL2, T-NULL3 | 3 |
+| **Total** | **56 unique IDs** | **56** |
 
 Singleton expectations:
 - `T-S1`: the endpoint rejects a client-supplied non-`main` identifier (HTTP 400); only `id = "main"` can be upserted.
 - `T-S2`: after the future migration, a direct insert/update with `id != 'main'` is rejected by the database CHECK constraint in a disposable test database.
 
-The inventory count is design evidence only. **50 planned, 0 executed, 0 PASS, 0 FAIL; all NOT RUN.** The four breakpoint-independence cases must list every section and global input explicitly in Phase 0.4.3.7.
+Additional persistence-contract expectations:
+- `T-PUT1`: global PUT missing any one of the six required keys returns HTTP 400 and performs no partial write.
+- `T-PUT2`: global PUT with all six keys explicitly present as valid numbers or null upserts `main` and round-trips all six values.
+- `T-NULL1`: nested section null + valid legacy flat string + global value resolves to the legacy string (null means no numeric override; legacy fallback remains eligible).
+- `T-NULL2`: absent nested section key + valid legacy flat string + global value resolves to the legacy string.
+- `T-NULL3`: empty legacy flat string + global value resolves to the global value; empty string is normalized to absent.
+- `T-RT2` must preserve unknown keys at both config-root and design levels.
+- `T-RT5`: malformed config JSON fails closed; editor does not replace it with an empty object or save destructively.
+
+The inventory count is design evidence only. **56 planned, 0 executed, 0 PASS, 0 FAIL; all NOT RUN.** The four breakpoint-independence cases must list every section and global input explicitly in Phase 0.4.3.7.
 
 ## 7. Implementation gate
 
