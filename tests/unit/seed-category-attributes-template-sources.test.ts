@@ -109,6 +109,9 @@ describe("seed-category-specific-attributes: template source integrity", () => {
     expect(terminalEnd).toBeGreaterThan(terminalStart);
 
     const terminalBlock = source.slice(terminalStart, terminalEnd);
+    const canonicalTargets = [
+      ...cloneSection.matchAll(/cloneTemplate\("([^"]+)",\s*"([^"]+)"/g),
+    ].map((entry) => entry[2]);
     const terminalSlugs = [
       ...terminalBlock.matchAll(/leafForm[(]\s*"([^"]+)"/g),
     ].map((entry) => entry[1]);
