@@ -15,8 +15,8 @@ on:
         description: "Confirm deployment is to the canonical Preview Worker only"
         required: true
         type: boolean
-      accept_bcrypt_password_reset:
-        description: "If Preview users still have bcrypt hashes, confirm they must reset passwords; no password migration is run"
+      accept_legacy_password_reset:
+        description: "If Preview users have bcrypt or unsupported legacy hashes, confirm they must reset passwords; no password migration is run"
         required: true
         default: false
         type: boolean
@@ -44,7 +44,7 @@ jobs:
       HEAVIX_ENV: preview
       BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
       EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
-      ACCEPT_BCRYPT_PASSWORD_RESET: ${{ inputs.accept_bcrypt_password_reset }}
+      ACCEPT_LEGACY_PASSWORD_RESET: ${{ inputs.accept_legacy_password_reset }}
 
     steps:
       - name: Validate explicit Preview-only scope
@@ -188,7 +188,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
           HEAVIX_ENV: preview
-          ACCEPT_BCRYPT_PASSWORD_RESET: ${{ inputs.accept_bcrypt_password_reset }}
+          ACCEPT_LEGACY_PASSWORD_RESET: ${{ inputs.accept_legacy_password_reset }}
         run: |
           set -euo pipefail
           INVENTORY_LOG="$RUNNER_TEMP/heavix-preview-password-inventory.log"
@@ -199,8 +199,8 @@ jobs:
           [[ "$PBKDF2_COUNT" =~ ^[0-9]+$ ]]
           [[ "$BCRYPT_COUNT" =~ ^[0-9]+$ ]]
           [[ "$LEGACY_COUNT" =~ ^[0-9]+$ ]]
-          if [[ "$BCRYPT_COUNT" -gt 0 && "$ACCEPT_BCRYPT_PASSWORD_RESET" != "true" ]]; then
-            echo "Refusing deployment: $BCRYPT_COUNT Preview accounts still use bcrypt and will require password reset while legacy bcrypt is disabled. Explicit accept_bcrypt_password_reset=true is required."
+          if [[ ( "$BCRYPT_COUNT" -gt 0 || "$LEGACY_COUNT" -gt 0 ) && "$ACCEPT_LEGACY_PASSWORD_RESET" != "true" ]]; then
+            echo "Refusing deployment: $BCRYPT_COUNT Preview accounts use bcrypt and $LEGACY_COUNT use unsupported/legacy hashes. These accounts require password reset; explicit accept_legacy_password_reset=true is required. No password migration will be run."
             exit 1
           fi
           echo "pbkdf2_count=$PBKDF2_COUNT" >> "$GITHUB_OUTPUT"
@@ -326,6 +326,7 @@ jobs:
             echo "- Preview PBKDF2 accounts: $PBKDF2_COUNT"
             echo "- Preview supported bcrypt accounts (password reset required): $BCRYPT_COUNT"
             echo "- Preview unsupported/legacy hashes: $LEGACY_COUNT"
+            echo "- Accounts requiring password reset if deployed with legacy bcrypt disabled: $((BCRYPT_COUNT + LEGACY_COUNT))"
             echo "- Password migration: DRY RUN only; no hashes changed"
             echo "- Active transaction types: $types_count"
             echo "- SERVICE_OFFER present: $service_offer"
