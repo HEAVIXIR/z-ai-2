@@ -297,9 +297,9 @@ export async function assertPreviewLocationDatabaseIdentity(
     databaseOid: string;
     systemIdentifier: string;
   }>>(
-    "SELECT current_database() AS \\"databaseName\\", " +
-    "(SELECT oid::text FROM pg_database WHERE datname = current_database()) AS \\"databaseOid\\", " +
-    "(SELECT system_identifier::text FROM pg_control_system()) AS \\"systemIdentifier\\"",
+    'SELECT current_database() AS "databaseName", ' +
+    '(SELECT oid::text FROM pg_database WHERE datname = current_database()) AS "databaseOid", ' +
+    '(SELECT system_identifier::text FROM pg_control_system()) AS "systemIdentifier"',
   );
   const identity = rows[0];
   if (
