@@ -9,7 +9,7 @@
      1. Locating the admin user using ADMIN_USERNAME from the environment
         — OR any user whose legacy `User.role` column is ADMIN/SUPERADMIN.
      2. If no such user exists, creating one with the admin mobile + a
-        PBKDF2 hash of ADMIN_PASSWORD so the admin can log in via
+        PBKDF2 hash of ADMIN_PASSWORD (so the admin can ALSO log in via
         the user-session path and exercise RBAC).
      3. Upserting a UserRole(ADMIN) row for that user.
      4. Upserting a UserRole(BUYER) row for every OTHER user.
@@ -108,7 +108,7 @@ async function main() {
   });
 
   // 2. If none, create one so RBAC is exercisable through the user-session
-  //    path too (the canonical user-session path is the only supported admin auth path).
+  //    path too (the legacy admin-cookie path will keep working regardless).
   if (!adminUser) {
     console.log(`  • No admin user found; creating one with mobile ${ADMIN_MOBILE} …`);
     const passwordHash = await hashPassword(ADMIN_PASSWORD!);
