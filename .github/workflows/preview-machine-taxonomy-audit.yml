@@ -28,18 +28,18 @@ jobs:
     environment: preview-backup
     timeout-minutes: 30
     env:
-      DATABASE_URL: \${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
       HEAVIX_ENV: preview
       HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER: "7701427422680793119"
-      HEAVIX_EXPECTED_PREVIEW_DATABASE_OID: \${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
-      BACKUP_RUN_ID: \${{ inputs.backup_run_id }}
+      HEAVIX_EXPECTED_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
       HEAVIX_TAXONOMY_AUDIT_REPORT: artifacts/taxonomy-preview-audit.json
 
     steps:
       - name: Enforce exact branch, Preview confirmation and audit-only inputs
         shell: bash
         env:
-          CONFIRM_PREVIEW_ONLY: \${{ inputs.confirm_preview_only }}
+          CONFIRM_PREVIEW_ONLY: ${{ inputs.confirm_preview_only }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
@@ -53,9 +53,9 @@ jobs:
         id: verify-backup
         uses: actions/github-script@v7
         env:
-          BACKUP_RUN_ID_INPUT: \${{ inputs.backup_run_id }}
+          BACKUP_RUN_ID_INPUT: ${{ inputs.backup_run_id }}
         with:
-          github-token: \${{ github.token }}
+          github-token: ${{ github.token }}
           script: |
             const runId = Number(process.env.BACKUP_RUN_ID_INPUT);
             if (!Number.isSafeInteger(runId) || runId <= 0) {
@@ -99,7 +99,7 @@ jobs:
       - name: Verify checked-out commit and backup evidence
         shell: bash
         env:
-          VERIFIED_BACKUP_SHA: \${{ steps.verify-backup.outputs.backup_sha }}
+          VERIFIED_BACKUP_SHA: ${{ steps.verify-backup.outputs.backup_sha }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
@@ -121,7 +121,7 @@ jobs:
         run: bunx tsx prisma/audit-machine-taxonomy-preview.ts
 
       - name: Publish audit report
-        if: always()
+        if: always() && hashFiles('artifacts/taxonomy-preview-audit.json') != ''
         uses: actions/upload-artifact@v4
         with:
           name: heavix-preview-machine-taxonomy-audit
