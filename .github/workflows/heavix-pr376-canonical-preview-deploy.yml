@@ -1,0 +1,341 @@
+name: HEAVIX — deploy PR #376 to canonical Preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_head_sha:
+        description: "Exact reviewed PR #376 head SHA"
+        required: true
+        type: string
+      backup_run_id:
+        description: "Successful backup-only paired encrypted B2 workflow run ID"
+        required: true
+        type: string
+      confirm_preview_only:
+        description: "Confirm deployment is to the canonical Preview Worker only"
+        required: true
+        type: boolean
+      accept_legacy_password_reset:
+        description: "If Preview users have bcrypt or unsupported legacy hashes, confirm they must reset passwords; no password migration is run"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: heavix-canonical-preview-pr376
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy reviewed PR head to Preview only
+    if: github.ref == 'refs/heads/main' && inputs.confirm_preview_only == true
+    runs-on: ubuntu-latest
+    environment:
+      name: preview-backup
+      url: https://heavix-preview.heavixir.workers.dev
+    timeout-minutes: 60
+    env:
+      NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+      HEAVIX_ENV: preview
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+      EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+      ACCEPT_LEGACY_PASSWORD_RESET: ${{ inputs.accept_legacy_password_reset }}
+
+    steps:
+      - name: Validate explicit Preview-only scope
+        shell: bash
+        env:
+          CONFIRM_PREVIEW_ONLY: ${{ inputs.confirm_preview_only }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$CONFIRM_PREVIEW_ONLY" = "true"
+          [[ "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$EXPECTED_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "PASS: manual main-branch workflow; fixed target is canonical Preview Worker heavix-preview."
+
+      - name: Verify exact open PR #376 head
+        id: verify-pr
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: 376,
+            });
+            if (pr.state !== "open" || pr.draft !== true) {
+              throw new Error("PR #376 must remain open and Draft for this pre-merge Preview validation.");
+            }
+            if (pr.base.ref !== "integration/preview-readiness-workerd-2026-11-15" ||
+                pr.head.ref !== "fix/integration-cloudflare-free-auth-2026-11-24") {
+              throw new Error("PR #376 base/head branch identity does not match the approved Preview source.");
+            }
+            if (pr.head.sha !== process.env.EXPECTED_HEAD_SHA) {
+              throw new Error("Expected SHA does not equal the current PR #376 head; refusing stale deployment.");
+            }
+            core.setOutput("head_sha", pr.head.sha);
+            core.notice(`Verified PR #376 exact head ${pr.head.sha}; state=open, draft=true.`);
+
+      - name: Verify successful paired encrypted B2 backup run
+        id: verify-backup
+        uses: actions/github-script@v7
+        env:
+          BACKUP_RUN_ID_INPUT: ${{ inputs.backup_run_id }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const runId = Number(process.env.BACKUP_RUN_ID_INPUT);
+            if (!Number.isSafeInteger(runId) || runId <= 0) {
+              throw new Error("backup_run_id must be a positive GitHub Actions run ID.");
+            }
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+            });
+            if (!String(run.path || "").startsWith(".github/workflows/prisma-preview-backup-to-b2.yml") ||
+                run.event !== "workflow_dispatch" ||
+                run.head_branch !== "integration/preview-readiness-workerd-2026-11-15" ||
+                run.conclusion !== "success") {
+              throw new Error("Backup must be a successful manual paired B2 backup run on the exact Integration branch.");
+            }
+            const ageMs = Date.now() - Date.parse(run.created_at);
+            if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 72 * 60 * 60 * 1000) {
+              throw new Error("Backup evidence is outside the 72-hour freshness window.");
+            }
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+              per_page: 100,
+            });
+            const artifact = artifacts.artifacts.find(
+              (item) => item.name === "heavix-preview-paired-backup-evidence" && !item.expired,
+            );
+            if (!artifact) {
+              throw new Error("Backup run has no unexpired paired backup evidence artifact.");
+            }
+            core.setOutput("backup_sha", run.head_sha);
+            core.notice(`Verified paired backup run ${runId}, source SHA ${run.head_sha}, artifact ${artifact.id}.`);
+
+      - name: Download paired backup evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: heavix-preview-paired-backup-evidence
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.backup_run_id }}
+          path: ${{ runner.temp }}/heavix-preview-backup-evidence
+
+      - name: Validate backup-only evidence
+        shell: bash
+        env:
+          VERIFIED_BACKUP_SHA: ${{ steps.verify-backup.outputs.backup_sha }}
+        run: |
+          set -euo pipefail
+          EVIDENCE="$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          test -s "$EVIDENCE"
+          grep -Fxq "format=heavix-preview-paired-backup-evidence-v1" "$EVIDENCE"
+          grep -Fxq "backup_run_id=$BACKUP_RUN_ID" "$EVIDENCE"
+          grep -Fxq "backup_sha=$VERIFIED_BACKUP_SHA" "$EVIDENCE"
+          grep -Fxq "rbac_seed=SKIP" "$EVIDENCE"
+          grep -Fxq "brand_seed=SKIP" "$EVIDENCE"
+          grep -Fxq "model_name_migration=SKIP" "$EVIDENCE"
+          grep -Eq '^backup_prefix=preview/paired/' "$EVIDENCE"
+          echo "PASS: backup-only B2 upload, read-back checksum and disposable restore evidence verified."
+
+      - name: Checkout exact PR #376 head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.verify-pr.outputs.head_sha }}
+
+      - name: Verify Worker target and Free-plan compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Eq '^  "name": "heavix-preview",' wrangler.jsonc
+          grep -Eq '^    "HEAVIX_ENV": "preview",' wrangler.jsonc
+          grep -Eq '^    "HEAVIX_AUTH_ALLOW_LEGACY_BCRYPT": "false",' wrangler.jsonc
+          ! grep -Eq '"cpu_ms"[[:space:]]*:' wrangler.jsonc
+          ! grep -Eq '^  "routes"[[:space:]]*:' wrangler.jsonc
+          ! grep -Eq '^  "env"[[:space:]]*:' wrangler.jsonc
+          echo "PASS: target is the Preview-only Worker; no route, custom environment or unsupported CPU override."
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate both Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Read-only Preview password hash inventory
+        id: password-inventory
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          HEAVIX_ENV: preview
+          HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          HEAVIX_EXPECTED_SYSTEM_IDENTIFIER: ${{ secrets.HEAVIX_EXPECTED_SYSTEM_IDENTIFIER }}
+          ACCEPT_LEGACY_PASSWORD_RESET: ${{ inputs.accept_legacy_password_reset }}
+        run: |
+          set -euo pipefail
+          INVENTORY_LOG="$RUNNER_TEMP/heavix-preview-password-inventory.log"
+          bunx tsx prisma/preview-password-hash-inventory.ts 2>&1 | tee "$INVENTORY_LOG"
+          PBKDF2_COUNT="$(sed -n 's/.*PBKDF2 hashes:[[:space:]]*//p' "$INVENTORY_LOG" | tail -n 1)"
+          BCRYPT_COUNT="$(sed -n 's/.*supported bcrypt:[[:space:]]*//p' "$INVENTORY_LOG" | tail -n 1)"
+          LEGACY_COUNT="$(sed -n 's/.*unsupported\/legacy:[[:space:]]*//p' "$INVENTORY_LOG" | tail -n 1)"
+          [[ "$PBKDF2_COUNT" =~ ^[0-9]+$ ]]
+          [[ "$BCRYPT_COUNT" =~ ^[0-9]+$ ]]
+          [[ "$LEGACY_COUNT" =~ ^[0-9]+$ ]]
+          if [[ ( "$BCRYPT_COUNT" -gt 0 || "$LEGACY_COUNT" -gt 0 ) && "$ACCEPT_LEGACY_PASSWORD_RESET" != "true" ]]; then
+            echo "Refusing deployment: $BCRYPT_COUNT Preview accounts use bcrypt and $LEGACY_COUNT use unsupported/legacy hashes. These accounts require password reset; explicit accept_legacy_password_reset=true is required. No password migration will be run."
+            exit 1
+          fi
+          echo "pbkdf2_count=$PBKDF2_COUNT" >> "$GITHUB_OUTPUT"
+          echo "bcrypt_count=$BCRYPT_COUNT" >> "$GITHUB_OUTPUT"
+          echo "legacy_count=$LEGACY_COUNT" >> "$GITHUB_OUTPUT"
+          echo "Read-only inventory complete. The script verified exact App Preview DB identity and emitted no user identifiers or password hashes; no password hashes changed."
+
+      - name: Build OpenNext Worker
+        run: |
+          set -euo pipefail
+          ulimit -n 4096 2>/dev/null || true
+          node scripts/patch-next-nft-concurrency.cjs
+          bun run build:cloudflare
+          test -s .open-next/worker.js
+          test -d .open-next/assets
+
+      - name: Dry-run canonical Preview deployment with verified DB bindings
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "3fe0437a0aab4bafb2e728e458f67ea0"
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          STORE_PREVIEW_DATABASE_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
+          HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          HEAVIX_STORE_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_STORE_PREVIEW_DATABASE_OID }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$MAIN_PREVIEW_DATABASE_URL"
+          test -n "$STORE_PREVIEW_DATABASE_URL"
+          test -n "$HEAVIX_APP_PREVIEW_DATABASE_OID"
+          test -n "$HEAVIX_STORE_PREVIEW_DATABASE_OID"
+          SECRETS_FILE="$RUNNER_TEMP/heavix-preview-secrets.json"
+          trap 'rm -f "$SECRETS_FILE"' EXIT
+          jq -n             --arg app "$MAIN_PREVIEW_DATABASE_URL"             --arg store "$STORE_PREVIEW_DATABASE_URL"             --arg appOid "$HEAVIX_APP_PREVIEW_DATABASE_OID"             --arg storeOid "$HEAVIX_STORE_PREVIEW_DATABASE_OID"             '{
+              DATABASE_URL: $app,
+              STORE_DATABASE_URL: $store,
+              HEAVIX_APP_PREVIEW_DATABASE_OID: $appOid,
+              HEAVIX_STORE_PREVIEW_DATABASE_OID: $storeOid
+            }' > "$SECRETS_FILE"
+          chmod 600 "$SECRETS_FILE"
+          bunx wrangler deploy --name heavix-preview --dry-run --secrets-file "$SECRETS_FILE"
+
+      - name: Deploy exact PR #376 head to canonical Preview only
+        id: deploy-preview
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "3fe0437a0aab4bafb2e728e458f67ea0"
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          STORE_PREVIEW_DATABASE_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
+          HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          HEAVIX_STORE_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_STORE_PREVIEW_DATABASE_OID }}
+        run: |
+          set -euo pipefail
+          SECRETS_FILE="$RUNNER_TEMP/heavix-preview-secrets.json"
+          trap 'rm -f "$SECRETS_FILE"' EXIT
+          jq -n             --arg app "$MAIN_PREVIEW_DATABASE_URL"             --arg store "$STORE_PREVIEW_DATABASE_URL"             --arg appOid "$HEAVIX_APP_PREVIEW_DATABASE_OID"             --arg storeOid "$HEAVIX_STORE_PREVIEW_DATABASE_OID"             '{
+              DATABASE_URL: $app,
+              STORE_DATABASE_URL: $store,
+              HEAVIX_APP_PREVIEW_DATABASE_OID: $appOid,
+              HEAVIX_STORE_PREVIEW_DATABASE_OID: $storeOid
+            }' > "$SECRETS_FILE"
+          chmod 600 "$SECRETS_FILE"
+          bunx wrangler deploy --name heavix-preview --secrets-file "$SECRETS_FILE" 2>&1 | tee "$RUNNER_TEMP/heavix-preview-deploy.log"
+          VERSION_ID="$(grep -Eo '[0-9a-f]{8}-[0-9a-f-]{27,}' "$RUNNER_TEMP/heavix-preview-deploy.log" | tail -n 1 || true)"
+          echo "version_id=$VERSION_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Verify canonical Preview root and App/Store DB health
+        id: verify-health
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://heavix-preview.heavixir.workers.dev"
+          root_code="$(curl --retry 8 --retry-delay 3 --retry-connrefused --max-time 20 -sS -o /dev/null -w '%{http_code}' "$base/" || true)"
+          test "$root_code" = "200"
+          health_code="000"
+          for attempt in $(seq 1 12); do
+            health_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-preview-health.json" -w '%{http_code}' "$base/api/health" || true)"
+            if [[ "$health_code" == "200" ]] && node -e '
+              const fs = require("fs");
+              const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+              process.exit(h.status === "ok" && h.checks?.db === "up" && h.checks?.storeDb === "up" ? 0 : 1);
+            ' "$RUNNER_TEMP/heavix-preview-health.json"; then
+              break
+            fi
+            sleep 5
+          done
+          test "$health_code" = "200"
+          cat "$RUNNER_TEMP/heavix-preview-health.json"
+          echo "root_code=$root_code" >> "$GITHUB_OUTPUT"
+          echo "health_code=$health_code" >> "$GITHUB_OUTPUT"
+
+      - name: Report live catalog completeness (non-blocking until guarded seeds)
+        shell: bash
+        env:
+          ROOT_CODE: ${{ steps.verify-health.outputs.root_code }}
+          HEALTH_CODE: ${{ steps.verify-health.outputs.health_code }}
+          WORKER_VERSION_ID: ${{ steps.deploy-preview.outputs.version_id }}
+          PBKDF2_COUNT: ${{ steps.password-inventory.outputs.pbkdf2_count }}
+          BCRYPT_COUNT: ${{ steps.password-inventory.outputs.bcrypt_count }}
+          LEGACY_COUNT: ${{ steps.password-inventory.outputs.legacy_count }}
+        run: |
+          set -euo pipefail
+          base="https://heavix-preview.heavixir.workers.dev"
+          curl -fsS "$base/api/transaction-types" -o "$RUNNER_TEMP/transaction-types.json"
+          curl -fsS "$base/api/locations" -o "$RUNNER_TEMP/locations.json"
+          curl -fsS "$base/api/categories/cat-excavator/attributes" -o "$RUNNER_TEMP/excavator-attributes.json"
+          types_count="$(jq '.types | length' "$RUNNER_TEMP/transaction-types.json")"
+          service_offer="$(jq '[.types[].key] | any(. == "SERVICE_OFFER")' "$RUNNER_TEMP/transaction-types.json")"
+          countries_count="$(jq '.countries | length' "$RUNNER_TEMP/locations.json")"
+          attributes_count="$(jq '.attributes | length' "$RUNNER_TEMP/excavator-attributes.json")"
+          {
+            echo "## Canonical Preview deployment evidence"
+            echo
+            echo "- Source PR: #376"
+            echo "- Source SHA: $EXPECTED_HEAD_SHA"
+            echo "- Worker: `heavix-preview`"
+            echo "- URL: https://heavix-preview.heavixir.workers.dev"
+            echo "- Root: HTTP $ROOT_CODE"
+            echo "- Health: HTTP $HEALTH_CODE; App DB and Store DB up"
+            echo "- Worker version: ${WORKER_VERSION_ID:-not parsed from Wrangler output}"
+            echo "- Preview PBKDF2 accounts: $PBKDF2_COUNT"
+            echo "- Preview supported bcrypt accounts (password reset required): $BCRYPT_COUNT"
+            echo "- Preview unsupported/legacy hashes: $LEGACY_COUNT"
+            echo "- Accounts requiring password reset if deployed with legacy bcrypt disabled: $((BCRYPT_COUNT + LEGACY_COUNT))"
+            echo "- Password migration: DRY RUN only; no hashes changed"
+            echo "- Active transaction types: $types_count"
+            echo "- SERVICE_OFFER present: $service_offer"
+            echo "- Countries in Preview: $countries_count"
+            echo "- Excavator technical attributes: $attributes_count"
+            echo "- Backup run: $BACKUP_RUN_ID"
+            echo "- Database migrations/seeds: not invoked"
+            echo "- Password migration: not invoked"
+            echo "- Production: not touched"
+          } >> "$GITHUB_STEP_SUMMARY"
