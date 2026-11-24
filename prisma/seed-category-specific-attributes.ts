@@ -3344,7 +3344,17 @@ const duplicatePartsLeafSlugs = partsLeafForms
 if (duplicatePartsLeafSlugs.length) {
   throw new Error(`Duplicate parts leaf form slugs: ${duplicatePartsLeafSlugs.join(", ")}`);
 }
-templates.push(...partsLeafForms);
+
+// The canonical machine-family clones above own their exact technical forms.
+// The legacy parts leaf list also contains many of those category slugs; adding
+// both produces duplicate templates and fails the final seed preflight. Keep the
+// canonical clone when a slug already exists, and add only the remaining parts
+// templates. This is deterministic and additive (no category or DB changes).
+const existingTemplateSlugs = new Set(templates.map((template) => template.slug));
+const uniquePartsLeafForms = partsLeafForms.filter(
+  (template) => !existingTemplateSlugs.has(template.slug),
+);
+templates.push(...uniquePartsLeafForms);
 
 // AttributeDefinition.key is globally unique. Preserve an existing compatible. Preserve an existing compatible
 // definition; namespace incompatible variants by category to prevent global clobbering.
