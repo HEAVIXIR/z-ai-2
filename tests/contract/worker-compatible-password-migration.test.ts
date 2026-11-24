@@ -48,5 +48,11 @@ describe("Worker-compatible password hash migration", () => {
     expect(migration).toContain("where: { id: user.id, passwordHash: user.passwordHash }");
     expect(migration).toContain("write.count !== 1");
     expect(migration).toContain("dry run only; no credentials were changed");
+
+    // An APPLY invocation must validate the explicit target before even
+    // reading credential rows from the configured database.
+    expect(migration.indexOf("if (applyRequested)")).toBeLessThan(
+      migration.indexOf("await db.user.findMany"),
+    );
   });
 });
