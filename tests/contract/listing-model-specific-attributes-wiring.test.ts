@@ -33,7 +33,7 @@ describe("registered model-specific listing forms", () => {
   });
 
   it("keeps free-text model names available without falsely applying a model overlay", () => {
-    expect(wizard).toContain("setModelId("")");
+    expect(wizard).toContain('setModelId("")');
     expect(wizard).toContain("اگر مدل در فهرست نیست، نام آن را آزاد وارد کنید");
   });
 });
