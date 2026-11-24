@@ -1,0 +1,70 @@
+name: HEAVIX — activate isolated Preview catalogs
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_reference:
+        description: "Reference/URL for a verified recoverable App Preview backup (required before dispatch)"
+        required: true
+        type: string
+      confirm_preview_only:
+        description: "Explicitly confirm this run is Preview-only"
+        required: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-preview-catalog-seeds
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    name: Seed App Preview catalogs (transaction types, Iran locations, technical forms)
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15' && inputs.confirm_preview_only == true
+    runs-on: ubuntu-latest
+    environment: preview-backup
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+      HEAVIX_ENV: preview
+      HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER: "7701427422680793119"
+      HEAVIX_EXPECTED_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+      BACKUP_REFERENCE: ${{ inputs.backup_reference }}
+
+    steps:
+      - name: Validate scope and backup attestation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test -n "$DATABASE_URL"
+          test -n "$HEAVIX_EXPECTED_PREVIEW_DATABASE_OID"
+          test -n "$BACKUP_REFERENCE"
+          echo "Preview-only scope confirmed. Backup reference provided: $BACKUP_REFERENCE"
+          echo "NOTE: This workflow checks that a backup reference is supplied; it does not independently validate the backup."
+
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/preview-readiness-workerd-2026-11-15
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Seed the seven transaction types
+        run: bunx tsx prisma/seed-taxonomy-v11.ts --apply --transaction-types-only
+
+      - name: Seed Iran country, provinces, and cities
+        run: bunx tsx prisma/seed-taxonomy-v11.ts --apply --locations-only
+
+      - name: Seed category technical forms
+        run: bunx tsx prisma/seed-category-specific-attributes.ts --apply
+
+      - name: Final summary
+        if: success()
+        run: |
+          echo "All three Preview seed operations completed."
+          echo "Next step: verify transaction types, /api/locations and category attribute APIs."
