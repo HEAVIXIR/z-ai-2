@@ -15,6 +15,11 @@ on:
         description: "Confirm deployment is to the canonical Preview Worker only"
         required: true
         type: boolean
+      accept_bcrypt_password_reset:
+        description: "If Preview users still have bcrypt hashes, confirm they must reset passwords; no password migration is run"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -39,6 +44,7 @@ jobs:
       HEAVIX_ENV: preview
       BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
       EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+      ACCEPT_BCRYPT_PASSWORD_RESET: ${{ inputs.accept_bcrypt_password_reset }}
 
     steps:
       - name: Validate explicit Preview-only scope
@@ -176,6 +182,32 @@ jobs:
           bunx prisma generate --schema=prisma/schema.prisma
           bunx prisma generate --schema=prisma/store/schema.prisma
 
+      - name: Read-only Preview password hash inventory
+        id: password-inventory
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          HEAVIX_ENV: preview
+          ACCEPT_BCRYPT_PASSWORD_RESET: ${{ inputs.accept_bcrypt_password_reset }}
+        run: |
+          set -euo pipefail
+          INVENTORY_LOG="$RUNNER_TEMP/heavix-preview-password-inventory.log"
+          bunx tsx prisma/migrate-passwords.ts 2>&1 | tee "$INVENTORY_LOG"
+          PBKDF2_COUNT="$(sed -n 's/.*PBKDF2 hashes:[[:space:]]*//p' "$INVENTORY_LOG" | tail -n 1)"
+          BCRYPT_COUNT="$(sed -n 's/.*supported bcrypt:[[:space:]]*//p' "$INVENTORY_LOG" | tail -n 1)"
+          LEGACY_COUNT="$(sed -n 's/.*unsupported\/legacy:[[:space:]]*//p' "$INVENTORY_LOG" | tail -n 1)"
+          [[ "$PBKDF2_COUNT" =~ ^[0-9]+$ ]]
+          [[ "$BCRYPT_COUNT" =~ ^[0-9]+$ ]]
+          [[ "$LEGACY_COUNT" =~ ^[0-9]+$ ]]
+          if [[ "$BCRYPT_COUNT" -gt 0 && "$ACCEPT_BCRYPT_PASSWORD_RESET" != "true" ]]; then
+            echo "Refusing deployment: $BCRYPT_COUNT Preview accounts still use bcrypt and will require password reset while legacy bcrypt is disabled. Explicit accept_bcrypt_password_reset=true is required."
+            exit 1
+          fi
+          echo "pbkdf2_count=$PBKDF2_COUNT" >> "$GITHUB_OUTPUT"
+          echo "bcrypt_count=$BCRYPT_COUNT" >> "$GITHUB_OUTPUT"
+          echo "legacy_count=$LEGACY_COUNT" >> "$GITHUB_OUTPUT"
+          echo "Read-only inventory complete. No password hashes changed."
+
       - name: Build OpenNext Worker
         run: |
           set -euo pipefail
@@ -268,6 +300,9 @@ jobs:
           ROOT_CODE: ${{ steps.verify-health.outputs.root_code }}
           HEALTH_CODE: ${{ steps.verify-health.outputs.health_code }}
           WORKER_VERSION_ID: ${{ steps.deploy-preview.outputs.version_id }}
+          PBKDF2_COUNT: ${{ steps.password-inventory.outputs.pbkdf2_count }}
+          BCRYPT_COUNT: ${{ steps.password-inventory.outputs.bcrypt_count }}
+          LEGACY_COUNT: ${{ steps.password-inventory.outputs.legacy_count }}
         run: |
           set -euo pipefail
           base="https://heavix-preview.heavixir.workers.dev"
@@ -288,6 +323,10 @@ jobs:
             echo "- Root: HTTP $ROOT_CODE"
             echo "- Health: HTTP $HEALTH_CODE; App DB and Store DB up"
             echo "- Worker version: ${WORKER_VERSION_ID:-not parsed from Wrangler output}"
+            echo "- Preview PBKDF2 accounts: $PBKDF2_COUNT"
+            echo "- Preview supported bcrypt accounts (password reset required): $BCRYPT_COUNT"
+            echo "- Preview unsupported/legacy hashes: $LEGACY_COUNT"
+            echo "- Password migration: DRY RUN only; no hashes changed"
             echo "- Active transaction types: $types_count"
             echo "- SERVICE_OFFER present: $service_offer"
             echo "- Countries in Preview: $countries_count"
