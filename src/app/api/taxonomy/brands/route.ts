@@ -18,6 +18,8 @@ export async function GET(req: Request) {
     const domain = url.searchParams.get("domain") || undefined;
     const featured = url.searchParams.get("featured");
     const status = url.searchParams.get("status") || undefined;
+    const activeRaw = url.searchParams.get("active");
+    const active = activeRaw === null ? undefined : ["1", "true", "yes"].includes(activeRaw.toLowerCase());
     const type = url.searchParams.get("type") || undefined;
     const verification = url.searchParams.get("verification") || undefined;
     const industry = url.searchParams.get("industry") || undefined;
@@ -26,6 +28,7 @@ export async function GET(req: Request) {
 
     const where: any = {};
     if (status) where.status = status;
+    if (active !== undefined) where.active = active;
     if (type) where.type = type;
     if (verification) where.verification = verification;
     if (country) where.country = country;

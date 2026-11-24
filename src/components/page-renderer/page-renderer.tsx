@@ -23,6 +23,9 @@ import ImageWidget from './widgets/image-widget';
 import StatsWidget from './widgets/stats-widget';
 import ArticleListWidget from './widgets/article-list-widget';
 import TrustBadgesWidget from './widgets/trust-badges-widget';
+import BrandGridWidget from './widgets/brand-grid-widget';
+import ServiceGridWidget from './widgets/service-grid-widget';
+import { normalizePublicWidgetCollection } from '@/lib/page-renderer-data';
 
 // Widget key → React component mapper
 const WIDGET_RENDERERS: Record<string, React.ComponentType<{ props: Record<string, any>; data?: any }>> = {
@@ -35,6 +38,8 @@ const WIDGET_RENDERERS: Record<string, React.ComponentType<{ props: Record<strin
   image: ImageWidget,
   stats: StatsWidget,
   'article-list': ArticleListWidget,
+  'brand-grid': BrandGridWidget,
+  'service-grid': ServiceGridWidget,
   'trust-badges': TrustBadgesWidget,
 };
 
@@ -61,8 +66,12 @@ async function fetchWidgetData(widget: PageWidgetInstance): Promise<unknown> {
     const base = process.env.NEXT_PUBLIC_BASE_URL || (deploymentHost ? `https://${deploymentHost}` : 'http://localhost:3000');
     const res = await fetch(`${base}${apiPath}`, { next: { revalidate: ds.cacheTtl || 60 } });
     if (!res.ok) return null;
-    const json = await res.json();
-    return json?.data?.items ?? json?.items ?? json?.categories ?? json?.data ?? null;
+    const json: unknown = await res.json();
+    // Public APIs deliberately use different legacy envelopes:
+    // listings={data:[]}, taxonomy={categories:[]}, brands={brands:[]},
+    // articles={articles:[]}, and services={services:[]}. Normalize only
+    // actual arrays; malformed/object payloads must never reach widgets.
+    return normalizePublicWidgetCollection(json);
   } catch {
     return null;
   }
