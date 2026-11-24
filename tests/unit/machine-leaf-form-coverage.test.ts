@@ -134,7 +134,9 @@ describe("definitive machine terminal form coverage", () => {
   it("makes every generated leaf template concrete and requires its primary technical field", () => {
     expect(formSeed).toContain("const missingTerminalLeafForms: Template[] = [");
     expect(formSeed).toContain("required: fields.length ? [fields[0].key] : []");
-    expect(formSeed).toContain("templates.push(...missingTerminalLeafForms)");
+    expect(formSeed).toContain("templates.push(...uniqueMissingTerminalLeafForms);");
+    expect(formSeed).toContain("const existingTemplateSlugsForLeafForms = new Set(templates.map((template) => template.slug));");
+    expect(formSeed).toContain("const uniqueMissingTerminalLeafForms = missingTerminalLeafForms.filter(");
     expect(formSeed).toContain('const coverageRootSlugs = ["machinery", "vehicles", "attachments", "agriculture", "industrial-equipment", "parts"];');
     expect(formSeed).toContain("if (duplicateAddedLeafSlugs.length)");
     expect(formSeed).toContain("const partsLeafForms: Template[] = [");
