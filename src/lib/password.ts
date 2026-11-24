@@ -41,6 +41,10 @@ export function isPbkdf2Hash(hash: string): boolean {
 }
 
 async function derivePbkdf2(password: string, salt: Uint8Array): Promise<Uint8Array> {
+  // TypeScript's newer typed-array definitions model Uint8Array.buffer as
+  // ArrayBufferLike. Copy into a concrete ArrayBuffer for SubtleCrypto.
+  const saltBuffer = new ArrayBuffer(salt.byteLength);
+  new Uint8Array(saltBuffer).set(salt);
   const key = await crypto.subtle.importKey(
     "raw",
     encoder.encode(password),
@@ -51,7 +55,7 @@ async function derivePbkdf2(password: string, salt: Uint8Array): Promise<Uint8Ar
   const bits = await crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
-      salt,
+      salt: saltBuffer,
       iterations: PBKDF2_ITERATIONS,
       hash: "SHA-256",
     },
