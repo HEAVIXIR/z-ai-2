@@ -80,6 +80,16 @@ describe("normalizeAliasValue", () => {
     expect(normalizeAliasValue(variants[5])).toBe(canonicalEnglish);
   });
 
+  it("normalizes Persian and Arabic digits to ASCII digits", () => {
+    expect(normalizeAliasValue("کوماتسو ۳۵۰")).toBe("کوماتسو 350");
+    expect(normalizeAliasValue("کوماتسو ٣٥٠")).toBe("کوماتسو 350");
+  });
+
+  it("ignores Arabic diacritics and tatweel", () => {
+    expect(normalizeAliasValue("مُرَسِدِس")).toBe("مرسدس");
+    expect(normalizeAliasValue("مرسـدس")).toBe("مرسدس");
+  });
+
   it("handles empty / whitespace-only input gracefully", () => {
     expect(normalizeAliasValue("")).toBe("");
     expect(normalizeAliasValue("   ")).toBe("");

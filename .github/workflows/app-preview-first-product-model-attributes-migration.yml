@@ -1,0 +1,224 @@
+name: HEAVIX — apply first ProductModelAttribute migration to App Preview only
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Dedicated App Preview database only
+        required: true
+        type: choice
+        options: [APP_PREVIEW_ONLY]
+      confirm:
+        description: Type APPLY_PRODUCT_MODEL_ATTRIBUTES_TO_APP_PREVIEW
+        required: true
+        type: string
+      backup_run_id:
+        description: Successful paired encrypted Preview backup run ID from this exact commit (within 6 hours)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: heavix-app-preview-first-product-model-attributes-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate-app-preview:
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    runs-on: ubuntu-latest
+    environment: preview-backup
+    timeout-minutes: 30
+    env:
+      MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+      HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+      B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+      B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+      AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
+      BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+      DISPATCH_TARGET: ${{ inputs.target }}
+      DISPATCH_CONFIRM: ${{ inputs.confirm }}
+      PGSSLMODE: verify-full
+
+    steps:
+      - name: Checkout exact selected commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Enforce exact ref, commit and explicit Preview-only confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$DISPATCH_TARGET" = "APP_PREVIEW_ONLY"
+          test "$DISPATCH_CONFIRM" = "APPLY_PRODUCT_MODEL_ATTRIBUTES_TO_APP_PREVIEW"
+          [[ "$BACKUP_RUN_ID" =~ ^[0-9]{6,20}$ ]]
+          echo "PASS: exact migration branch, commit and App Preview-only confirmation."
+
+      - name: Verify successful paired encrypted backup from this exact commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BACKUP_RUN_ID")"
+          test "$(jq -r '.status' <<<"$run_json")" = "completed"
+          test "$(jq -r '.conclusion' <<<"$run_json")" = "success"
+          test "$(jq -r '.head_sha' <<<"$run_json")" = "$GITHUB_SHA"
+          test "$(jq -r '.head_branch' <<<"$run_json")" = "integration/preview-readiness-workerd-2026-11-15"
+          test "$(jq -r '.event' <<<"$run_json")" = "workflow_dispatch"
+          case "$(jq -r '.path' <<<"$run_json")" in
+            .github/workflows/prisma-preview-backup-to-b2.yml*) ;;
+            *) echo "FAIL: supplied run is not the paired Preview B2 backup workflow."; exit 1 ;;
+          esac
+          echo "PASS: paired encrypted backup is successful and bound to this exact commit."
+
+      - name: Download backup evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: heavix-preview-paired-backup-evidence
+          run-id: ${{ inputs.backup_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/heavix-backup-evidence
+
+      - name: Verify encrypted B2 backup objects, checksums, source identity and freshness
+        shell: bash
+        env:
+          AWS_REGION: us-east-005
+          AWS_DEFAULT_REGION: us-east-005
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: |
+          set -euo pipefail
+          test "$B2_S3_ENDPOINT" = "s3.us-east-005.backblazeb2.com"
+          test "$B2_BUCKET" = "heavix-db-backups"
+          test -n "$B2_APPLICATION_KEY_ID"
+          test -n "$B2_APPLICATION_KEY"
+          test -n "$AGE_IDENTITY"
+          EVIDENCE="$RUNNER_TEMP/heavix-backup-evidence/backup-evidence.txt"
+          test -s "$EVIDENCE"
+          grep -Fxq "format=heavix-preview-paired-backup-evidence-v1" "$EVIDENCE"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$EVIDENCE"
+          grep -Fxq "backup_run_id=$BACKUP_RUN_ID" "$EVIDENCE"
+          PREFIX="$(sed -n 's/^backup_prefix=//p' "$EVIDENCE")"
+          ATTEMPT="$(sed -n 's/^backup_run_attempt=//p' "$EVIDENCE")"
+          [[ "$ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          [[ "$PREFIX" =~ ^preview/paired/[0-9]{4}/[0-9]{2}/[0-9]{2}/$GITHUB_SHA/$BACKUP_RUN_ID-$ATTEMPT$ ]]
+          WORK="$RUNNER_TEMP/heavix-backup-verify"
+          mkdir -m 700 -p "$WORK"
+          grep -E '^[0-9a-f]{64}  ' "$EVIDENCE" > "$WORK/ENCRYPTED_SHA256SUMS"
+          test "$(wc -l < "$WORK/ENCRYPTED_SHA256SUMS" | tr -d ' ')" -eq 3
+          export AWS_ACCESS_KEY_ID="$B2_APPLICATION_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$B2_APPLICATION_KEY"
+          ENDPOINT="https://$B2_S3_ENDPOINT"
+          for file in main.dump.age store.dump.age manifest.txt.age; do
+            aws --endpoint-url "$ENDPOINT" s3 cp "s3://$B2_BUCKET/$PREFIX/$file" "$WORK/$file" --only-show-errors
+            test -s "$WORK/$file"
+          done
+          (cd "$WORK" && sha256sum -c ENCRYPTED_SHA256SUMS)
+          printf '%s\n' "$AGE_IDENTITY" > "$WORK/age-identity.txt"
+          chmod 600 "$WORK/age-identity.txt"
+          age -d -i "$WORK/age-identity.txt" -o "$WORK/manifest.txt" "$WORK/manifest.txt.age"
+          grep -Fxq "main_system_identifier=7701427422680793119" "$WORK/manifest.txt"
+          grep -Fxq "store_system_identifier=7701425043360235551" "$WORK/manifest.txt"
+          grep -Fxq "postgres_major=17" "$WORK/manifest.txt"
+          CREATED="$(sed -n 's/^created_utc=//p' "$WORK/manifest.txt")"
+          test -n "$CREATED"
+          CREATED_EPOCH="$(date -u -d "$CREATED" +%s)"
+          NOW_EPOCH="$(date -u +%s)"
+          (( CREATED_EPOCH <= NOW_EPOCH + 300 ))
+          (( NOW_EPOCH - CREATED_EPOCH <= 21600 ))
+          echo "PASS: paired encrypted backup is checksum-valid, restored by its source workflow, identity-matched and at most six hours old."
+
+      - name: Install PostgreSQL client, AWS CLI and age
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client awscli age
+
+      - name: Verify Preview Worker identity and exact App Preview database identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$MAIN_PREVIEW_DATABASE_URL"
+          [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
+          (( HEAVIX_APP_PREVIEW_DATABASE_OID <= 4294967295 ))
+          PREVIEW_URL="https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev"
+          curl --retry 5 --retry-delay 2 --retry-connrefused --max-time 20 -fsS "$PREVIEW_URL/api/health" -o "$RUNNER_TEMP/preview-health.json"
+          node -e '
+            const fs = require("node:fs");
+            const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (h.status !== "ok" || h.checks?.db !== "up") throw new Error("Preview Worker DB identity/readiness guard failed.");
+          ' "$RUNNER_TEMP/preview-health.json"
+          observed="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+          expected="postgres|$HEAVIX_APP_PREVIEW_DATABASE_OID|7701427422680793119"
+          test "$observed" = "$expected"
+          echo "PASS: Worker health guard and direct App Preview database OID/system identifier match."
+
+      - name: Set up pinned Bun runtime and validate Prisma schema
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Install frozen dependencies and validate schema
+        run: |
+          set -euo pipefail
+          test "$(bun --version)" = "1.4.4"
+          bun install --frozen-lockfile
+          bunx prisma validate --schema=prisma/schema.prisma
+
+      - name: Fail closed unless the database is exactly at the pre-migration baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_sql() { psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$1"; }
+          history="$(run_sql "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          expected="3|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates"
+          test "$history" = "$expected" || { echo "FAIL: App Preview migration history is not the exact three-migration baseline; no changes made."; exit 1; }
+          unfinished="$(run_sql "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")"
+          test "$unfinished" = "0"
+          schema="$(run_sql "SELECT (to_regclass('public.\"ProductModel\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"Category\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"AttributeDefinition\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"ProductModelAttribute\"') IS NULL)::text")"
+          test "$schema" = "true|true|true|true" || { echo "FAIL: schema preconditions do not match; no changes made."; exit 1; }
+          collision="$(run_sql "SELECT (to_regclass('public.\"ProductModelAttribute\"') IS NOT NULL)::text || '|' || (SELECT count(*) FROM pg_class WHERE relname IN ('ProductModelAttribute_modelId_categoryId_attributeId_key','ProductModelAttribute_modelId_categoryId_idx','ProductModelAttribute_attributeId_idx'))::text")"
+          test "$collision" = "false|0"
+          echo "PASS: exact three-migration history, no unfinished migration, referenced tables exist and target table/indexes are absent."
+
+      - name: Apply only the single reviewed migration in one SQL transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$MAIN_PREVIEW_DATABASE_URL" -X -v ON_ERROR_STOP=1 --single-transaction -f prisma/migrations/20261114150000_product_model_attributes/migration.sql
+          echo "PASS: only ProductModelAttribute SQL migration applied transactionally."
+
+      - name: Register the exact migration in Prisma history
+        run: |
+          set -euo pipefail
+          DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx prisma migrate resolve --applied 20261114150000_product_model_attributes --schema=prisma/schema.prisma
+
+      - name: Verify final migration history and complete table fingerprint
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_sql() { psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$1"; }
+          history="$(run_sql "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          expected="4|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes"
+          test "$history" = "$expected"
+          fingerprint="$(run_sql "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='ProductModelAttribute')::text || '|' || (SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND tablename='ProductModelAttribute')::text || '|' || (SELECT count(*) FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname='public' AND t.relname='ProductModelAttribute')::text")"
+          test "$fingerprint" = "11|4|4"
+          unfinished="$(run_sql "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")"
+          test "$unfinished" = "0"
+          {
+            echo "## App Preview first ProductModelAttribute migration"
+            echo
+            echo "- Exact commit: $GITHUB_SHA"
+            echo "- Paired encrypted backup and restore proof: passed before migration"
+            echo "- Preview Worker and direct database identity: passed"
+            echo "- Applied migration: 20261114150000_product_model_attributes"
+            echo "- Schema fingerprint: 11 columns, 4 indexes, 4 constraints"
+            echo "- Store Preview and Production: untouched"
+          } >> "$GITHUB_STEP_SUMMARY"

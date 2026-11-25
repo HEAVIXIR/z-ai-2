@@ -1,0 +1,256 @@
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+
+const scriptPath = path.resolve("scripts/restore.sh");
+const roots: string[] = [];
+
+function fixture() {
+  const root = mkdtempSync(path.join(os.tmpdir(), "heavix-restore-test-"));
+  roots.push(root);
+  const bin = path.join(root, "bin");
+  const backup = path.join(root, "backup");
+  mkdirSync(bin);
+  mkdirSync(backup);
+  writeFileSync(path.join(backup, "main.sql"), "-- disposable main dump\n");
+  writeFileSync(path.join(backup, "store.sql"), "-- disposable store dump\n");
+  const checksum = spawnSync("sha256sum", ["main.sql", "store.sql"], {
+    cwd: backup,
+    encoding: "utf8",
+  });
+  if (checksum.status !== 0) throw new Error(checksum.stderr);
+  writeFileSync(path.join(backup, "checksums.txt"), checksum.stdout);
+
+  const psqlLog = path.join(root, "psql.log");
+  writeFileSync(psqlLog, "");
+  const psql = [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    'printf "%s\\n" "$*" >> "$PSQL_LOG"',
+    "cat >/dev/null || true",
+    "",
+  ].join("\n");
+  writeFileSync(path.join(bin, "psql"), psql, { mode: 0o755 });
+  chmodSync(path.join(bin, "psql"), 0o755);
+
+  const docker = [
+    "#!/usr/bin/env bash",
+    "if [[ ${1:-} == ps ]]; then if [[ ${DOCKER_TEST_MODE:-0} == 1 ]]; then echo heavix-db-1; fi; exit 0; fi",
+    "if [[ ${1:-} == context && ${2:-} == show ]]; then echo default; exit 0; fi",
+    "if [[ ${1:-} == context && ${2:-} == inspect ]]; then echo ${DOCKER_CONTEXT_ENDPOINT:-unix:///var/run/docker.sock}; exit 0; fi",
+    "if [[ ${1:-} == inspect ]]; then exit 0; fi",
+    "exit 1",
+    "",
+  ].join("\n");
+  writeFileSync(path.join(bin, "docker"), docker, { mode: 0o755 });
+  chmodSync(path.join(bin, "docker"), 0o755);
+
+  return { root, bin, backup, psqlLog };
+}
+
+function runRestore(f: ReturnType<typeof fixture>, overrides: Record<string, string> = {}) {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    PATH: `${f.bin}:${process.env.PATH ?? ""}`,
+    PSQL_LOG: f.psqlLog,
+    DB_HOST: "localhost",
+    DB_PORT: "5432",
+    DB_USER: "test-user",
+    DB_PASSWORD: "test-main-password",
+    STORE_DB_HOST: "localhost",
+    STORE_DB_PORT: "5433",
+    STORE_DB_USER: "test-user",
+    STORE_DB_PASSWORD: "test-store-password",
+    HEAVIX_RESTORE_TRAFFIC_DRAINED: "1",
+    HEAVIX_RESTORE_MODE: "direct",
+    ...overrides,
+  };
+  if (!Object.prototype.hasOwnProperty.call(overrides, "DB_NAME")) delete env.DB_NAME;
+  if (!Object.prototype.hasOwnProperty.call(overrides, "STORE_DB_NAME")) delete env.STORE_DB_NAME;
+  if (!Object.prototype.hasOwnProperty.call(overrides, "HEAVIX_ENV")) delete env.HEAVIX_ENV;
+  if (!Object.prototype.hasOwnProperty.call(overrides, "NODE_ENV")) delete env.NODE_ENV;
+  const dbHost = overrides.DB_HOST ?? "localhost";
+  const storeDbHost = overrides.STORE_DB_HOST ?? "localhost";
+  const dbName = overrides.DB_NAME ?? "heavix";
+  const storeDbName = overrides.STORE_DB_NAME ?? "heavix_store";
+  const result = spawnSync("bash", [scriptPath, f.backup], {
+    cwd: f.root,
+    encoding: "utf8",
+    input: `RESTORE ${dbHost}/${dbName} AND ${storeDbHost}/${storeDbName}\n`,
+    env,
+  });
+  return result;
+}
+
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+describe("paired database restore script", () => {
+  it("loads safe defaults before prompting and verifies both databases", () => {
+    const f = fixture();
+    const result = runRestore(f);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Main:  localhost:5432 / database heavix");
+    expect(result.stdout).toContain("Store: localhost:5433 / database heavix_store");
+    const calls = readFileSync(f.psqlLog, "utf8");
+    expect(calls).toContain('DROP DATABASE IF EXISTS "heavix" WITH (FORCE)');
+    expect(calls).toContain('DROP DATABASE IF EXISTS "heavix_store" WITH (FORCE)');
+    expect(calls).toContain('CREATE DATABASE "heavix"');
+    expect(calls).toContain('CREATE DATABASE "heavix_store"');
+    expect(result.stdout).not.toContain("test-main-password");
+    expect(result.stdout).not.toContain("test-store-password");
+    expect(result.stdout).not.toContain("db push --accept-data-loss");
+  });
+
+  it("fails before any database command when a checksum does not match", () => {
+    const f = fixture();
+    writeFileSync(path.join(f.backup, "main.sql"), "-- tampered dump\n");
+    const result = runRestore(f);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toMatch(/FAILED|checksum/i);
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("rejects checksum manifests containing unexpected paths", () => {
+    const f = fixture();
+    const valid = readFileSync(path.join(f.backup, "checksums.txt"), "utf8");
+    writeFileSync(
+      path.join(f.backup, "checksums.txt"),
+      valid + "0000000000000000000000000000000000000000000000000000000000000000  ../outside.sql\\n",
+    );
+    const result = runRestore(f);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      "Checksum manifest must contain exactly main.sql and store.sql",
+    );
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("blocks restore until application traffic is explicitly drained", () => {
+    const f = fixture();
+    const result = runRestore(f, { HEAVIX_RESTORE_TRAFFIC_DRAINED: "0" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("stop application traffic");
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("blocks Production restore without the separate destructive opt-in", () => {
+    const f = fixture();
+    const result = runRestore(f, { HEAVIX_ENV: "production" });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("Production restore requires");
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("rejects unsafe SQL identifiers and duplicate Main/Store targets", () => {
+    const unsafe = fixture();
+    const unsafeResult = runRestore(unsafe, {
+      DB_NAME: 'heavix"; DROP DATABASE postgres;--',
+    });
+    expect(unsafeResult.status).not.toBe(0);
+    expect(unsafeResult.stdout + unsafeResult.stderr).toContain("Unsafe database identifier");
+    expect(readFileSync(unsafe.psqlLog, "utf8")).toBe("");
+
+    const duplicate = fixture();
+    const duplicateResult = runRestore(duplicate, {
+      STORE_DB_NAME: "heavix",
+      STORE_DB_PORT: "5432",
+    });
+    expect(duplicateResult.status).not.toBe(0);
+    expect(duplicateResult.stdout + duplicateResult.stderr).toContain("must be distinct");
+    expect(readFileSync(duplicate.psqlLog, "utf8")).toBe("");
+  });
+
+  it("rejects database identifiers over PostgreSQL's 63-byte limit and invalid ports", () => {
+    const longName = fixture();
+    const longNameResult = runRestore(longName, { DB_NAME: "a".repeat(64) });
+    expect(longNameResult.status).not.toBe(0);
+    expect(longNameResult.stdout + longNameResult.stderr).toContain("1-63 ASCII letters");
+    expect(readFileSync(longName.psqlLog, "utf8")).toBe("");
+
+    const invalidPort = fixture();
+    const invalidPortResult = runRestore(invalidPort, { STORE_DB_PORT: "65536" });
+    expect(invalidPortResult.status).not.toBe(0);
+    expect(invalidPortResult.stdout + invalidPortResult.stderr).toContain("ports must be integers");
+    expect(readFileSync(invalidPort.psqlLog, "utf8")).toBe("");
+  });
+
+  it("preserves explicit process target overrides over values in .env", () => {
+    const f = fixture();
+    writeFileSync(
+      path.join(f.root, ".env"),
+      "DB_HOST=localhost\\nSTORE_DB_HOST=localhost\\n",
+    );
+    const result = runRestore(f, {
+      DB_HOST: "app-preview.example.invalid",
+      STORE_DB_HOST: "store-preview.example.invalid",
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      "remote restore requires HEAVIX_ALLOW_REMOTE_RESTORE=1",
+    );
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("does not treat Docker service aliases as local hosts without Docker mode", () => {
+    const f = fixture();
+    const result = runRestore(f, {
+      DB_HOST: "db",
+      STORE_DB_HOST: "store-db",
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      "remote restore requires HEAVIX_ALLOW_REMOTE_RESTORE=1",
+    );
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("does not auto-switch to Docker merely because a database container is running", () => {
+    const f = fixture();
+    const result = runRestore(f, {
+      DOCKER_TEST_MODE: "1",
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Main:  localhost:5432 / database heavix");
+    expect(result.stdout).not.toContain("Docker container");
+    expect(readFileSync(f.psqlLog, "utf8")).toContain('DROP DATABASE IF EXISTS "heavix" WITH (FORCE)');
+  });
+
+  it("blocks Docker contexts that point to a remote daemon", () => {
+    const f = fixture();
+    const result = runRestore(f, {
+      HEAVIX_RESTORE_MODE: "docker",
+      DOCKER_TEST_MODE: "1",
+      DOCKER_CONTEXT_ENDPOINT: "ssh://production.example.invalid",
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain(
+      "Docker restore requires a local Unix-socket Docker endpoint",
+    );
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+
+  it("blocks remote targets unless the explicit non-production gate is set", () => {
+    const f = fixture();
+    const result = runRestore(f, {
+      DB_HOST: "db.example.invalid",
+      STORE_DB_HOST: "store.example.invalid",
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stdout + result.stderr).toContain("remote restore requires HEAVIX_ALLOW_REMOTE_RESTORE=1");
+    expect(readFileSync(f.psqlLog, "utf8")).toBe("");
+  });
+});

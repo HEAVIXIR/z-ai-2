@@ -1,4 +1,4 @@
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 
@@ -312,6 +312,7 @@ export async function detectFraudSignals(input: {
   listing: Record<string, unknown>;
   seller?: Record<string, unknown> | null;
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<FraudResult> {
   const { listing, seller, userId } = input;
   try {
@@ -319,7 +320,9 @@ export async function detectFraudSignals(input: {
       return { success: false, error: "listing is required", report: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const compact: Record<string, unknown> = { ...listing };
     if (typeof compact.description === "string") {
       compact.description = compact.description.slice(0, 1500);
@@ -338,6 +341,7 @@ export async function detectFraudSignals(input: {
         { role: "system", content: FRAUD_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";
@@ -386,6 +390,7 @@ export async function detectFraudSignals(input: {
 export async function suggestNextActions(input: {
   userId: string;
   context?: Record<string, unknown> | null;
+  signal?: AbortSignal;
 }): Promise<NextActionResult> {
   const { userId, context } = input;
   try {
@@ -393,7 +398,9 @@ export async function suggestNextActions(input: {
       return { success: false, error: "userId is required", suggestion: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       userId,
       context: context ?? null,
@@ -404,6 +411,7 @@ export async function suggestNextActions(input: {
         { role: "system", content: NEXT_ACTION_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";

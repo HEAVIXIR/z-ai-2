@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, MessageSquare, Heart, PlusCircle, Handshake } from "lucide-react";
+import { LayoutDashboard, MessageSquare, Heart, PlusCircle, Handshake, ShieldCheck } from "lucide-react";
 import UserLogoutButton from "@/app/dashboard/UserLogoutButton";
 
 /* ============================================================
@@ -15,6 +15,7 @@ const LINKS = [
   { href: "/dashboard/deal-rooms", label: "اتاق معامله", icon: Handshake },
   { href: "/dashboard/messages", label: "پیام‌ها", icon: MessageSquare },
   { href: "/dashboard/favorites", label: "علاقه‌مندی‌ها", icon: Heart },
+  { href: "/account/security", label: "پروفایل و امنیت", icon: ShieldCheck },
 ];
 
 export default function DashboardNav() {

@@ -1,6 +1,12 @@
-export const MAX_IMAGE_UPLOAD_BYTES = 4 * 1024 * 1024;
+import {
+  FREE_LISTING_IMAGE_POLICY,
+  PRO_LISTING_IMAGE_POLICY,
+} from "@/lib/listing-image-policy-shared";
+
+export const MAX_IMAGE_UPLOAD_BYTES = PRO_LISTING_IMAGE_POLICY.maxImageBytes;
+export const FREE_MAX_IMAGE_UPLOAD_BYTES = FREE_LISTING_IMAGE_POLICY.maxImageBytes;
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024;
-const MAX_DECODED_PIXELS = 16_000_000;
+const MAX_DECODED_PIXELS = 12_000_000;
 const MAX_IMAGE_DIMENSION = 6_000;
 const MAX_OUTPUT_DIMENSION = 2_560;
 const MAX_OUTPUT_PIXELS = 8_000_000;
@@ -114,19 +120,65 @@ function parseDimensions(bytes: Uint8Array): ImageDimensions | null {
   return readJpegDimensions(bytes);
 }
 
-function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob || blob.type !== "image/webp") {
-          reject(new Error("مرورگر نتوانست تصویر WebP بسازد."));
-          return;
-        }
-        resolve(blob);
-      },
-      "image/webp",
-      quality,
-    );
+type DecodedImage = {
+  width: number;
+  height: number;
+  draw: (context: CanvasRenderingContext2D, width: number, height: number) => void;
+  close: () => void;
+};
+
+/** Prefer ImageBitmap, but retain a broadly supported HTMLImageElement fallback. */
+async function decodeImage(file: File): Promise<DecodedImage> {
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file);
+      return {
+        width: bitmap.width,
+        height: bitmap.height,
+        draw: (context, width, height) => context.drawImage(bitmap, 0, 0, width, height),
+        close: () => bitmap.close(),
+      };
+    } catch {
+      // Some browsers expose ImageBitmap but fail to decode specific images.
+      // Continue through the HTMLImageElement fallback before surfacing an error.
+    }
+  }
+
+  if (typeof Image === "undefined" || typeof URL?.createObjectURL !== "function") {
+    throw new Error("مرورگر امکان آماده‌سازی تصویر را فراهم نمی‌کند.");
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  const image = new Image();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("مرورگر نتوانست تصویر را باز کند."));
+      image.src = objectUrl;
+    });
+    return {
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      draw: (context, width, height) => context.drawImage(image, 0, 0, width, height),
+      close: () => URL.revokeObjectURL(objectUrl),
+    };
+  } catch (error) {
+    URL.revokeObjectURL(objectUrl);
+    throw error;
+  }
+}
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  quality: number,
+  type: "image/webp" | "image/jpeg",
+): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    try {
+      canvas.toBlob((blob) => resolve(blob?.type === type ? blob : null), type, quality);
+    } catch {
+      resolve(null);
+    }
   });
 }
 
@@ -145,7 +197,8 @@ export async function prepareImageForUpload(
   file: File,
   maxBytes = MAX_IMAGE_UPLOAD_BYTES,
 ): Promise<PreparedImageUpload> {
-  const limit = Math.min(maxBytes, MAX_IMAGE_UPLOAD_BYTES);
+  const requestedLimit = Number.isFinite(maxBytes) ? Math.floor(maxBytes) : FREE_MAX_IMAGE_UPLOAD_BYTES;
+  const limit = Math.max(1, Math.min(requestedLimit, MAX_IMAGE_UPLOAD_BYTES));
   if (file.size <= limit) {
     return { file, originalBytes: file.size, uploadBytes: file.size, compressed: false };
   }
@@ -159,7 +212,7 @@ export async function prepareImageForUpload(
     throw new Error("این فرمت تصویر برای فشرده‌سازی مرورگری پشتیبانی نمی‌شود.");
   }
   if (dimensions.animated) {
-    throw new Error("برای حفظ پویانمایی، فایل متحرک بزرگ‌تر از ۴ مگابایت را باید کوچک‌تر کنید.");
+    throw new Error("برای حفظ پویانمایی، فایل متحرک از سقف مجاز این حساب بزرگ‌تر است و باید نسخه کوچک‌تری انتخاب شود.");
   }
   if (
     !dimensions.width ||
@@ -171,45 +224,58 @@ export async function prepareImageForUpload(
     throw new Error("ابعاد تصویر بیش از حد مجاز است.");
   }
 
-  if (typeof createImageBitmap !== "function") {
-    throw new Error("فشرده‌سازی تصویر در این مرورگر پشتیبانی نمی‌شود.");
-  }
-
-  const bitmap = await createImageBitmap(file);
+  const decoded = await decodeImage(file);
   try {
     if (
-      !bitmap.width ||
-      !bitmap.height ||
-      bitmap.width > MAX_IMAGE_DIMENSION ||
-      bitmap.height > MAX_IMAGE_DIMENSION ||
-      bitmap.width * bitmap.height > MAX_DECODED_PIXELS
+      !decoded.width ||
+      !decoded.height ||
+      decoded.width > MAX_IMAGE_DIMENSION ||
+      decoded.height > MAX_IMAGE_DIMENSION ||
+      decoded.width * decoded.height > MAX_DECODED_PIXELS
     ) {
       throw new Error("ابعاد تصویر بیش از حد مجاز است.");
     }
 
     let scale = Math.min(
       1,
-      MAX_OUTPUT_DIMENSION / bitmap.width,
-      MAX_OUTPUT_DIMENSION / bitmap.height,
-      Math.sqrt(MAX_OUTPUT_PIXELS / (bitmap.width * bitmap.height)),
+      MAX_OUTPUT_DIMENSION / decoded.width,
+      MAX_OUTPUT_DIMENSION / decoded.height,
+      Math.sqrt(MAX_OUTPUT_PIXELS / (decoded.width * decoded.height)),
     );
 
     for (let resizeAttempt = 0; resizeAttempt < 4; resizeAttempt++) {
-      const width = Math.max(1, Math.round(bitmap.width * scale));
-      const height = Math.max(1, Math.round(bitmap.height * scale));
+      const width = Math.max(1, Math.round(decoded.width * scale));
+      const height = Math.max(1, Math.round(decoded.height * scale));
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
       const context = canvas.getContext("2d", { alpha: true });
       if (!context) throw new Error("فشرده‌سازی تصویر در این مرورگر در دسترس نیست.");
-      context.drawImage(bitmap, 0, 0, width, height);
+      decoded.draw(context, width, height);
 
       for (const quality of [0.86, 0.8, 0.74, 0.68]) {
-        const blob = await canvasToBlob(canvas, quality);
-        if (blob.size <= limit) {
+        // WebP is preferred. If the browser lacks WebP encoding (or the
+        // WebP result remains too large), retry as JPEG for ordinary photos.
+        let blob = await canvasToBlob(canvas, quality, "image/webp");
+        let outputType: "image/webp" | "image/jpeg" = "image/webp";
+
+        if (!blob || blob.size > limit) {
+          context.clearRect(0, 0, width, height);
+          context.fillStyle = "#fff";
+          context.fillRect(0, 0, width, height);
+          decoded.draw(context, width, height);
+          const jpegBlob = await canvasToBlob(canvas, quality, "image/jpeg");
+          if (jpegBlob && (!blob || jpegBlob.size < blob.size)) {
+            blob = jpegBlob;
+            outputType = "image/jpeg";
+          }
+        }
+
+        if (blob && blob.size <= limit) {
           const name = file.name.replace(/\.[^.]+$/, "") || "image";
-          const optimized = new File([blob], `${name}.webp`, {
-            type: "image/webp",
+          const ext = outputType === "image/webp" ? "webp" : "jpg";
+          const optimized = new File([blob], `${name}.${ext}`, {
+            type: outputType,
             lastModified: Date.now(),
           });
           return {
@@ -223,7 +289,7 @@ export async function prepareImageForUpload(
       scale *= 0.8;
     }
   } finally {
-    bitmap.close();
+    decoded.close();
   }
 
   throw new Error("تصویر پس از فشرده‌سازی همچنان بزرگ‌تر از حد مجاز است؛ تصویر کوچک‌تری انتخاب کنید.");

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,58 +10,77 @@ interface Args {
   params: Promise<{ id: string }>;
 }
 
-/* PATCH /api/transaction-types/[id] — admin update (used for active toggle, etc.) */
+/* PATCH /api/transaction-types/[id] — admin update. */
 export async function PATCH(req: Request, { params }: Args) {
-  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  const auth = await requireAdminPermission("taxonomy.write");
+  if (auth.error) return auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const existing = await db.transactionType.findUnique({ where: { id } });
-    if (!existing) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!existing) return NextResponse.json({ error: "نوع معامله یافت نشد." }, { status: 404 });
+
+    const data: Record<string, unknown> = {};
+    if ("key" in body) {
+      const key = String(body.key ?? "").trim().toUpperCase();
+      if (!key) return NextResponse.json({ error: "کلید نوع معامله الزامی است." }, { status: 400 });
+      const duplicate = await db.transactionType.findFirst({ where: { key, NOT: { id } }, select: { id: true } });
+      if (duplicate) return NextResponse.json({ error: "این کلید قبلاً استفاده شده است." }, { status: 409 });
+      data.key = key;
     }
-    const data: any = {};
-    const allowed = ["nameFa", "nameEn", "description", "icon", "active", "sortOrder"];
-    for (const k of allowed) {
-      if (k in body) {
-        if (k === "active") data[k] = Boolean(body[k]);
-        else if (k === "sortOrder") data[k] = Number(body[k]) || 0;
-        else data[k] = body[k] === undefined ? null : body[k];
+    for (const field of ["nameFa", "nameEn", "description", "icon"] as const) {
+      if (field in body) {
+        const value = body[field];
+        if (field === "nameFa" && !String(value ?? "").trim()) {
+          return NextResponse.json({ error: "عنوان فارسی الزامی است." }, { status: 400 });
+        }
+        data[field] = value == null || value === "" ? null : String(value).trim();
       }
     }
-    if (body.key && body.key !== existing.key) {
-      const dup = await db.transactionType.findUnique({
-        where: { key: String(body.key) },
-      });
-      if (dup && dup.id !== id) {
-        return NextResponse.json(
-          { error: "key already exists" },
-          { status: 409 },
-        );
+    if ("active" in body) data.active = Boolean(body.active);
+    if ("sortOrder" in body) {
+      const sortOrder = Number(body.sortOrder);
+      if (!Number.isInteger(sortOrder)) {
+        return NextResponse.json({ error: "ترتیب نمایش باید عدد صحیح باشد." }, { status: 400 });
       }
-      data.key = String(body.key);
+      data.sortOrder = sortOrder;
     }
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: "هیچ تغییری برای ذخیره ارسال نشده است." }, { status: 400 });
+    }
+
     const type = await db.transactionType.update({ where: { id }, data });
     return NextResponse.json({ ok: true, type });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 },
-    );
+  } catch (error: any) {
+    if (error?.code === "P2002") return NextResponse.json({ error: "این کلید قبلاً استفاده شده است." }, { status: 409 });
+    return NextResponse.json({ error: error?.message ?? "به‌روزرسانی نوع معامله ناموفق بود." }, { status: 500 });
   }
 }
 
-/* DELETE /api/transaction-types/[id] — admin delete. */
-export async function DELETE(_req: Request, { params }: Args) {
-  const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+/* DELETE /api/transaction-types/[id] — delete only when no listing uses it. */
+export async function DELETE(req: Request, { params }: Args) {
+  const auth = await requireAdminPermission("taxonomy.write");
+  if (auth.error) return auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+
   try {
     const { id } = await params;
+    const existing = await db.transactionType.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return NextResponse.json({ error: "نوع معامله یافت نشد." }, { status: 404 });
+
+    const listingCount = await db.listing.count({ where: { transactionTypeId: id } });
+    if (listingCount > 0) {
+      return NextResponse.json(
+        { error: `این نوع معامله به ${listingCount} آگهی متصل است؛ برای حفظ سوابق آن را غیرفعال کنید.` },
+        { status: 409 },
+      );
+    }
+
     await db.transactionType.delete({ where: { id } });
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 },
-    );
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message ?? "حذف نوع معامله ناموفق بود." }, { status: 500 });
   }
 }

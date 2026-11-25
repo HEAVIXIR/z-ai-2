@@ -1,23 +1,28 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { checkCsrf } from "../src/lib/csrf";
 
-const originalNextAuthUrl = process.env.NEXTAUTH_URL;
-const originalNodeEnv = process.env.NODE_ENV;
-const originalVercelUrl = process.env.VERCEL_URL;
-const originalVercelBranchUrl = process.env.VERCEL_BRANCH_URL;
-const originalVercelProductionUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+const envKeys = [
+  "NEXTAUTH_URL",
+  "NEXT_PUBLIC_SITE_URL",
+  "NODE_ENV",
+  "HEAVIX_ENV",
+  "HEAVIX_PREVIEW_URL",
+  "HEAVIX_PREVIEW_ORIGIN",
+  "VERCEL_URL",
+  "VERCEL_BRANCH_URL",
+  "VERCEL_PROJECT_PRODUCTION_URL",
+] as const;
+
+const originalEnv = Object.fromEntries(
+  envKeys.map((key) => [key, process.env[key]]),
+);
 
 afterEach(() => {
-  if (originalNextAuthUrl === undefined) delete process.env.NEXTAUTH_URL;
-  else process.env.NEXTAUTH_URL = originalNextAuthUrl;
-  if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
-  else process.env.NODE_ENV = originalNodeEnv;
-  if (originalVercelUrl === undefined) delete process.env.VERCEL_URL;
-  else process.env.VERCEL_URL = originalVercelUrl;
-  if (originalVercelBranchUrl === undefined) delete process.env.VERCEL_BRANCH_URL;
-  else process.env.VERCEL_BRANCH_URL = originalVercelBranchUrl;
-  if (originalVercelProductionUrl === undefined) delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
-  else process.env.VERCEL_PROJECT_PRODUCTION_URL = originalVercelProductionUrl;
+  for (const key of envKeys) {
+    const value = originalEnv[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 });
 
 describe("checkCsrf", () => {
@@ -32,6 +37,68 @@ describe("checkCsrf", () => {
     });
 
     expect(checkCsrf(req)).toBe(true);
+  });
+
+  it("allows the explicitly configured canonical Cloudflare Preview origin", () => {
+    process.env.NODE_ENV = "production";
+    process.env.HEAVIX_ENV = "preview";
+    process.env.HEAVIX_PREVIEW_ORIGIN = "https://heavix-preview.heavixir.workers.dev";
+
+    const origin = "https://heavix-preview.heavixir.workers.dev";
+    const req = new Request(`${origin}/api/auth/login`, {
+      method: "POST",
+      headers: { origin, referer: `${origin}/login` },
+    });
+
+    expect(checkCsrf(req)).toBe(true);
+  });
+
+  it("allows the exact configured Cloudflare branch Preview origin", () => {
+    process.env.NODE_ENV = "production";
+    process.env.HEAVIX_ENV = "preview";
+    process.env.HEAVIX_PREVIEW_ORIGIN =
+      "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev";
+
+    const origin =
+      "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev";
+    const req = new Request(`${origin}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        origin,
+        referer: `${origin}/login`,
+      },
+    });
+
+    expect(checkCsrf(req)).toBe(true);
+  });
+
+  it("rejects the canonical workers.dev hostname when a different branch Preview origin is configured", () => {
+    process.env.NODE_ENV = "production";
+    process.env.HEAVIX_ENV = "preview";
+    process.env.HEAVIX_PREVIEW_ORIGIN =
+      "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev";
+
+    const origin = "https://heavix-preview.heavixir.workers.dev";
+    const req = new Request(`${origin}/api/auth/login`, {
+      method: "POST",
+      headers: { origin, referer: `${origin}/login` },
+    });
+
+    expect(checkCsrf(req)).toBe(false);
+  });
+
+  it("rejects an arbitrary workers.dev origin even in Preview", () => {
+    process.env.NODE_ENV = "production";
+    process.env.HEAVIX_ENV = "preview";
+    process.env.HEAVIX_PREVIEW_ORIGIN =
+      "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev";
+
+    const req = new Request("https://attacker.heavixir.workers.dev/api/auth/login", {
+      method: "POST",
+      headers: { origin: "https://attacker.heavixir.workers.dev" },
+    });
+
+    expect(checkCsrf(req)).toBe(false);
   });
 
   it("rejects a cross-origin POST", () => {
@@ -86,6 +153,19 @@ describe("checkCsrf", () => {
     });
 
     expect(checkCsrf(req)).toBe(false);
+  });
+
+  it("does not treat unverified authentication headers as a CSRF bypass", () => {
+    process.env.NODE_ENV = "production";
+    process.env.NEXTAUTH_URL = "https://heavix.example.com";
+
+    for (const header of ["authorization", "x-cron-key", "x-webhook-signature", "x-api-key"]) {
+      const req = new Request("https://heavix.example.com/api/mutation", {
+        method: "POST",
+        headers: { [header]: "arbitrary-value" },
+      });
+      expect(checkCsrf(req)).toBe(false);
+    }
   });
 
   it("allows safe methods without Origin or Referer", () => {

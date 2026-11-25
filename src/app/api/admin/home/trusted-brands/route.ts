@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +28,7 @@ export async function GET() {
     const s = await db.siteSettings.findUnique({ where: { id: "main" } });
 
     const brands = await db.brand.findMany({
-      where: { active: true },
+      where: { active: true, status: "ACTIVE" },
       orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
       select: {
         id: true,
@@ -40,7 +41,6 @@ export async function GET() {
         display: { select: { showOnHomepage: true } },
         _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
       },
-      take: 200,
     });
 
     const out = brands.map((b) => ({
@@ -51,7 +51,7 @@ export async function GET() {
       logoUrl: b.logoUrl,
       country: b.country,
       featured: b.featured,
-      showOnHomepage: b.display?.showOnHomepage ?? false,
+      showOnHomepage: b.display?.showOnHomepage ?? b.featured,
       listingCount: b._count.listings,
     }));
 
@@ -85,6 +85,7 @@ export async function GET() {
    }
    ============================================================ */
 export async function PUT(req: Request) {
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -164,6 +165,20 @@ export async function PUT(req: Request) {
         },
         data: { showOnHomepage: false },
       });
+      // Persist an explicit opt-out for legacy featured brands that have no
+      // BrandDisplay row; otherwise the homepage fallback would add them back.
+      const legacyFeatured = await db.brand.findMany({
+        where: { active: true, status: "ACTIVE", featured: true },
+        select: { id: true },
+      });
+      for (const brand of legacyFeatured) {
+        if (selectedIds.has(brand.id)) continue;
+        await db.brandDisplay.upsert({
+          where: { brandId: brand.id },
+          create: { brandId: brand.id, showOnHomepage: false },
+          update: { showOnHomepage: false },
+        });
+      }
       await logAudit({
         actorId: user.id,
         actorType: "ADMIN",
@@ -177,7 +192,7 @@ export async function PUT(req: Request) {
       // Upsert BrandDisplay rows for each selected brand with showOnHomepage=true.
       // Only select brands that actually exist + are active.
       const existing = await db.brand.findMany({
-        where: { id: { in: Array.from(selectedIds) }, active: true },
+        where: { id: { in: Array.from(selectedIds) }, active: true, status: "ACTIVE" },
         select: { id: true },
       });
       for (const b of existing) {

@@ -6,7 +6,7 @@ import { getClientIp } from "@/lib/request-context";
 import { enforceRateLimit } from "@/lib/rate-limit-check";
 import { UPLOAD } from "@/lib/rate-limit-presets";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
-import ZAI from "z-ai-web-dev-sdk";
+import { getZAISDK } from "@/lib/ai-provider-router";
 import path from "path";
 import { promises as fs } from "fs";
 import crypto from "crypto";
@@ -65,7 +65,9 @@ async function _doPost(
   // Generate the image via SDK
   let base64: string | null = null;
   try {
-    const zai = await ZAI.create();
+    const __sdkResult = getZAISDK();
+    if (!__sdkResult.ok) { throw new Error(__sdkResult.reason); }
+    const zai = __sdkResult.sdk;
     const resp = await zai.images.generations.create({
       prompt,
       size: "1344x768", // landscape, suitable for category hero

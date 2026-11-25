@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import ZAI from "z-ai-web-dev-sdk";
+import { getZAISDK } from "@/lib/ai-provider-router";
 import { hasPermission } from "@/lib/rbac";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 
@@ -49,7 +49,9 @@ async function _doPost(
   // Search for logo candidates via SDK
   let rawResults: any[] = [];
   try {
-    const zai = await ZAI.create();
+    const __sdkResult = getZAISDK();
+    if (!__sdkResult.ok) { throw new Error(__sdkResult.reason); }
+    const zai = __sdkResult.sdk;
     const resp = await zai.images.search.create({
       query,
       count: 5,

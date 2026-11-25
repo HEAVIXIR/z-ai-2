@@ -5,12 +5,17 @@ import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
 import { uniqueSlug } from "@/lib/api-helpers";
 import { normalizeAliasValue } from "@/lib/brand-alias";
+import { checkCsrf } from "@/lib/csrf";
+import { readBoundedJson } from "@/lib/read-bounded-json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /* GET /api/taxonomy/brands — search, sort, filter. */
 export async function GET(req: Request) {
+  const __auth = await requireAdminPermission("taxonomy.read");
+  if (__auth.error) return __auth.error;
+
   try {
     const url = new URL(req.url);
     const q = url.searchParams.get("q")?.trim() || undefined;
@@ -22,7 +27,10 @@ export async function GET(req: Request) {
     const verification = url.searchParams.get("verification") || undefined;
     const industry = url.searchParams.get("industry") || undefined;
     const sort = url.searchParams.get("sort") || "name";
-    const limit = Number(url.searchParams.get("limit")) || 200;
+    const requestedLimit = Number(url.searchParams.get("limit") ?? url.searchParams.get("pageSize"));
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(300, Math.max(1, Math.trunc(requestedLimit)))
+      : 200;
 
     const where: any = {};
     if (status) where.status = status;
@@ -67,13 +75,14 @@ export async function GET(req: Request) {
       },
     });
 
-    return NextResponse.json({
-      brands: brands.map((b) => ({
-        ...b,
-        listingsCount: b._count.listings,
-        _count: undefined,
-      })),
-    });
+    const data = brands.map((b) => ({
+      ...b,
+      listingsCount: b._count.listings,
+      _count: undefined,
+    }));
+
+    // Preserve both response keys for existing admin consumers.
+    return NextResponse.json({ brands: data, data });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
@@ -85,113 +94,119 @@ export async function GET(req: Request) {
 /* POST /api/taxonomy/brands — create. */
 export async function POST(req: Request) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
-    const body = await req.json().catch(() => ({}));
+    const parsed = await readBoundedJson<unknown>(req, 128 * 1024);
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: parsed.status });
+    }
+    if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const body = parsed.value as Record<string, any>;
     if (!body.name) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
     const slug = await uniqueSlug(db.brand, body.slug || body.name);
 
-    const brand = await db.brand.create({
-      data: {
-        name: String(body.name),
-        nameEn: body.nameEn ?? null,
-        shortName: body.shortName ?? null,
-        slug,
-        logoUrl: body.logoUrl ?? null,
-        website: body.website ?? null,
-        country: body.country ?? null,
-        description: body.description ?? null,
-        featured: Boolean(body.featured),
-        active: body.active !== false,
-        status: body.status ?? "ACTIVE",
-        // HBR-1.0 fields
-        type: body.type ?? null,
-        verification: body.verification ?? "UNVERIFIED",
-        parentBrandId: body.parentBrandId ?? null,
-        brandFamilyId: body.brandFamilyId ?? null,
-        manufacturer: body.manufacturer ?? null,
-        foundedYear:
-          body.foundedYear === undefined ||
-          body.foundedYear === null ||
-          body.foundedYear === ""
-            ? null
-            : Number(body.foundedYear),
-        sortOrder: Number(body.sortOrder) || 0,
-      },
-    });
+    const brand = await db.$transaction(async (tx) => {
+      const createdBrand = await tx.brand.create({
+        data: {
+          name: String(body.name).trim(),
+          nameEn: body.nameEn == null ? null : String(body.nameEn).trim() || null,
+          shortName: body.shortName == null ? null : String(body.shortName).trim() || null,
+          slug,
+          logoUrl: body.logoUrl == null ? null : String(body.logoUrl).trim() || null,
+          website: body.website == null ? null : String(body.website).trim() || null,
+          country: body.country == null ? null : String(body.country).trim() || null,
+          description: body.description == null ? null : String(body.description).trim() || null,
+          featured: Boolean(body.featured),
+          active: body.active !== false,
+          status: body.status ?? "ACTIVE",
+          type: body.type ?? null,
+          verification: body.verification ?? "UNVERIFIED",
+          parentBrandId: body.parentBrandId ?? null,
+          brandFamilyId: body.brandFamilyId ?? null,
+          manufacturer: body.manufacturer ?? null,
+          foundedYear:
+            body.foundedYear === undefined ||
+            body.foundedYear === null ||
+            body.foundedYear === ""
+              ? null
+              : Number(body.foundedYear),
+          sortOrder: Number.isInteger(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
+        },
+      });
 
-    // Aliases — normalize + upsert into BrandAlias
-    if (Array.isArray(body.aliases)) {
-      for (const a of body.aliases) {
-        if (!a || !a.value) continue;
-        const normalizedValue = normalizeAliasValue(String(a.value));
+      // Always index the canonical Persian and English names. Admin-entered
+      // alternate spellings are additive and never replace canonical aliases.
+      const aliasEntries = [
+        createdBrand.name,
+        createdBrand.nameEn,
+        ...(Array.isArray(body.aliases) ? body.aliases : []),
+      ];
+      for (const alias of aliasEntries) {
+        const value = typeof alias === "string" ? alias : alias?.value;
+        if (typeof value !== "string" || !value.trim()) continue;
+        const normalizedValue = normalizeAliasValue(value);
         if (!normalizedValue) continue;
-        try {
-          await db.brandAlias.upsert({
-            where: {
-              brandId_normalizedValue: {
-                brandId: brand.id,
-                normalizedValue,
-              },
-            },
-            update: {
-              value: String(a.value),
-              language: a.language ?? "fa",
-              type: a.type ?? "COMMON",
-              confidence: Number(a.confidence) || 80,
-            },
-            create: {
-              brandId: brand.id,
-              value: String(a.value),
+        const language =
+          (typeof alias === "object" && alias?.language) ||
+          (/[\u0600-\u06FF]/.test(value) ? "fa" : /[a-zA-Z]/.test(value) ? "en" : "other");
+        const type = typeof alias === "object" ? alias?.type ?? "COMMON" : "COMMON";
+        const confidence = typeof alias === "object" ? Number(alias?.confidence) || 80 : 100;
+        await tx.brandAlias.upsert({
+          where: {
+            brandId_normalizedValue: {
+              brandId: createdBrand.id,
               normalizedValue,
-              language: a.language ?? "fa",
-              type: a.type ?? "COMMON",
-              confidence: Number(a.confidence) || 80,
             },
-          });
-        } catch {
-          // ignore individual alias upsert failures
-        }
+          },
+          update: {
+            value,
+            language,
+            type,
+            confidence,
+          },
+          create: {
+            brandId: createdBrand.id,
+            value,
+            normalizedValue,
+            language,
+            type,
+            confidence,
+          },
+        });
       }
-    }
 
-    // Industries — connect each industry key via BrandIndustry
-    if (Array.isArray(body.industries)) {
-      for (const key of body.industries) {
-        if (!key || typeof key !== "string") continue;
-        try {
-          await db.brandIndustry.create({
-            data: { brandId: brand.id, industry: key },
+      if (Array.isArray(body.industries)) {
+        for (const industry of body.industries) {
+          if (!industry || typeof industry !== "string") continue;
+          await tx.brandIndustry.create({
+            data: { brandId: createdBrand.id, industry },
           });
-        } catch {
-          // ignore duplicates
         }
       }
-    }
 
-    // Domains
-    if (Array.isArray(body.domains)) {
-      for (const d of body.domains) {
-        if (!d || typeof d !== "string") continue;
-        try {
-          await db.brandDomain.create({
-            data: { brandId: brand.id, domain: d },
+      if (Array.isArray(body.domains)) {
+        for (const domain of body.domains) {
+          if (!domain || typeof domain !== "string") continue;
+          await tx.brandDomain.create({
+            data: { brandId: createdBrand.id, domain },
           });
-        } catch {
-          // ignore duplicates
         }
       }
-    }
+      return createdBrand;
+    });
 
     // STEP 15-B.5.4-C.2-P3: Invalidate Homepage cache
     try { revalidateTag(HOMEPAGE_CACHE_TAGS.brands, 'default'); } catch (e) { console.error('[brands] revalidateTag failed:', e); }
 
-    return NextResponse.json({ ok: true, brand });
+    return NextResponse.json({ ok: true, success: true, brand }, { status: 201 });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { status: err?.code === "P2002" ? 409 : 500 },
     );
   }
 }

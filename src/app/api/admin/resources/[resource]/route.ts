@@ -37,6 +37,7 @@ import { parseQueryParams } from '@/lib/admin/query/query-builder';
 import { listResources, createResource } from '@/lib/admin/data-adapter';
 import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
 import { requireAdmin } from '@/lib/admin-guard';
+import { checkCsrf } from "@/lib/csrf";
 import { validateResourcePayload } from '@/lib/admin/resource-validator';
 import { auditCreate, auditMutation } from '@/lib/audit-foundation';
 import { can, isAdmin } from '@/lib/authorization';
@@ -44,6 +45,13 @@ import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
 import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
+
+// Resources that mutate only through dedicated transactional APIs.
+// P0 audit: buy-requests added — BuyRequest creation must go through
+// createWanted (canonical service) via /api/wanted or /api/requests,
+// NOT the universal resource POST (which would bypass the PENDING
+// moderation gate + intent validation + audit).
+const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers', 'payments', 'buy-requests']);
 
 type Params = { params: Promise<{ resource: string }> };
 
@@ -139,6 +147,16 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   const { resource: resourceKey } = await params;
 
+  if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
+    const permission = resourceKey === 'procurement' ? 'procurement.manage' : resourceKey === 'payments' ? 'payment.manage' : 'store.manage';
+    const [, authError] = await requireAdmin(permission);
+    if (authError) return authError;
+    return NextResponse.json(
+      { error: 'Use the dedicated Store API for this resource; Universal Resource mutations are disabled.' },
+      { status: 409 },
+    );
+  }
+
   const config = registry.get(resourceKey);
   if (!config) {
     return NextResponse.json({ error: `Unknown resource: "${resourceKey}"` }, { status: 404 });
@@ -152,6 +170,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const [user, error] = await requireAdmin(createPerm);
   if (error) return error;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
 
   // Parse body
   const body = await req.json().catch(() => null);

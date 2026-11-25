@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
+import { getAIProvider } from "@/lib/ai-provider-router";
 /* ============================================================
    STEP 11.42 — AI Gateway Phase 1: 5 public AI routes migration
    ------------------------------------------------------------
@@ -80,18 +81,22 @@ vi.mock("@/lib/api-helpers", () => ({
   parseNumber: vi.fn((v: any) => (v ? Number(v) : null)),
   parseBig: vi.fn(),
 }));
-vi.mock("z-ai-web-dev-sdk", () => ({
-  default: {
-    create: vi.fn(async () => ({
+vi.mock("@/lib/ai-provider-router", () => ({
+  getAIProvider: vi.fn(() => ({
+    ok: true as const,
+    provider: "zai" as const,
+    model: "test-model",
+    client: {
       chat: {
         completions: {
           create: vi.fn(async () => ({
-            choices: [{ message: { content: '{"price":1000,"note":"ok"}' } }],
+            choices: [{ message: { content: '{"title":"بیل مکانیکی","price":1000}' } }],
           })),
         },
       },
-    })),
-  },
+    },
+  })),
+  getZAISDK: vi.fn(() => ({ ok: false as const, reason: "non-chat operations not mocked in this test" })),
 }));
 
 beforeEach(() => {
@@ -104,9 +109,16 @@ beforeEach(() => {
 });
 
 function makePostReq(url: string, body: any): Request {
-  return new Request(url, {
+  const requestUrl = new URL(url);
+  if (requestUrl.hostname === "localhost" && !requestUrl.port) {
+    requestUrl.port = "3000";
+  }
+  return new Request(requestUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: requestUrl.origin,
+    },
     body: JSON.stringify(body),
   });
 }

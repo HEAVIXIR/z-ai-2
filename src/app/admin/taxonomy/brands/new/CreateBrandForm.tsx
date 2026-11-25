@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { BRAND_TYPE_LABELS, BRAND_STATUS_LABELS, VERIFICATION_LABELS, CANONICAL_BRAND_TYPES, CANONICAL_BRAND_STATUSES } from "@/lib/brand-labels";
 import {
   ArrowRight,
   Building2,
@@ -20,52 +21,17 @@ import {
    redirects to /admin/taxonomy/brands/[id] on success.
    ============================================================ */
 
-const TYPE_OPTIONS = [
-  "MANUFACTURER",
-  "DISTRIBUTOR",
-  "DEALER",
-  "RESELLER",
-  "OEM",
-  "IMPORTER",
-  "EXPORTER",
-  "WHOLESALER",
-  "RETAILER",
-  "SERVICE_PROVIDER",
-  "RENTAL_COMPANY",
-  "TRADING_COMPANY",
-  "SUBSIDIARY",
-  "JOINT_VENTURE",
-  "PRIVATE_LABEL",
-];
-
-const STATUS_OPTIONS = [
-  "ACTIVE",
-  "INACTIVE",
-  "DRAFT",
-  "PENDING",
-  "ARCHIVED",
-  "DISCONTINUED",
-  "LEGACY",
-  "HISTORICAL",
-  "ACQUIRED",
-  "MERGED",
-  "BANKRUPT",
-];
-
-const VERIFICATION_OPTIONS = [
-  "UNVERIFIED",
-  "PENDING",
-  "VERIFIED",
-  "DISPUTED",
-  "REJECTED",
-];
+const TYPE_OPTIONS = [...CANONICAL_BRAND_TYPES];
+const STATUS_OPTIONS = [...CANONICAL_BRAND_STATUSES];
+const VERIFICATION_OPTIONS = Object.keys(VERIFICATION_LABELS);
 
 const EMPTY_FORM = {
   name: "",
   nameEn: "",
+  aliases: "",
   shortName: "",
   slug: "",
-  type: "",
+  type: "MANUFACTURER",
   status: "ACTIVE",
   verification: "UNVERIFIED",
   country: "",
@@ -119,6 +85,14 @@ export default function CreateBrandForm() {
         body: JSON.stringify({
           name: form.name.trim(),
           nameEn: form.nameEn.trim() || null,
+          aliases: form.aliases
+            .split(/[\n,،;；]+/)
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .map((value) => ({
+              value,
+              language: /[\u0600-\u06FF]/.test(value) ? "fa" : "en",
+            })),
           shortName: form.shortName.trim() || null,
           slug: form.slug.trim() || undefined,
           type: form.type || null,
@@ -214,6 +188,20 @@ export default function CreateBrandForm() {
             />
           </div>
 
+          <div className="md:col-span-2">
+            <label className={labelCls}>نام‌های جایگزین و املای دیگر</label>
+            <textarea
+              value={form.aliases}
+              onChange={(e) => setField("aliases", e.target.value)}
+              rows={2}
+              className="w-full rounded-xl border border-zinc-200 bg-white p-3 text-sm text-zinc-800 outline-none focus:border-[#F58220]"
+              placeholder={"Komatsu Ltd.\nکوماتسو\nKomatsu"}
+            />
+            <p className="mt-1 text-[10px] text-zinc-400">
+              هر نام را در یک خط یا با ویرگول جدا کنید؛ نام فارسی و انگلیسی اصلی هم خودکار به جست‌وجو اضافه می‌شوند.
+            </p>
+          </div>
+
           <div>
             <label className={labelCls}>نام کوتاه</label>
             <input
@@ -254,7 +242,7 @@ export default function CreateBrandForm() {
               <option value="">—</option>
               {TYPE_OPTIONS.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {BRAND_TYPE_LABELS[t] ?? t}
                 </option>
               ))}
             </select>
@@ -279,7 +267,7 @@ export default function CreateBrandForm() {
             >
               {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {BRAND_STATUS_LABELS[s]?.label ?? s}
                 </option>
               ))}
             </select>
@@ -294,7 +282,7 @@ export default function CreateBrandForm() {
             >
               {VERIFICATION_OPTIONS.map((v) => (
                 <option key={v} value={v}>
-                  {v}
+                  {VERIFICATION_LABELS[v]?.label || "تأیید نشده"}
                 </option>
               ))}
             </select>

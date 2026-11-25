@@ -25,7 +25,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mock state ──────────────────────────────────────────────
-let mockCurrentUser: { id: string; mobile: string; firstName: string; role: string } | null = null;
+let mockCurrentUser: { id: string; mobile: string; mobileVerified?: boolean; firstName: string; role: string } | null = null;
 let mockIsAdminResult: boolean = false;
 
 vi.mock("@/lib/auth", () => ({
@@ -39,6 +39,7 @@ vi.mock("@/lib/authorization", () => ({
 }));
 vi.mock("@/lib/db", () => ({ db: {} }));
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => ({})) }));
+vi.mock("@/lib/csrf", () => ({ checkCsrf: vi.fn(() => true) }));
 vi.mock("@/lib/rate-limit", () => ({
   rateLimit: () => ({ ok: true, resetAt: new Date(Date.now() + 60000) }),
   retryAfterSeconds: () => 60,
@@ -68,6 +69,9 @@ const mockStoreDb = {
     findMany: vi.fn(async () => []),
     update: vi.fn(async () => ({})),
   },
+  auditOutbox: {
+    create: vi.fn(async () => ({ id: "audit-1" })),
+  },
   wishlist: {
     findMany: vi.fn(async () => []),
     create: vi.fn(async () => ({})),
@@ -80,6 +84,7 @@ const mockStoreDb = {
       payment: mockStoreDb.payment,
       order: mockStoreDb.order,
       customer: mockStoreDb.customer,
+      auditOutbox: mockStoreDb.auditOutbox,
     };
     return fn(tx);
   }),
@@ -209,7 +214,7 @@ describe("PR #40: GET /api/store/orders/[id] — auth + ownership", () => {
   });
 
   it("POSITIVE: owner (by phone) → 200", async () => {
-    mockCurrentUser = { id: "user-X", mobile: "09120000000", firstName: "X", role: "BUYER" };
+    mockCurrentUser = { id: "user-X", mobile: "09120000000", mobileVerified: true, firstName: "X", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
     const res = await ordersIdRoute.GET(
@@ -217,6 +222,17 @@ describe("PR #40: GET /api/store/orders/[id] — auth + ownership", () => {
       { params: Promise.resolve({ id: "order-1" }) },
     );
     expect(res.status).toBe(200);
+  });
+
+  it("NEGATIVE: matching but unverified phone → 403", async () => {
+    mockCurrentUser = { id: "user-X", mobile: "09120000000", mobileVerified: false, firstName: "X", role: "BUYER" };
+    mockIsAdminResult = false;
+    mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
+    const res = await ordersIdRoute.GET(
+      makeReq("http://localhost/api/store/orders/order-1"),
+      { params: Promise.resolve({ id: "order-1" }) },
+    );
+    expect(res.status).toBe(403);
   });
 
   it("POSITIVE: admin → 200 (any order)", async () => {
@@ -280,7 +296,7 @@ describe("PR #40: POST /api/store/wishlist — auth required", () => {
 describe("PR #40: POST /api/store/payments/manual — security", () => {
   it("NEGATIVE: anonymous → 401", async () => {
     mockCurrentUser = null;
-    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 100000 }));
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", method: "CARD", amountIrr: 100000 }));
     expect(res.status).toBe(401);
   });
 
@@ -288,7 +304,7 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
     mockCurrentUser = { id: "user-B", mobile: "09130000000", firstName: "B", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
-    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", phone: "09120000000", amountIrr: 100000 }));
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", method: "CARD", amountIrr: 100000 }));
     expect(res.status).toBe(403);
   });
 
@@ -296,16 +312,30 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
     mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, status: "CANCELLED" });
-    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 100000 }));
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", method: "CARD", amountIrr: 100000 }));
     expect(res.status).toBe(409);
   });
+  it("NEGATIVE: matching but unverified phone without userId ownership → 403", async () => {
+    mockCurrentUser = { id: "user-X", mobile: "09120000000", mobileVerified: false, firstName: "X", role: "BUYER" };
+    mockIsAdminResult = false;
+    mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, userId: "another-user" });
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", method: "CARD", amountIrr: 100000 }));
+    expect(res.status).toBe(403);
+  });
+
+  it("NEGATIVE: fractional or unsafe payment amount → 400", async () => {
+    mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", method: "CARD", amountIrr: 100000.5 }));
+    expect(res.status).toBe(400);
+  });
+
 
   it("NEGATIVE: too many pending payments → 409", async () => {
     mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
     mockIsAdminResult = false;
     const payments = Array(4).fill(null).map((_, i) => ({ id: `p${i}`, status: "PENDING", amountIrr: 100000 }));
     mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, payments });
-    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 100000 }));
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", method: "CARD", amountIrr: 100000 }));
     expect(res.status).toBe(409);
   });
 
@@ -313,7 +343,7 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
     mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue({ ...mockOrder, payments: [{ status: "APPROVED", amountIrr: 900000 }] });
-    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 200000 }));
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", method: "CARD", amountIrr: 200000 }));
     // 900000 + 200000 = 1100000 > 1000000 totalIrr
     expect(res.status).toBe(400);
   });
@@ -322,7 +352,7 @@ describe("PR #40: POST /api/store/payments/manual — security", () => {
     mockCurrentUser = { id: "user-A", mobile: "09120000000", firstName: "A", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
-    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", amountIrr: 500000 }));
+    const res = await paymentsManualRoute.POST(makePostReq("http://localhost/api/store/payments/manual", { orderId: "order-1", method: "CARD", amountIrr: 500000 }));
     expect(res.status).toBe(200);
   });
 });
@@ -340,6 +370,14 @@ describe("PR #41: POST /api/store/payments/gateway/request — security", () => 
 
   it("NEGATIVE: non-owner → 403", async () => {
     mockCurrentUser = { id: "user-B", mobile: "09130000000", firstName: "B", role: "BUYER" };
+    mockIsAdminResult = false;
+    mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
+    const res = await gatewayRequestRoute.POST(makePostReq("http://localhost/api/store/payments/gateway/request", { orderId: "order-1" }));
+    expect(res.status).toBe(403);
+  });
+
+  it("NEGATIVE: matching phone without verified mobile → 403", async () => {
+    mockCurrentUser = { id: "user-B", mobile: "09120000000", mobileVerified: false, firstName: "B", role: "BUYER" };
     mockIsAdminResult = false;
     mockStoreDb.order.findUnique.mockResolvedValue(mockOrder);
     const res = await gatewayRequestRoute.POST(makePostReq("http://localhost/api/store/payments/gateway/request", { orderId: "order-1" }));

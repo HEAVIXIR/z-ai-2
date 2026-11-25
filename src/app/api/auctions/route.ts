@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     const limit = Math.min(60, Math.max(1, Number(url.searchParams.get("limit")) || 30));
 
     // Build where — exclude CANCELLED unless explicitly asked.
-    const where: any = { status: { not: "CANCELLED" } };
+    const where: any = { status: { not: "CANCELLED" }, listing: { status: "PUBLISHED" } };
 
     const auctions = await db.auction.findMany({
       where,

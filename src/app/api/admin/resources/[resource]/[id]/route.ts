@@ -20,12 +20,23 @@ import { getResource, updateResource, deleteResource } from '@/lib/admin/data-ad
 import { filterReadableFieldsAsync } from '@/lib/admin/field-policy';
 import { validateResourcePayload } from '@/lib/admin/resource-validator';
 import { requireAdmin } from '@/lib/admin-guard';
+import { checkCsrf } from "@/lib/csrf";
 import { can, isAdmin } from '@/lib/authorization';
 import { auditMutation, auditDelete } from '@/lib/audit-foundation';
 import { getHomepageCacheTags } from '@/lib/homepage-cache-tags';
 import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 
 export const dynamic = 'force-dynamic';
+
+// Resources that mutate only through dedicated transactional APIs and
+// MUST NOT be mutated via the Universal Resource PATCH/DELETE/action
+// endpoints (which bypass domain state machines, CAS, and audit trails).
+// P0 audit: buy-requests added — its status transitions must go through
+// the canonical wanted-service state machine (publishWanted /
+// closeWantedByAdmin / fulfillWanted / bulkTransitionWanted), and DELETE
+// must be a soft-close (never a hard delete that orphans marketplace
+// history). The universal routes would write status directly + hard-delete.
+const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers', 'payments', 'buy-requests']);
 
 type Params = { params: Promise<{ resource: string; id: string }> };
 
@@ -80,6 +91,16 @@ export async function GET(_req: NextRequest, { params }: Params) {
 // ── PATCH: Update resource ─────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: Params) {
   const { resource: resourceKey, id } = await params;
+
+  if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
+    const permission = resourceKey === 'procurement' ? 'procurement.manage' : resourceKey === 'payments' ? 'payment.manage' : 'store.manage';
+    const [, authError] = await requireAdmin(permission);
+    if (authError) return authError;
+    return NextResponse.json(
+      { error: 'Use the dedicated Store API for this resource; Universal Resource mutations are disabled.' },
+      { status: 409 },
+    );
+  }
   const config = registry.get(resourceKey);
   if (!config) return NextResponse.json({ error: 'Unknown resource' }, { status: 404 });
 
@@ -88,6 +109,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   const [user, error] = await requireAdmin(updatePerm);
   if (error) return error;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
 
   const body = await req.json().catch(() => null);
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
@@ -154,8 +179,18 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 // ── DELETE: Delete resource ───────────────────────────────
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   const { resource: resourceKey, id } = await params;
+
+  if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
+    const permission = resourceKey === 'procurement' ? 'procurement.manage' : resourceKey === 'payments' ? 'payment.manage' : 'store.manage';
+    const [, authError] = await requireAdmin(permission);
+    if (authError) return authError;
+    return NextResponse.json(
+      { error: 'Use the dedicated Store API for this resource; Universal Resource mutations are disabled.' },
+      { status: 409 },
+    );
+  }
   const config = registry.get(resourceKey);
   if (!config) return NextResponse.json({ error: 'Unknown resource' }, { status: 404 });
 
@@ -164,6 +199,10 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
 
   const [user, error] = await requireAdmin(deletePerm);
   if (error) return error;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
 
   // PR-SC-00: tenant-scoped delete — non-owners get 404.
   const tenantCtx = await resolveTenantCtx(user?.id ?? null, config);

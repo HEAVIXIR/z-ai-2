@@ -3,8 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { parseNumber } from "@/lib/api-helpers";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
-import ZAI from "z-ai-web-dev-sdk";
-
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -102,7 +101,9 @@ export async function POST(req: Request) {
     let suggested = Math.round(median);
     let aiNote = "";
     try {
-      const zai = await ZAI.create();
+      const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
       const completion = await zai.chat.completions.create({
         messages: [
           {

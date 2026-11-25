@@ -333,13 +333,18 @@ async function listingEnricherRunner(agent: AIAgent): Promise<AgentRunResult> {
   let failed = 0;
   const errors: string[] = [];
 
-  // Lazy-load ZAI so the module imports cleanly even if the SDK
-  // is not used (e.g. in tests).
+  // Resolve ZAI SDK via the central router. The router handles
+  // credential resolution from env vars (no .z-ai-config file
+  // needed — required for Cloudflare Workers compatibility).
+  // ai-agents uses BOTH chat.completions and images.search /
+  // images.generations, so we use getZAISDK() which returns the
+  // full SDK surface.
   let zai: any = null;
   try {
-    const ZAIModule = await import("z-ai-web-dev-sdk");
-    const ZAI = (ZAIModule as any).default ?? ZAIModule;
-    zai = await ZAI.create();
+    const { getZAISDK } = await import("@/lib/ai-provider-router");
+    const r = getZAISDK();
+    if (!r.ok) { throw new Error(r.reason); }
+    zai = r.sdk;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return {
@@ -457,9 +462,10 @@ async function brandResearcherRunner(agent: AIAgent): Promise<AgentRunResult> {
 
   let zai: any = null;
   try {
-    const ZAIModule = await import("z-ai-web-dev-sdk");
-    const ZAI = (ZAIModule as any).default ?? ZAIModule;
-    zai = await ZAI.create();
+    const { getZAISDK } = await import("@/lib/ai-provider-router");
+    const r = getZAISDK();
+    if (!r.ok) { throw new Error(r.reason); }
+    zai = r.sdk;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return {
@@ -634,9 +640,10 @@ async function categoryImageGenRunner(agent: AIAgent): Promise<AgentRunResult> {
 
   let zai: any = null;
   try {
-    const ZAIModule = await import("z-ai-web-dev-sdk");
-    const ZAI = (ZAIModule as any).default ?? ZAIModule;
-    zai = await ZAI.create();
+    const { getZAISDK } = await import("@/lib/ai-provider-router");
+    const r = getZAISDK();
+    if (!r.ok) { throw new Error(r.reason); }
+    zai = r.sdk;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return {

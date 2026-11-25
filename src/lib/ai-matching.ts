@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { isBuyRequestMatchEligible } from "@/lib/wanted-eligibility";
+import { compatibleSupplyTypesForTransaction } from "@/lib/transaction-type-routing";
 
 /* ============================================================
    HEAVIX — AI Matching: BuyRequest ↔ Listing (FIX-GAPS-1)
@@ -190,16 +192,31 @@ export async function matchRequestToListings(
       city: true,
       province: true,
       status: true,
+      transaction: true,
+      publishedAt: true,
+      expiresAt: true,
     },
   });
 
-  if (!req) {
+  if (!req || !isBuyRequestMatchEligible(req)) {
     return { matches: [] };
   }
 
-  // Load PUBLISHED listings with their brand + category names.
+  // Intent-aware candidate selection: a demand request only matches
+  // supply listings whose type can satisfy the request's intent
+  // (buy-demand → SALE/AUCTION, rent-demand → RENT, service-demand →
+  // SERVICE_OFFER, flexible → all of the above). This prevents the
+  // demand/supply type mismatch where, e.g., a rent-demand would
+  // otherwise match a sale-supply. `compatibleSupplyTypesForTransaction`
+  // normalizes the raw BuyRequest.transaction value (incl. the legacy
+  // "WANTED" label) and returns the compatible supply-type list; the
+  // result is always a subset of SUPPLY_LISTING_TYPES.
+  const compatibleTypes = compatibleSupplyTypesForTransaction(req.transaction);
   const listings = await db.listing.findMany({
-    where: { status: "PUBLISHED" },
+    where: {
+      status: "PUBLISHED",
+      listingType: { in: [...compatibleTypes] },
+    },
     select: {
       id: true,
       price: true,
@@ -250,8 +267,13 @@ export async function matchAllRequests(): Promise<{
   totalRequests: number;
   totalMatches: number;
 }> {
+  const now = new Date();
   const requests = await db.buyRequest.findMany({
-    where: { status: "ACTIVE" },
+    where: {
+      status: "ACTIVE",
+      publishedAt: { lte: now },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
     select: { id: true, title: true },
     take: 500, // safety cap
   });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createUserSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
-import { isAdmin } from "@/lib/authorization";
+import { logAudit } from "@/lib/audit";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { LOGIN } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
@@ -14,8 +14,6 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   // F-006: CSRF defense — fail-closed Origin/Referer verification.
-  // Browser POST without a verifiable same-origin Origin/Referer is
-  // rejected with 403 before any DB / rate-limit / password work.
   if (!checkCsrf(req)) {
     return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
@@ -49,6 +47,20 @@ export async function POST(req: Request) {
           email ? { email: String(email).toLowerCase() } : {},
         ].filter((c) => Object.keys(c).length > 0),
       },
+      select: {
+        id: true,
+        passwordHash: true,
+        status: true,
+        emailVerified: true,
+        email: true,
+        role: true,
+        firstName: true,
+        lastName: true,
+        mobile: true,
+        userType: true,
+        mobileVerified: true,
+        userRoles: { select: { role: { select: { key: true } } } },
+      },
     });
 
     if (!user) return NextResponse.json({ error: "کاربر یافت نشد یا رمز نادرست است" }, { status: 401 });
@@ -59,6 +71,71 @@ export async function POST(req: Request) {
     if (user.status === "BLOCKED") {
       return NextResponse.json({ error: "حساب کاربری شما مسدود شده است" }, { status: 403 });
     }
+    if (!user.emailVerified || user.status !== "ACTIVE") {
+      return NextResponse.json(
+        { error: "ابتدا ایمیل خود را با کد ارسال‌شده تأیید کنید." },
+        { status: 403 },
+      );
+    }
+
+    // Resolve canonical RBAC roles in the initial user lookup. This avoids
+    // two additional permission queries on every successful login.
+    let roles = (user.userRoles ?? []).map((entry) => entry.role.key);
+
+    // Preview-only owner bootstrap: exact allowlisted, verified account must
+    // successfully authenticate with its password before receiving ADMIN.
+    const isPreviewDeployment = process.env.HEAVIX_ENV === "preview";
+    const ownerEmail = process.env.HEAVIX_OWNER_EMAIL?.trim().toLowerCase();
+    if (
+      isPreviewDeployment &&
+      ownerEmail &&
+      user.email.toLowerCase() === ownerEmail &&
+      !roles.includes("ADMIN")
+    ) {
+      const adminRole = await db.role.findUnique({
+        where: { key: "ADMIN" },
+        select: { id: true },
+      });
+      if (!adminRole) {
+        throw new Error('RBAC ADMIN role is missing; run the RBAC seed before owner bootstrap.');
+      }
+
+      const previousRole = user.role;
+      await db.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { role: "ADMIN" },
+        });
+
+        // Delete the replaceable default roles directly; avoid a read-before-delete
+        // round trip while keeping custom roles untouched.
+        await tx.userRole.deleteMany({
+          where: {
+            userId: user.id,
+            role: { key: { in: ["ADMIN", "SELLER", "BUYER"] } },
+          },
+        });
+
+        await tx.userRole.upsert({
+          where: { userId_roleId: { userId: user.id, roleId: adminRole.id } },
+          create: { userId: user.id, roleId: adminRole.id },
+          update: {},
+        });
+      });
+
+      roles = [...roles.filter((key) => !["ADMIN", "SELLER", "BUYER"].includes(key)), "ADMIN"];
+
+      await logAudit({
+        actorId: user.id,
+        actorType: "SYSTEM",
+        action: "user.role.owner_bootstrap",
+        entityType: "User",
+        entityId: user.id,
+        before: { role: previousRole },
+        after: { role: "ADMIN", roleKey: "ADMIN" },
+        reason: "Verified owner account authenticated; Preview-only HEAVIX_OWNER_EMAIL allowlist",
+      });
+    }
 
     await db.user.update({
       where: { id: user.id },
@@ -66,12 +143,7 @@ export async function POST(req: Request) {
     });
     await createUserSession(user.id);
 
-    const admin = await isAdmin(user.id);
-    const userRoles = await db.userRole.findMany({
-      where: { userId: user.id },
-      select: { role: { select: { key: true } } },
-    });
-    const roles = userRoles.map((r) => r.role.key);
+    const admin = roles.includes("ADMIN");
     const role = admin ? "admin" : (roles[0] ?? "BUYER");
 
     return NextResponse.json({

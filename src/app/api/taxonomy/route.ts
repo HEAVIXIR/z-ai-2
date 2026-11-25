@@ -26,15 +26,6 @@ export const dynamic = "force-dynamic";
    response small. Required by the public mega-menu per HEAVIX-REQUIREMENTS §1.
    ============================================================ */
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-type CachedShape = {
-  data: Awaited<ReturnType<typeof buildPayload>>;
-  expiresAt: number;
-};
-
-let cache: CachedShape | null = null;
-
 async function buildPayload() {
   const [
     categories,
@@ -232,13 +223,13 @@ async function buildPayload() {
 
 export async function GET() {
   try {
-    const now = Date.now();
-    if (cache && cache.expiresAt > now) {
-      return NextResponse.json(cache.data);
-    }
+    // Do not keep process-local taxonomy snapshots: mutations can land on a
+    // different Worker isolate, leaving listing forms with stale categories
+    // and transaction options for up to five minutes.
     const data = await buildPayload();
-    cache = { data, expiresAt: now + CACHE_TTL_MS };
-    return NextResponse.json(data);
+    return NextResponse.json(data, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },

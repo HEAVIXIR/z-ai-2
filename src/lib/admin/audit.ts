@@ -32,6 +32,12 @@ export interface LogAuditParams {
   userAgent?: string | null;
   requestId?: string | null;
   reason?: string | null;
+  // H.2.4e: optional stable delivery key. When supplied, the audit row is
+  // written with AuditLog.idempotencyKey (a @unique column). Callers that
+  // accept an Idempotency-Key header use this to make replay idempotent:
+  // a retry finds the prior audit row by key+action+actor and returns the
+  // cached result instead of creating a duplicate entity.
+  idempotencyKey?: string | null;
 }
 
 function safeStringify(value: unknown): string | null {
@@ -62,6 +68,7 @@ export async function logAudit(params: LogAuditParams): Promise<void> {
         userAgent: ua,
         requestId: params.requestId ?? null,
         reason: params.reason ?? null,
+        idempotencyKey: params.idempotencyKey ?? null,
       },
     });
   } catch (err) {
@@ -72,6 +79,40 @@ export async function logAudit(params: LogAuditParams): Promise<void> {
       error: (err as Error)?.message,
     });
   }
+
+}
+
+/**
+ * Required audit write for operations that must not report success without
+ * a durable audit row. Unlike logAudit(), this helper deliberately throws.
+ */
+export async function logAuditStrict(params: LogAuditParams, client: any = db): Promise<void> {
+  let ip = params.ip ?? null;
+  let ua = params.userAgent ?? null;
+  try {
+    const h = await headers();
+    ip = ip ?? (h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip') || null);
+    ua = ua ?? (h.get('user-agent') || null);
+  } catch {
+    // Non-request callers still get a durable audit row; request metadata is optional.
+  }
+
+  await client.auditLog.create({
+    data: {
+      actorId: params.actorId ?? null,
+      actorType: params.actorType ?? 'USER',
+      action: params.action,
+      entityType: params.entityType,
+      entityId: params.entityId ?? null,
+      beforeJson: safeStringify(params.before),
+      afterJson: safeStringify(params.after),
+      ip: ip ?? null,
+      userAgent: ua,
+      requestId: params.requestId ?? null,
+      reason: params.reason ?? null,
+      idempotencyKey: params.idempotencyKey ?? null,
+    },
+  });
 }
 
 // Keep the old `audit()` function for backward compat (maps to logAudit)

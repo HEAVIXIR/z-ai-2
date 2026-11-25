@@ -67,20 +67,22 @@ export function MyOrdersDialog({
   const storedPhone = useStoreCart((s) => s.customerPhone);
   const setCustomerPhone = useStoreCart((s) => s.setCustomerPhone);
   const [phone, setPhone] = useState(storedPhone || "");
+  const [orderNumber, setOrderNumber] = useState("");
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const fetchOrders = async (p: string) => {
-    if (!p || p.length < 8) {
-      toast.error("شماره موبایل را وارد کنید");
+  const fetchOrders = async (p: string, number: string) => {
+    const normalizedOrderNumber = number.trim().toUpperCase();
+    if (!p || p.length < 8 || !normalizedOrderNumber) {
+      toast.error("شماره موبایل و شماره سفارش را وارد کنید");
       return;
     }
     setLoading(true);
     setCustomerPhone(p);
     try {
-      const res = await fetch(`/api/store/orders?phone=${encodeURIComponent(p)}`);
+      const res = await fetch(`/api/store/orders?phone=${encodeURIComponent(p)}&orderNumber=${encodeURIComponent(normalizedOrderNumber)}`, { cache: "no-store" });
       const d = await res.json();
       setOrders(d.orders || []);
       setLoaded(true);
@@ -112,8 +114,8 @@ export function MyOrdersDialog({
       if (user) {
         fetchMyOrders();
       } else if (storedPhone && !loaded) {
+        // Prefill only. Guest retrieval requires the exact order number too.
         setPhone(storedPhone);
-        fetchOrders(storedPhone);
       }
     }
   }, [open, user]);
@@ -141,7 +143,7 @@ export function MyOrdersDialog({
           <DialogDescription>
             {user
               ? `سفارش‌های حساب هویکس ${user.firstName} ${user.lastName}`
-              : "با وارد کردن شماره موبایل، سفارش‌های خود را مشاهده کنید."}
+              : "برای مشاهده سفارش مهمان، شماره موبایل و شماره سفارش را وارد کنید."}
           </DialogDescription>
         </DialogHeader>
 
@@ -181,15 +183,24 @@ export function MyOrdersDialog({
                 ورود به هویکس
               </Link>
             </div>
-            <div className="flex gap-2">
+            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
               <Input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 dir="ltr"
                 className="text-left"
-                placeholder="0912..."
+                placeholder="شماره موبایل: 0912..."
+                aria-label="شماره موبایل"
               />
-              <Button onClick={() => fetchOrders(phone)} disabled={loading} className="gap-1.5 bg-[#F58220] hover:bg-[#ff8c38]">
+              <Input
+                value={orderNumber}
+                onChange={(e) => setOrderNumber(e.target.value.toUpperCase())}
+                dir="ltr"
+                className="text-left uppercase"
+                placeholder="شماره سفارش: HV-..."
+                aria-label="شماره سفارش"
+              />
+              <Button onClick={() => fetchOrders(phone, orderNumber)} disabled={loading} className="gap-1.5 bg-[#F58220] hover:bg-[#ff8c38]">
                 {loading ? <Loader2 className="size-4 animate-spin" /> : <Phone className="size-4" />}
                 مشاهده
               </Button>

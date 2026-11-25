@@ -97,7 +97,8 @@ const POLICIES: PolicySeed[] = [
     maxOutputTokens: 3000,
     model: "default",
     timeoutMs: 60000,
-    costCeilingUsd: 0.1,
+    // Zero-cost default is intentional: SCRAPER stays disabled until the owner explicitly authorizes a provider and budget.
+    costCeilingUsd: 0,
   },
   {
     taskType: "MODERATION",
@@ -206,22 +207,18 @@ const BUDGET = {
 async function main() {
   console.log("→ Seeding AI task policies + budget singleton …");
 
-  // 1. Policies — upsert by taskType. On first create we apply all
-  //    defaults; on update we leave admin-customised limits alone
-  //    and only re-assert the `active=true` flag + ensure the row
-  //    still exists for any newly added task types.
+  // 1. Policies — preserve administrator settings for ordinary tasks.
+  // SCRAPER is intentionally different: it remains disabled and zero-cost
+  // until the owner explicitly authorizes provider credentials and a budget.
   for (const p of POLICIES) {
+    const scraperDisabledByDefault = p.taskType === "SCRAPER";
     await db.aITaskPolicy.upsert({
       where: { taskType: p.taskType },
-      create: { ...p, active: true },
-      update: {
-        // Re-assert active state (admin may have toggled it; we do
-        // NOT clobber the other fields — admin tweaks survive).
-        // (Intentionally empty update means: do nothing on conflict.)
-      },
+      create: { ...p, active: !scraperDisabledByDefault },
+      update: scraperDisabledByDefault ? { active: false, costCeilingUsd: 0 } : {},
     });
   }
-  console.log(`  ✓ ${POLICIES.length} AI task policies ensured`);
+  console.log(`  ✓ ${POLICIES.length} AI task policies ensured; SCRAPER remains disabled at zero cost`);
 
   // 2. Budget singleton — upsert by id="main". Same idea: only
   //    create with defaults; never clobber admin-tuned limits or

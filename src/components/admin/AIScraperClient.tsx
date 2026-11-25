@@ -1,317 +1,312 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  Search,
-  Loader2,
-  Plus,
-  CheckCircle2,
-  Phone,
-  Image as ImageIcon,
-  Sparkles,
-  Upload,
+  Search, Loader2, Plus, CheckCircle2, Phone, Image as ImageIcon,
+  Sparkles, ExternalLink, MapPin, Calendar, Gauge, DollarSign, ShieldCheck,
 } from "lucide-react";
-import { toFa, formatCompactPrice } from "@/lib/format";
 
-type Suggestion = {
-  title: string;
+type ScrapedListing = {
+  url: string;
+  title?: string;
+  publishedAt?: string | null;
+  description?: string;
   price?: string | null;
+  images: string[];
   phone?: string | null;
-  images?: string[];
-  url?: string;
-  source?: string;
-  brandName?: string | null;
-  categoryName?: string | null;
-  selected?: boolean;
+  location?: string | null;
+  brand?: string | null;
+  category?: string | null;
+  year?: number | null;
+  hours?: number | null;
+  condition?: string | null;
 };
 
 export default function AIScraperClient() {
   const [query, setQuery] = useState("");
+  const [categories, setCategories] = useState<Array<{ id: string; name: string; nameEn?: string | null; layer?: string; level?: number }>>([]);
+  const [serviceTypes, setServiceTypes] = useState<Array<{ id: string; nameFa: string; nameEn?: string | null }>>([]);
+  const [transactionTypes, setTransactionTypes] = useState<Array<{ id: string; nameFa: string; nameEn?: string | null }>>([]);
+  const [categoryId, setCategoryId] = useState("");
+  const [serviceTypeId, setServiceTypeId] = useState("");
+  const [transactionTypeId, setTransactionTypeId] = useState("");
+  const [dateDays, setDateDays] = useState("30");
   const [searching, setSearching] = useState(false);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [importing, setImporting] = useState<string | null>(null);
+  const [results, setResults] = useState<ScrapedListing[]>([]);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [importing, setImporting] = useState<number | null>(null);
+  const [imported, setImported] = useState<Set<number>>(new Set());
   const [bulkImporting, setBulkImporting] = useState(false);
-  const [imported, setImported] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [manualListing, setManualListing] = useState({
+    title: "", description: "", categoryId: "", transactionTypeId: "",
+    serviceTypeId: "", price: "", province: "", city: "", year: "", workingHours: "",
+    sellerName: "", sellerPhone: "",
+  });
+  const [manualSubmitting, setManualSubmitting] = useState(false);
+  const [manualMessage, setManualMessage] = useState<string | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const updateManual = (key: keyof typeof manualListing, value: string) =>
+    setManualListing(prev => ({ ...prev, [key]: value }));
+  const submitManualListing = async () => {
+    if (!manualListing.title.trim() || !manualListing.categoryId || !manualListing.transactionTypeId) {
+      setManualError("عنوان، دسته‌بندی و نوع معامله الزامی است.");
+      return;
+    }
+    setManualSubmitting(true); setManualError(null); setManualMessage(null);
+    try {
+      const res = await fetch("/api/admin/listings/manual", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(manualListing),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "ثبت دستی ناموفق بود.");
+      setManualMessage("آگهی دستی ثبت شد و برای بررسی مدیر در وضعیت Pending قرار گرفت؛ منتشر نشده است.");
+      setManualListing({ title: "", description: "", categoryId: "", transactionTypeId: "", serviceTypeId: "", price: "", province: "", city: "", year: "", workingHours: "", sellerName: "", sellerPhone: "" });
+    } catch (e: any) { setManualError(e?.message ?? "ثبت دستی ناموفق بود."); }
+    finally { setManualSubmitting(false); }
+  };
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch("/api/taxonomy/categories").then((r) => r.ok ? r.json() : Promise.reject(new Error("دریافت دسته‌بندی‌ها ناموفق بود."))),
+      fetch("/api/taxonomy").then((r) => r.ok ? r.json() : Promise.reject(new Error("دریافت خدمات ناموفق بود."))),
+    ]).then(([categoryData, taxonomyData]) => {
+      if (cancelled) return;
+      setCategories(Array.isArray(categoryData.flat) ? categoryData.flat : []);
+      setServiceTypes(Array.isArray(taxonomyData.serviceTypes) ? taxonomyData.serviceTypes : []);
+      setTransactionTypes(Array.isArray(taxonomyData.transactionTypes) ? taxonomyData.transactionTypes : []);
+    }).catch((e) => {
+      if (!cancelled) setError(e?.message ?? "دریافت ساختار دسته‌بندی‌ها ناموفق بود.");
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const sourceName = (url: string) => {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./, "");
+      if (host.endsWith("divar.ir") || host.endsWith("divar.com")) return "دیوار";
+      if (host.endsWith("sheypoor.com")) return "شیپور";
+      return host;
+    } catch { return "منبع خارجی"; }
+  };
+  const fmt = (value?: string | number | null) => {
+    if (value === null || value === undefined || value === "") return "—";
+    const n = Number(String(value).replace(/[^\d]/g, ""));
+    return Number.isFinite(n) && n > 0 ? n.toLocaleString("fa-IR") : String(value);
+  };
 
   const handleSearch = async () => {
-    if (!query.trim()) return;
-    setSearching(true);
-    setError(null);
-    setSuggestions([]);
-    setMessage(null);
+    if (!query.trim() && !categoryId && !serviceTypeId && !transactionTypeId) return;
+    setSearching(true); setError(null); setMessage(null);
+    setResults([]); setSelected(new Set()); setImported(new Set());
     try {
       const res = await fetch("/api/admin/ai-scraper", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "search", query }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "search", query: query.trim(), num: 30, categoryId: categoryId || null, serviceTypeId: serviceTypeId || null, transactionTypeId: transactionTypeId || null, dateDays: dateDays === "all" ? null : Number(dateDays) }),
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (Array.isArray(data.suggestions)) {
-        setSuggestions(data.suggestions);
-        setMessage(`${toFa(data.suggestions.length)} نتیجه از هوش مصنوعی یافت شد.`);
-      } else {
-        setMessage("نتیجه‌ای یافت نشد.");
-      }
+      if (!res.ok || data.error) throw new Error(data.error || "جستجو ناموفق بود.");
+      const rows = Array.isArray(data.results) ? data.results : [];
+      setResults(rows);
+      setMessage(rows.length ? `${rows.length.toLocaleString("fa-IR")} آگهی برای بررسی استخراج شد.` : "نتیجه‌ای از منابع مجاز پیدا نشد.");
     } catch (e: any) {
       setError(e?.message ?? "خطا در جستجو.");
-    } finally {
-      setSearching(false);
-    }
+    } finally { setSearching(false); }
   };
 
-  const handleImport = async (idx: number) => {
-    const s = suggestions[idx];
-    setImporting(`${idx}`);
-    setError(null);
+  const importOne = async (item: ScrapedListing, index: number) => {
+    setImporting(index); setError(null);
     try {
       const res = await fetch("/api/admin/ai-scraper", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "import", suggestion: s }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "import", scraped: item }),
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setImported([...imported, `${idx}`]);
-      setMessage(`آگهی "${s.title}" با موفقیت وارد شد.`);
-    } catch (e: any) {
-      setError(e?.message ?? "خطا در واردسازی.");
-    } finally {
-      setImporting(null);
-    }
+      if (!res.ok || data.error) throw new Error(data.error || "واردسازی ناموفق بود.");
+      setImported(prev => new Set(prev).add(index));
+      setMessage(data.alreadyExists
+        ? "این منبع قبلاً وارد شده است؛ آگهی تکراری ساخته نشد."
+        : "پیش‌نویس آگهی ساخته شد و در صف بررسی مدیر قرار گرفت؛ هنوز منتشر نشده است.");
+    } catch (e: any) { setError(e?.message ?? "خطا در واردسازی."); }
+    finally { setImporting(null); }
   };
 
-  const handleBulkImport = async () => {
-    setBulkImporting(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/admin/ai-scraper", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "bulk-import", suggestions }),
+  const importSelected = async () => {
+    const indexes = [...selected].filter(i => !imported.has(i));
+    if (!indexes.length) return;
+    setBulkImporting(true); setError(null);
+    let done = 0;
+    for (const index of indexes) {
+      try {
+        const res = await fetch("/api/admin/ai-scraper", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "import", scraped: results[index] }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || "خطا");
+        setImported(prev => new Set(prev).add(index)); done++;
+      } catch (e: any) {
+        setError(`واردسازی مورد ${(index + 1).toLocaleString("fa-IR")} ناموفق بود: ${e?.message ?? "خطا"}`);
+      }
+    }
+    setMessage(`${done.toLocaleString("fa-IR")} آگهی به صف بررسی مدیر ارسال شد؛ هیچ‌کدام خودکار منتشر نشدند.`);
+    setSelected(new Set()); setBulkImporting(false);
+  };
+
+  const toggle = (index: number) => {
+    if (selected.has(index)) {
+      setSelected(prev => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setMessage(`${toFa(data.imported?.length ?? 0)} آگهی وارد شد.`);
-      setImported(suggestions.map((_, i) => `${i}`));
-    } catch (e: any) {
-      setError(e?.message ?? "خطا در واردسازی گروهی.");
-    } finally {
-      setBulkImporting(false);
+      return;
     }
-  };
-
-  const toggleSelect = (idx: number) => {
-    setSuggestions((arr) =>
-      arr.map((s, i) => (i === idx ? { ...s, selected: !s.selected } : s)),
-    );
+    setSelected(prev => new Set(prev).add(index));
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-black text-zinc-900">اسکرپر هوش مصنوعی</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          با هوش مصنوعی دستگاه‌ها را از وب (Divar، Sheypoor و سایر منابع) پیدا و
-          به‌صورت خودکار به‌عنوان آگهی وارد کنید.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-black text-zinc-900"><Sparkles className="h-6 w-6 text-[#F58220]" />استخراج هوشمند آگهی از وب</h1>
+          <p className="mt-1 text-sm text-zinc-500">جستجو و استخراج اطلاعات آگهی‌های واقعی از دیوار و شیپور، سپس تطبیق و ورود به صف بررسی مدیر</p>
+        </div>
       </div>
 
-      {/* Search box */}
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <Plus className="h-5 w-5 text-emerald-700" />
+          <h2 className="text-lg font-black text-zinc-900">ثبت دستی آگهی — بدون AI و بدون هزینه</h2>
+        </div>
+        <p className="mb-4 text-sm text-zinc-600">این مسیر کاملاً مستقل از ZAI، اسکرپر، سهمیه و پیکربندی AI است. آگهی پس از ثبت منتشر نمی‌شود و برای بررسی مدیر می‌رود.</p>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <label className="block text-xs font-bold text-zinc-700">عنوان آگهی<input value={manualListing.title} onChange={e => updateManual("title", e.target.value)} maxLength={200} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" placeholder="عنوان آگهی" /></label>
+          <label className="block text-xs font-bold text-zinc-700">دسته‌بندی<select value={manualListing.categoryId} onChange={e => updateManual("categoryId", e.target.value)} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal"><option value="">انتخاب دسته</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+          <label className="block text-xs font-bold text-zinc-700">نوع معامله<select value={manualListing.transactionTypeId} onChange={e => updateManual("transactionTypeId", e.target.value)} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal"><option value="">انتخاب نوع معامله</option>{transactionTypes.map(t => <option key={t.id} value={t.id}>{t.nameFa}</option>)}</select></label>
+          <label className="block text-xs font-bold text-zinc-700">نوع خدمت (در صورت نیاز)<select value={manualListing.serviceTypeId} onChange={e => updateManual("serviceTypeId", e.target.value)} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal"><option value="">انتخاب خدمت</option>{serviceTypes.map(t => <option key={t.id} value={t.id}>{t.nameFa}</option>)}</select></label>
+          <label className="block text-xs font-bold text-zinc-700">قیمت (تومان)<input value={manualListing.price} onChange={e => updateManual("price", e.target.value)} inputMode="numeric" className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" placeholder="خالی = توافقی" /></label>
+          <label className="block text-xs font-bold text-zinc-700">استان<input value={manualListing.province} onChange={e => updateManual("province", e.target.value)} maxLength={100} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700">شهر<input value={manualListing.city} onChange={e => updateManual("city", e.target.value)} maxLength={100} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700">سال ساخت<input value={manualListing.year} onChange={e => updateManual("year", e.target.value)} inputMode="numeric" className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700">کارکرد (ساعت)<input value={manualListing.workingHours} onChange={e => updateManual("workingHours", e.target.value)} inputMode="numeric" className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700">نام فروشنده<input value={manualListing.sellerName} onChange={e => updateManual("sellerName", e.target.value)} maxLength={120} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700">شماره تماس<input value={manualListing.sellerPhone} onChange={e => updateManual("sellerPhone", e.target.value)} maxLength={40} className="mt-1 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal" /></label>
+          <label className="block text-xs font-bold text-zinc-700 md:col-span-2 xl:col-span-3">توضیحات<textarea value={manualListing.description} onChange={e => updateManual("description", e.target.value)} maxLength={6000} rows={4} className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-normal" placeholder="توضیحات و مشخصات دستگاه" /></label>
+        </div>
+        {manualError && <p className="mt-3 text-sm font-semibold text-red-700">{manualError}</p>}
+        {manualMessage && <p className="mt-3 text-sm font-semibold text-emerald-700">{manualMessage}</p>}
+        <button type="button" onClick={submitManualListing} disabled={manualSubmitting} className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-700 px-5 text-sm font-bold text-white disabled:opacity-50">
+          {manualSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          {manualSubmitting ? "در حال ثبت..." : "ثبت دستی و ارسال به بررسی"}
+        </button>
+      </div>
+
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="flex items-center gap-2 font-bold"><ShieldCheck className="h-4 w-4" />انتشار فقط با تأیید مدیر</div>
+        <p className="mt-1">اطلاعات استخراج‌شده صرفاً پیش‌نویس با وضعیت «در انتظار بررسی» می‌شود. هیچ آگهی‌ای از این ابزار مستقیماً منتشر نخواهد شد. مشخصات نامطمئن باید پیش از تأیید اصلاح شوند.</p>
+      </div>
+
       <div className="rounded-2xl border border-zinc-200 bg-white p-5">
-        <label className="mb-2 block text-xs font-bold text-zinc-700">
-          عبارت جستجو
-        </label>
-        <div className="flex gap-2">
-          <div className="flex h-12 flex-1 items-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 px-4">
+        <label className="mb-2 block text-xs font-bold text-zinc-700">عبارت جستجو</label>
+        <div className="flex flex-wrap gap-2">
+          <div className="flex h-12 min-w-[220px] flex-1 items-center overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 px-4">
             <Search className="h-4 w-4 text-zinc-400" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              placeholder="مثلاً بیل مکانیکی کاترپیلار ۳۲۰"
-              className="mr-2 h-full flex-1 bg-transparent text-sm text-zinc-900 outline-none"
-            />
+            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()} placeholder="مثلاً بیل مکانیکی کوماتسو PC220 یا خدمات تعمیر موتور" className="mr-2 h-full flex-1 bg-transparent text-sm text-zinc-900 outline-none" />
           </div>
-          <button
-            type="button"
-            onClick={handleSearch}
-            disabled={searching || !query.trim()}
-            className="inline-flex h-12 items-center gap-2 rounded-xl bg-[#F58220] px-6 text-sm font-bold text-white transition hover:bg-[#ff8c38] disabled:opacity-50"
-          >
-            {searching ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4" />
-            )}
-            جستجوی هوشمند
+          <button type="button" onClick={handleSearch} disabled={searching || (!query.trim() && !categoryId && !serviceTypeId && !transactionTypeId)} className="inline-flex h-12 items-center gap-2 rounded-xl bg-[#F58220] px-6 text-sm font-bold text-white disabled:opacity-50">
+            {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            {searching ? "در حال جستجو و استخراج..." : "جستجوی آگهی‌های واقعی"}
           </button>
         </div>
-        <p className="mt-2 text-[11px] text-zinc-400">
-          هوش مصنوعی وب را می‌گردد، نتایج مرتبط را پیدا می‌کند و آن‌ها را به‌صورت ساختاریافته درمی‌آورد.
-        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="block text-xs font-bold text-zinc-700">
+            دسته‌بندی آگهی
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal">
+              <option value="">همه دسته‌بندی‌ها</option>
+              {categories.map((item) => <option key={item.id} value={item.id}>{`${" ".repeat(Math.min(item.level || 0, 4) * 2)}${item.name}${item.layer ? ` · ${item.layer}` : ""}`}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-bold text-zinc-700">
+            نوع خدمت
+            <select value={serviceTypeId} onChange={(e) => setServiceTypeId(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal">
+              <option value="">همه خدمات</option>
+              {serviceTypes.map((item) => <option key={item.id} value={item.id}>{item.nameFa}{item.nameEn ? ` · ${item.nameEn}` : ""}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-bold text-zinc-700">
+            نوع آگهی / معامله
+            <select value={transactionTypeId} onChange={(e) => setTransactionTypeId(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal">
+              <option value="">همه انواع</option>
+              {transactionTypes.map((item) => <option key={item.id} value={item.id}>{item.nameFa}{item.nameEn ? ` · ${item.nameEn}` : ""}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-bold text-zinc-700">
+            بازه انتشار آگهی
+            <select value={dateDays} onChange={(e) => setDateDays(e.target.value)} className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-normal">
+              <option value="7">۷ روز اخیر</option>
+              <option value="20">۲۰ روز اخیر</option>
+              <option value="30">یک ماه اخیر</option>
+              <option value="90">۹۰ روز اخیر</option>
+              <option value="all">بدون محدودیت زمانی</option>
+            </select>
+          </label>
+        </div>
+        <p className="mt-2 text-[11px] text-zinc-400">دسته‌بندی‌ها و خدمات مستقیماً از طبقه‌بندی فعال HEAVIX خوانده می‌شوند؛ دسته‌های جدید نیز پس از ثبت در طبقه‌بندی در این فهرست ظاهر خواهند شد.</p>
       </div>
 
-      {error && (
-        <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
-      {message && (
-        <div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-          {message}
-        </div>
-      )}
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</div>}
 
-      {/* Bulk import action */}
-      {suggestions.length > 0 && (
-        <div className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
-          <p className="text-sm text-zinc-700">
-            {toFa(suggestions.filter((s) => s.selected).length)} انتخاب‌شده از{" "}
-            {toFa(suggestions.length)} نتیجه
-          </p>
-          <button
-            type="button"
-            onClick={handleBulkImport}
-            disabled={bulkImporting}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {bulkImporting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            واردسازی گروهی
+      {results.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-3">
+          <span className="text-xs font-bold text-zinc-600">{selected.size.toLocaleString("fa-IR")} انتخاب‌شده از {results.length.toLocaleString("fa-IR")}</span>
+          <button type="button" onClick={() => setSelected(selected.size === results.length ? new Set() : new Set(results.map((_, i) => i)))} className="text-xs font-bold text-[#F58220]">انتخاب همه نتایج / لغو انتخاب</button>
+          <button type="button" onClick={importSelected} disabled={!selected.size || bulkImporting} className="mr-auto inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">
+            {bulkImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} ورود انتخاب‌شده‌ها به صف بررسی
           </button>
         </div>
       )}
 
-      {/* Suggestion cards */}
+      {searching && <div className="flex flex-col items-center py-16 text-zinc-500"><Loader2 className="h-9 w-9 animate-spin text-[#F58220]" /><p className="mt-3 text-sm">در حال دریافت و تحلیل آگهی‌ها...</p></div>}
+
       <div className="grid gap-4 lg:grid-cols-2">
-        {suggestions.map((s, idx) => {
-          const isImported = imported.includes(`${idx}`);
-          return (
-            <div
-              key={idx}
-              className={`overflow-hidden rounded-2xl border bg-white transition ${
-                s.selected
-                  ? "border-[#F58220] ring-2 ring-[#F58220]/20"
-                  : "border-zinc-200"
-              }`}
-            >
-              <div className="flex gap-4 p-4">
-                {/* Image */}
-                <button
-                  type="button"
-                  onClick={() => toggleSelect(idx)}
-                  className="h-32 w-32 shrink-0 overflow-hidden rounded-xl bg-zinc-100"
-                >
-                  {s.images && s.images[0] ? (
-                     
-                    <img
-                      src={s.images[0]}
-                      alt={s.title}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <ImageIcon className="h-8 w-8 text-zinc-300" />
-                    </div>
-                  )}
-                </button>
-
-                {/* Content */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="line-clamp-2 text-sm font-bold text-zinc-900">
-                      {s.title}
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => toggleSelect(idx)}
-                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition ${
-                        s.selected
-                          ? "border-[#F58220] bg-[#F58220] text-white"
-                          : "border-zinc-300 bg-white text-transparent hover:border-[#F58220]"
-                      }`}
-                    >
-                      {s.selected && <CheckCircle2 className="h-4 w-4" />}
-                    </button>
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                    {s.brandName && (
-                      <span className="rounded-full bg-[#F58220]/10 px-2 py-0.5 font-bold text-[#F58220]">
-                        {s.brandName}
-                      </span>
-                    )}
-                    {s.categoryName && (
-                      <span className="rounded-full bg-zinc-100 px-2 py-0.5">
-                        {s.categoryName}
-                      </span>
-                    )}
-                    {s.source && (
-                      <span className="rounded-full bg-zinc-100 px-2 py-0.5">
-                        {s.source}
-                      </span>
-                    )}
-                  </div>
-
-                  {s.price && (
-                    <p className="mt-2 text-sm font-black text-[#F58220]">
-                      {formatCompactPrice(Number(s.price))}
-                    </p>
-                  )}
-
-                  {s.phone && (
-                    <p className="mt-2 inline-flex items-center gap-1 text-xs text-zinc-700">
-                      <Phone className="h-3.5 w-3.5 text-[#F58220]" />
-                      <span dir="ltr">{s.phone}</span>
-                    </p>
-                  )}
-
-                  {s.url && (
-                    <a
-                      href={s.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-2 block truncate text-[10px] text-blue-600 hover:underline"
-                      dir="ltr"
-                    >
-                      {s.url}
-                    </a>
-                  )}
-
-                  <div className="mt-3 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleImport(idx)}
-                      disabled={importing === `${idx}` || isImported}
-                      className="inline-flex h-9 items-center gap-1 rounded-lg bg-[#F58220] px-3 text-xs font-bold text-white transition hover:bg-[#ff8c38] disabled:opacity-50"
-                    >
-                      {isImported ? (
-                        <>
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          وارد شد
-                        </>
-                      ) : importing === `${idx}` ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <>
-                          <Plus className="h-3.5 w-3.5" />
-                          واردسازی
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
+        {results.map((s, index) => (
+          <article key={s.url || index} className="overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+            <div className="relative flex h-44 items-center justify-center bg-zinc-100">
+              <div className="flex flex-col items-center gap-2 text-zinc-400"><ImageIcon className="h-10 w-10 text-zinc-300" /><span className="text-[11px]">تصویر پس از بررسی حقوق و انتقال امن نمایش داده می‌شود</span></div>
+              <span className="absolute right-3 top-3 rounded-full bg-zinc-900/80 px-3 py-1 text-xs font-bold text-white">{sourceName(s.url)}</span>
+              {s.url && <a href={s.url} target="_blank" rel="noopener noreferrer" className="absolute left-3 top-3 rounded-lg bg-white p-2 text-zinc-700" aria-label="مشاهده آگهی منبع"><ExternalLink className="h-4 w-4" /></a>}
+            </div>
+            <div className="space-y-3 p-4">
+              <div className="flex items-start gap-3">
+                <input type="checkbox" checked={selected.has(index)} onChange={() => toggle(index)} disabled={imported.has(index)} className="mt-1 h-4 w-4 accent-[#F58220]" />
+                <h3 className="font-bold leading-6 text-zinc-900">{s.title || "آگهی بدون عنوان"}</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs text-zinc-600">
+                {s.price && <div className="flex items-center gap-1"><DollarSign className="h-3.5 w-3.5" />{fmt(s.price)} تومان</div>}
+                {s.year && <div className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />سال {fmt(s.year)}</div>}
+                {s.hours !== null && s.hours !== undefined && <div className="flex items-center gap-1"><Gauge className="h-3.5 w-3.5" />{fmt(s.hours)} ساعت</div>}
+                {s.location && <div className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{s.location}</div>}
+                <div className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{s.publishedAt ? new Date(s.publishedAt).toLocaleDateString("fa-IR") : "تاریخ انتشار نامشخص"}</div>
+                {s.phone && <div className="flex items-center gap-1" dir="ltr"><Phone className="h-3.5 w-3.5" />{s.phone}</div>}
+                {s.brand && <div>برند: {s.brand}</div>}
+                {s.category && <div>دسته پیشنهادی: {s.category}</div>}
+                {s.condition && <div>وضعیت: {s.condition}</div>}
+              </div>
+              {s.description && <p className="line-clamp-4 text-xs leading-6 text-zinc-500">{s.description}</p>}
+              <div className="flex items-center justify-between border-t border-zinc-100 pt-3">
+                {imported.has(index) ? <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700"><CheckCircle2 className="h-4 w-4" />ارسال‌شده برای بررسی</span> :
+                  <button type="button" onClick={() => importOne(s, index)} disabled={importing === index} className="inline-flex items-center gap-2 rounded-lg bg-[#F58220] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+                    {importing === index ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}ساخت پیش‌نویس برای بررسی
+                  </button>}
+                <span className="text-[10px] text-zinc-400">بدون انتشار خودکار</span>
               </div>
             </div>
-          );
-        })}
+          </article>
+        ))}
       </div>
     </div>
   );

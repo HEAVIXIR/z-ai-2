@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { hasPermission } from "@/lib/rbac";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 
@@ -98,7 +98,9 @@ Content rules:
 - Never include an H1 (#) at the start — start with ## directly.
 - Include a short conclusion section at the end.`;
 
-  const zai = await ZAI.create();
+  const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
   const completion = await zai.chat.completions.create({
     messages: [
       { role: "system", content: systemPrompt },

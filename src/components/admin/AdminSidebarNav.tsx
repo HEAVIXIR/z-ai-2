@@ -76,6 +76,18 @@ export default function AdminSidebarNav() {
   const pinnedSet = new Set(prefs.pinnedItems ?? []);
   const isCollapsed = prefs.sidebarCollapsed;
 
+  // Keep the fixed sidebar and content offset in sync with the persisted
+  // preference. The CSS fallback covers the first render before hydration.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--admin-sidebar-width",
+      isCollapsed ? "5rem" : "18rem",
+    );
+    return () => {
+      document.documentElement.style.removeProperty("--admin-sidebar-width");
+    };
+  }, [isCollapsed]);
+
   function togglePin(itemKey: string) {
     const current = new Set(prefs.pinnedItems ?? []);
     if (current.has(itemKey)) current.delete(itemKey);
@@ -232,21 +244,26 @@ export default function AdminSidebarNav() {
         return (
           <div key={group.key}>
             <button
-              onClick={() => toggleGroup(group.key)}
+              onClick={() => !isCollapsed && toggleGroup(group.key)}
+              title={isCollapsed ? group.titleFa : undefined}
+              aria-label={group.titleFa}
+              aria-expanded={isCollapsed ? undefined : isOpen}
               className={`flex w-full min-h-11 items-center gap-3 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
                 groupActive
                   ? "bg-zinc-800 text-white"
                   : "text-zinc-300 hover:bg-zinc-800 hover:text-white"
-              }`}
+              } ${isCollapsed ? "justify-center px-2" : ""}`}
             >
               <Icon size={19} className="shrink-0" />
-              <span className="flex-1 truncate text-right">{group.titleFa}</span>
-              <ChevronDown
-                size={16}
-                className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
-              />
+              {!isCollapsed && <span className="flex-1 truncate text-right">{group.titleFa}</span>}
+              {!isCollapsed && (
+                <ChevronDown
+                  size={16}
+                  className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
+                />
+              )}
             </button>
-            {isOpen && (
+            {!isCollapsed && isOpen && (
               <div className="mr-6 mt-1 space-y-1 border-r border-zinc-800 pr-3">
                 {group.items.filter((item) => !hiddenSet.has(item.key)).map((item) => {
                   const active =

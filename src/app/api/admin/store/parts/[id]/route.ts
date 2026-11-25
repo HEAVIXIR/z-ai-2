@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
+import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
+import { attachStagedPartImages, cleanupPartMediaUrls, parsePartImageUrls, parseStoredPartImageUrls, validatePartImageUrls } from "@/lib/store-part-media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,16 +16,40 @@ export const dynamic = "force-dynamic";
    ============================================================ */
 
 function serialize(p: any) {
+  // Explicit admin DTO: keep the fields consumed by the parts UI and never
+  // leak future/internal database columns through a model spread.
   return {
-    ...p,
+    id: p.id,
+    name: p.name,
+    nameFa: p.nameFa,
+    sku: p.sku,
+    categoryId: p.categoryId,
+    brandId: p.brandId,
+    description: p.description,
+    priceUsd: p.priceUsd,
+    oldPriceUsd: p.oldPriceUsd,
+    contactForPrice: p.contactForPrice,
+    stock: p.stock,
+    lowStockThreshold: p.lowStockThreshold,
     images: (() => {
       try { return JSON.parse(p.images || "[]"); } catch { return []; }
     })(),
     compatibleCars: (() => {
       try { return JSON.parse(p.compatibleCars || "[]"); } catch { return []; }
     })(),
+    sourceUrl: p.sourceUrl,
+    active: p.active,
+    featured: p.featured,
+    views: p.views,
+    soldCount: p.soldCount,
     createdAt: p.createdAt?.toISOString?.() ?? null,
     updatedAt: p.updatedAt?.toISOString?.() ?? null,
+    ...(p.category
+      ? { category: { id: p.category.id, name: p.category.name, slug: p.category.slug } }
+      : {}),
+    ...(p.brand
+      ? { brand: { id: p.brand.id, name: p.brand.name, slug: p.brand.slug } }
+      : {}),
   };
 }
 
@@ -63,9 +89,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   const { id } = await params;
   try {
     const body = await req.json();
+    if (Object.prototype.hasOwnProperty.call(body, "stock")) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "تغییر مستقیم موجودی از فرم قطعه مجاز نیست؛ از عملیات رسمی انبار استفاده کنید",
+        },
+        { status: 409 },
+      );
+    }
     const existing = await storeDb.part.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
 
@@ -77,6 +115,22 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const data: any = {};
+    let nextImageUrls: string[] | null = null;
+    let stagedMediaAssets: import("@/lib/media-service").MediaAsset[] = [];
+    if (Object.prototype.hasOwnProperty.call(body, "images")) {
+      const existingImageUrls = parseStoredPartImageUrls(existing.images);
+      const parsedImages = parsePartImageUrls(body.images, existingImageUrls);
+      if (!parsedImages) {
+        return NextResponse.json({ success: false, error: "فهرست تصاویر نامعتبر است؛ فقط ۲۰ تصویر داخلی رسانه مجاز است." }, { status: 400 });
+      }
+      const validation = await validatePartImageUrls(parsedImages, user.id, id, existingImageUrls);
+      if (!validation.ok) {
+        return NextResponse.json({ success: false, error: validation.error }, { status: validation.status });
+      }
+      nextImageUrls = parsedImages;
+      stagedMediaAssets = validation.staged;
+      data.images = JSON.stringify(parsedImages);
+    }
     if (body.name !== undefined) data.name = body.name;
     if (body.nameFa !== undefined) data.nameFa = body.nameFa || null;
     if (body.sku !== undefined) data.sku = body.sku;
@@ -86,9 +140,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.priceUsd !== undefined) data.priceUsd = Number(body.priceUsd) || 0;
     if (body.oldPriceUsd !== undefined) data.oldPriceUsd = body.oldPriceUsd ? Number(body.oldPriceUsd) : null;
     if (body.contactForPrice !== undefined) data.contactForPrice = !!body.contactForPrice;
-    if (body.stock !== undefined) data.stock = Number(body.stock) || 0;
     if (body.lowStockThreshold !== undefined) data.lowStockThreshold = Number(body.lowStockThreshold) || 5;
-    if (body.images !== undefined) data.images = JSON.stringify(body.images || []);
+
     if (body.compatibleCars !== undefined) data.compatibleCars = JSON.stringify(body.compatibleCars || []);
     if (body.sourceUrl !== undefined) data.sourceUrl = body.sourceUrl || null;
     if (body.active !== undefined) data.active = !!body.active;
@@ -127,14 +180,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       },
     });
 
-    return NextResponse.json({ success: true, data: serialize(part) });
+    const mediaResult = await attachStagedPartImages(stagedMediaAssets, part.id, user.id);
+    let mediaCleanupPendingCount = 0;
+    if (nextImageUrls) {
+      const removedUrls = parseStoredPartImageUrls(existing.images).filter((url) => !nextImageUrls!.includes(url));
+      const cleanupResult = await cleanupPartMediaUrls(removedUrls, id, user.id);
+      mediaCleanupPendingCount = cleanupResult.pendingCount;
+    }
+    return NextResponse.json({
+      success: true,
+      data: serialize(part),
+      mediaStatus: mediaResult.pendingCount > 0 ? "PENDING" : "ATTACHED",
+      mediaPendingCount: mediaResult.pendingCount,
+      mediaCleanupPendingCount,
+    });
   } catch (e: any) {
     console.error("[store/parts PATCH] error:", e);
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
   }
 }
 
-export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -144,11 +210,19 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   const { id } = await params;
   try {
     const existing = await storeDb.part.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "یافت نشد" }, { status: 404 });
+    const existingImageUrls = parseStoredPartImageUrls(existing.images);
+    // Delete the Part row first: foreign-key constraints must never leave a
+    // valid Part record with its media already removed. Any failed B2 cleanup
+    // is private/non-addressable and can be retried by the orphan cleanup job.
     await storeDb.part.delete({ where: { id } });
+    const cleanup = await cleanupPartMediaUrls(existingImageUrls, id, user.id, true);
 
     await logAudit({
       actorId: user.id,
@@ -164,7 +238,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
       },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, mediaCleanupPendingCount: cleanup.pendingCount });
   } catch (e: any) {
     return NextResponse.json({ success: false, error: e?.message }, { status: 500 });
   }

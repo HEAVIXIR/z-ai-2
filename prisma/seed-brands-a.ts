@@ -21,6 +21,7 @@
    Run:  bunx tsx prisma/seed-brands-a.ts
 */
 import { PrismaClient } from "@prisma/client";
+import { normalizeAliasValue } from "../src/lib/brand-alias";
 
 const db = new PrismaClient();
 
@@ -33,15 +34,7 @@ const slugifyEn = (s: string) =>
     .replace(/^-+|-+$/g, "")
     .replace(/-{2,}/g, "-");
 
-const normalizeAlias = (s: string) =>
-  s
-    .trim()
-    .toLowerCase()
-    .replace(/ي/g, "ی")
-    .replace(/ك/g, "ک")
-    .replace(/[\u200c\u200d]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+const normalizeAlias = normalizeAliasValue;
 
 type BrandSeed = {
   name: string;
@@ -56,6 +49,8 @@ type BrandSeed = {
   industries: string[];
   aliases?: string[];
   featured?: boolean;
+  /** Explicitly refresh curated identity metadata for a reviewed legacy correction. */
+  refreshIdentity?: boolean;
 };
 
 // ════════════════════════════════════════════════════════════
@@ -785,7 +780,8 @@ async function upsertBrand(b: BrandSeed) {
       brandFamily: b.family ? { connect: { slug: b.family } } : undefined,
       parentBrand: b.parent ? { connect: { slug: b.parent } } : undefined,
     },
-    update: {
+    // Preserve curated identity by default; refresh only with an explicit reviewed opt-in.
+    update: b.refreshIdentity ? {
       name: b.name,
       nameEn: b.nameEn,
       country: b.country ?? null,
@@ -796,7 +792,7 @@ async function upsertBrand(b: BrandSeed) {
       featured: !!b.featured,
       brandFamily: b.family ? { connect: { slug: b.family } } : undefined,
       parentBrand: b.parent ? { connect: { slug: b.parent } } : undefined,
-    },
+    } : {},
   });
 
   // Industries — upsert each (idempotent; never removes existing rows)
@@ -808,30 +804,32 @@ async function upsertBrand(b: BrandSeed) {
     });
   }
 
+  // Canonical Persian + English names are searchable aliases too.
+  // This guarantees case-insensitive Latin search through normalizedValue,
+  // even when the underlying PostgreSQL nameEn column is case-sensitive.
+  const aliases = new Set([b.name, b.nameEn, ...(b.aliases ?? [])]);
   // Aliases — upsert by [brandId, normalizedValue]
-  if (b.aliases) {
-    for (const a of b.aliases) {
-      const norm = normalizeAlias(a);
-      if (!norm) continue;
-      const language =
-        /[a-zA-Z]/.test(a) && /[\u0600-\u06FF]/.test(a)
-          ? "mixed"
-          : /[\u0600-\u06FF]/.test(a)
+  for (const a of aliases) {
+    const norm = normalizeAlias(a);
+    if (!norm) continue;
+    const language =
+      /[a-zA-Z]/.test(a) && /[\u0600-\u06FF]/.test(a)
+        ? "mixed"
+        : /[\u0600-\u06FF]/.test(a)
           ? "fa"
-          : "en";
-      await db.brandAlias.upsert({
-        where: { brandId_normalizedValue: { brandId: brand.id, normalizedValue: norm } },
-        create: {
-          brandId: brand.id,
-          value: a,
-          normalizedValue: norm,
-          language,
-          type: "COMMON",
-          confidence: 80,
-        },
-        update: {},
-      });
-    }
+        : "en";
+    await db.brandAlias.upsert({
+      where: { brandId_normalizedValue: { brandId: brand.id, normalizedValue: norm } },
+      create: {
+        brandId: brand.id,
+        value: a,
+        normalizedValue: norm,
+        language,
+        type: "COMMON",
+        confidence: 80,
+      },
+      update: {},
+    });
   }
 
   return brand;
@@ -841,15 +839,23 @@ async function upsertBrand(b: BrandSeed) {
 // MAIN
 // ════════════════════════════════════════════════════════════
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
+  }
+
   console.log("Seeding industries...");
   for (const ind of INDUSTRIES) {
-    await db.industry.upsert({ where: { key: ind.key }, create: ind, update: ind });
+    await db.industry.upsert({ where: { key: ind.key }, create: ind, update: {} });
   }
   console.log(`  ✓ ${INDUSTRIES.length} industries`);
 
   console.log("Seeding families...");
   for (const f of FAMILIES) {
-    await db.brandFamily.upsert({ where: { slug: f.slug }, create: f, update: f });
+    await db.brandFamily.upsert({ where: { slug: f.slug }, create: f, update: {} });
   }
   console.log(`  ✓ ${FAMILIES.length} families`);
 

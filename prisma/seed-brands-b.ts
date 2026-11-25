@@ -27,6 +27,7 @@
    Run:  bunx tsx prisma/seed-brands-b.ts
 */
 import { PrismaClient } from "@prisma/client";
+import { normalizeAliasValue } from "../src/lib/brand-alias";
 
 const db = new PrismaClient();
 
@@ -39,15 +40,7 @@ const slugifyEn = (s: string) =>
     .replace(/^-+|-+$/g, "")
     .replace(/-{2,}/g, "-");
 
-const normalizeAlias = (s: string) =>
-  s
-    .trim()
-    .toLowerCase()
-    .replace(/ي/g, "ی")
-    .replace(/ك/g, "ک")
-    .replace(/[\u200c\u200d]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+const normalizeAlias = normalizeAliasValue;
 
 type BrandSeed = {
   name: string;
@@ -62,6 +55,8 @@ type BrandSeed = {
   industries: string[];
   aliases?: string[];
   featured?: boolean;
+  /** Explicitly allow identity metadata updates for a reviewed legacy correction. */
+  refreshIdentity?: boolean;
 };
 
 // ════════════════════════════════════════════════════════════
@@ -105,8 +100,8 @@ const BRANDS: BrandSeed[] = [
     aliases: ["داف"],
   },
   {
-    // Already in DB (seed.ts) — fix wrong name (was "ایکاروس"), add TRUCKS + INDUSTRIAL_VEHICLES
-    name: "ایوکو", nameEn: "Iveco", country: "Italy",
+    // Explicit legacy correction: fix wrong name (was "ایکاروس"), then add industries.
+    name: "ایوکو", nameEn: "Iveco", country: "Italy", refreshIdentity: true,
     industries: ["TRUCKS", "INDUSTRIAL_VEHICLES"],
     aliases: ["ایوکو"],
   },
@@ -1227,7 +1222,10 @@ async function upsertBrand(b: BrandSeed) {
       brandFamily: b.family ? { connect: { slug: b.family } } : undefined,
       parentBrand: b.parent ? { connect: { slug: b.parent } } : undefined,
     },
-    update: {
+    // Phase B is additive for existing brands: preserve curated identity,
+    // featured state, family, parent, website, and verification by default.
+    // Only an explicitly reviewed correction may refresh those fields.
+    update: b.refreshIdentity ? {
       name: b.name,
       nameEn: b.nameEn,
       country: b.country ?? null,
@@ -1238,7 +1236,7 @@ async function upsertBrand(b: BrandSeed) {
       featured: !!b.featured,
       brandFamily: b.family ? { connect: { slug: b.family } } : undefined,
       parentBrand: b.parent ? { connect: { slug: b.parent } } : undefined,
-    },
+    } : {},
   });
 
   // Industries — upsert each (idempotent; never removes existing rows)
@@ -1250,30 +1248,32 @@ async function upsertBrand(b: BrandSeed) {
     });
   }
 
+  // Canonical Persian + English names are searchable aliases too.
+  // This guarantees case-insensitive Latin search through normalizedValue,
+  // even when the underlying PostgreSQL nameEn column is case-sensitive.
+  const aliases = new Set([b.name, b.nameEn, ...(b.aliases ?? [])]);
   // Aliases — upsert by [brandId, normalizedValue]
-  if (b.aliases) {
-    for (const a of b.aliases) {
-      const norm = normalizeAlias(a);
-      if (!norm) continue;
-      const language =
-        /[a-zA-Z]/.test(a) && /[\u0600-\u06FF]/.test(a)
-          ? "mixed"
-          : /[\u0600-\u06FF]/.test(a)
+  for (const a of aliases) {
+    const norm = normalizeAlias(a);
+    if (!norm) continue;
+    const language =
+      /[a-zA-Z]/.test(a) && /[\u0600-\u06FF]/.test(a)
+        ? "mixed"
+        : /[\u0600-\u06FF]/.test(a)
           ? "fa"
-          : "en";
-      await db.brandAlias.upsert({
-        where: { brandId_normalizedValue: { brandId: brand.id, normalizedValue: norm } },
-        create: {
-          brandId: brand.id,
-          value: a,
-          normalizedValue: norm,
-          language,
-          type: "COMMON",
-          confidence: 80,
-        },
-        update: {},
-      });
-    }
+        : "en";
+    await db.brandAlias.upsert({
+      where: { brandId_normalizedValue: { brandId: brand.id, normalizedValue: norm } },
+      create: {
+        brandId: brand.id,
+        value: a,
+        normalizedValue: norm,
+        language,
+        type: "COMMON",
+        confidence: 80,
+      },
+      update: {},
+    });
   }
 
   return brand;
@@ -1283,6 +1283,14 @@ async function upsertBrand(b: BrandSeed) {
 // MAIN
 // ════════════════════════════════════════════════════════════
 async function main() {
+  if (!process.argv.includes("--apply")) {
+    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
+    return;
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
+  }
+
   // Guard: Phase A must have run first (industries + families exist).
   const industryCount = await db.industry.count();
   if (industryCount === 0) {

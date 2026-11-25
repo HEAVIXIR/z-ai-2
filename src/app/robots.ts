@@ -1,20 +1,14 @@
 import type { MetadataRoute } from "next";
 import { absoluteUrl } from "@/lib/seo";
-import { SITE_BASE_URL } from "@/lib/site-config";
+import { IS_PREVIEW_DEPLOYMENT, SITE_BASE_URL } from "@/lib/site-config";
 
-/* ============================================================
-   HEAVIX — robots.ts (P2-28)
-   HEAVIX-P0-IMPLEMENTATION-PLAN.md P2-28
-   ------------------------------------------------------------
-   Next.js metadata-route robots.txt.
-   Allow all, point to the sitemap.
-
-   STEP 13.00: SITE_BASE_URL is now imported from @/lib/site-config
-   (single source of truth). The previous local fallback to
-   "https://havix.ir" is removed.
-   ============================================================ */
-
-export const revalidate = 3600; // 1 hour
+/**
+ * Public pages remain crawlable. Private UI routes publish page-level
+ * noindex metadata, so crawlers must be allowed to fetch them and observe
+ * that directive. Only API endpoints are disallowed at crawl level.
+ * Preview intentionally omits the sitemap.
+ */
+export const revalidate = 3600;
 export const runtime = "nodejs";
 
 export default function robots(): MetadataRoute.Robots {
@@ -23,11 +17,14 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        // Disallow admin + API + auth routes — they're not for indexing.
-        disallow: ["/admin/", "/api/", "/dashboard/", "/seller/", "/login", "/register"],
+        disallow: ["/api/"],
       },
     ],
-    sitemap: absoluteUrl("/sitemap.xml"),
-    host: SITE_BASE_URL,
+    ...(!IS_PREVIEW_DEPLOYMENT
+      ? {
+          sitemap: absoluteUrl("/sitemap.xml"),
+          host: SITE_BASE_URL,
+        }
+      : {}),
   };
 }

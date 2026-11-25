@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
+import { getSEO } from "@/lib/seo";
 import { toFa, faDate } from "@/lib/format";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -30,25 +32,38 @@ export async function generateMetadata({
   const slug = decodeURIComponent(rawSlug);
   const company = await db.company.findFirst({
     where: { slug, status: "ACTIVE" },
-    select: { name: true, slug: true, description: true, city: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      city: true,
+      _count: { select: { listings: { where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } } } } },
+    },
   });
   if (!company) {
-    return { title: "شرکت یافت نشد" };
+    return { title: "شرکت یافت نشد", robots: { index: false, follow: false } };
   }
-  const title = `${company.name} — ماشین‌آلات سنگین`;
+  const seo = await getSEO("Company", company.id);
+  const thin = !company.description?.trim() && company._count.listings === 0;
+  const citySuffix = company.city ? " در " + company.city : "";
+  const title = seo?.metaTitle?.trim() || `${company.name} — ماشین‌آلات سنگین`;
   const description =
+    seo?.metaDescription?.trim() ||
     company.description?.slice(0, 155) ||
-    `مشاهده آگهی‌های ماشین‌آلات سنگین ${company.name}${company.city ? ` در ${company.city}` : ""}. اطلاعات تماس، تخصص‌ها و لیست تجهیزات.`;
+    `مشاهده آگهی‌های ماشین‌آلات سنگین ${company.name}${citySuffix}. اطلاعات تماس، تخصص‌ها و لیست تجهیزات.`;
   return {
     title,
     description,
-    alternates: { canonical: `/companies/${company.slug}` },
+    alternates: { canonical: seo?.canonicalUrl?.trim() || `/companies/${encodeURIComponent(company.slug)}` },
     openGraph: {
-      title,
-      description,
+      title: seo?.ogTitle?.trim() || title,
+      description: seo?.ogDescription?.trim() || description,
+      images: seo?.ogImage ? [seo.ogImage] : undefined,
       type: "website",
       locale: "fa_IR",
     },
+    robots: { index: !thin && (seo?.robotsIndex ?? true), follow: seo?.robotsFollow ?? true },
   };
 }
 
@@ -64,7 +79,7 @@ export default async function CompanyPage({
     db.company.findFirst({
       where: { slug, status: "ACTIVE" },
       include: {
-        _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+        _count: { select: { listings: { where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } } } } },
       },
     }),
     db.category.findMany({
@@ -82,7 +97,7 @@ export default async function CompanyPage({
     .catch(() => {});
 
   const listings = await db.listing.findMany({
-    where: { companyId: company.id, status: "PUBLISHED" },
+    where: { companyId: company.id, status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
     orderBy: [{ featured: "desc" }, { publishedAt: "desc" }],
     take: 24,
     include: {

@@ -532,7 +532,8 @@ function PlanModal({
                 className={inputCls}
               >
                 <option value="">—</option>
-                <option value="BASIC">پایه</option>
+                <option value="BASIC">ایمیلی (پایه)</option>
+                <option value="PHONE">تلفنی</option>
                 <option value="PRIORITY">اولویت‌دار</option>
                 <option value="DEDICATED">اختصاصی</option>
               </select>

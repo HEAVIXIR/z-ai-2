@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+import { getAIProvider } from "@/lib/ai-provider-router";
 /* ============================================================
    STEP 11.34 — P1-A Security Fix: GET /api/ai-gateway auth
    ------------------------------------------------------------
@@ -54,8 +55,16 @@ vi.mock("@/lib/request-context", () => ({
 }));
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn(async () => ({})) }));
 vi.mock("@/lib/error-tracking", () => ({ trackError: vi.fn() }));
-vi.mock("z-ai-web-dev-sdk", () => ({
-  default: { create: vi.fn(async () => ({ chat: { completions: { create: vi.fn() } } })) },
+vi.mock("@/lib/ai-provider-router", () => ({
+  getAIProvider: vi.fn(() => ({
+    ok: true as const,
+    provider: "zai" as const,
+    model: "test-model",
+    client: {
+chat: { completions: { create: vi.fn() } }
+    },
+  })),
+  getZAISDK: vi.fn(() => ({ ok: false as const, reason: "non-chat operations not mocked in this test" })),
 }));
 
 const { GET } = await import("@/app/api/ai-gateway/route");

@@ -66,11 +66,11 @@ export const getCachedHotSearches = unstable_cache(
   { revalidate: 3600, tags: [HOMEPAGE_CACHE_TAGS.hotSearches] },
 );
 
-// Q16: homePageSection.findMany({ where: { active: true }, orderBy: order ASC })
+// Q16: homePageSection.findMany({ orderBy: order ASC })
+// Keep inactive rows: mergeHomepageSections needs them to preserve admin-disabled sections.
 export const getCachedHomePageSections = unstable_cache(
   async () => {
     return db.homePageSection.findMany({
-      where: { active: true },
       orderBy: { order: 'asc' },
     });
   },
@@ -95,7 +95,7 @@ export const getCachedHeroConfig = unstable_cache(
 export const getCachedTopBrands = unstable_cache(
   async () => {
     return db.brand.findMany({
-      where: { active: true },
+      where: { active: true, status: "ACTIVE" },
       orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
       include: { _count: { select: { listings: { where: { status: 'PUBLISHED' } } } } },
       take: 20,
@@ -121,7 +121,7 @@ export const getCachedCatalogCategories = unstable_cache(
 // Q9: brand.count({ where: { active: true } })
 export const getCachedBrandCount = unstable_cache(
   async () => {
-    return db.brand.count({ where: { active: true } });
+    return db.brand.count({ where: { active: true, status: "ACTIVE" } });
   },
   ['brand', 'count', 'active'],
   { revalidate: 300, tags: [HOMEPAGE_CACHE_TAGS.brands] },
@@ -171,8 +171,7 @@ export const getCachedL1Children = unstable_cache(
 export const getCachedBrandDisplayIds = unstable_cache(
   async () => {
     return db.brandDisplay.findMany({
-      where: { showOnHomepage: true },
-      select: { brandId: true },
+      select: { brandId: true, showOnHomepage: true },
     });
   },
   ['brandDisplay', 'showOnHomepage'],
@@ -197,7 +196,7 @@ export const getCachedTrustedBrands = unstable_cache(
   async (ids: string[]) => {
     if (ids.length === 0) return [];
     return db.brand.findMany({
-      where: { id: { in: ids }, active: true },
+      where: { id: { in: ids }, active: true, status: "ACTIVE" },
       orderBy: [{ featured: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
       take: 20,
       include: { _count: { select: { listings: { where: { status: 'PUBLISHED' } } } } },

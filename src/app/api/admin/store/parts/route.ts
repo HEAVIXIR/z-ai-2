@@ -4,27 +4,90 @@ import { storeDb } from "@/lib/store-db";
 import { requirePermission } from "@/lib/authorization";
 import { checkCsrf } from "@/lib/csrf";
 import { logAudit } from "@/lib/audit";
+import { readBoundedJson } from "@/lib/read-bounded-json";
+import { attachStagedPartImages, parsePartImageUrls, validatePartImageUrls } from "@/lib/store-part-media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const MAX_PART_CREATE_BODY_BYTES = 512 * 1024;
+const MAX_PART_STOCK = 1_000_000;
+
+function optionalText(value: unknown, maxLength: number): string | null | undefined {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > maxLength) return undefined;
+  return normalized;
+}
+
+function boundedNumber(value: unknown, options: { optional?: boolean; integer?: boolean } = {}): number | null | undefined {
+  if (value === undefined || value === null || value === "") return options.optional ? null : undefined;
+  if (typeof value !== "number" && typeof value !== "string") return undefined;
+  if (typeof value === "string" && !value.trim()) return options.optional ? null : undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  if (options.integer && !Number.isInteger(parsed)) return undefined;
+  return parsed;
+}
+
+function boundedStringArray(value: unknown, maxItems: number, maxLength: number): string[] | null {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > maxItems) return null;
+  const normalized = value.map((item) => typeof item === "string" ? item.trim() : "");
+  if (normalized.some((item) => !item || item.length > maxLength)) return null;
+  return normalized;
+}
+
+function safeHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 /* ============================================================
    /api/admin/store/parts — HEAVIX parts list + create
-   STEP STORE-2A: Permission gate wired — GET requires store.read,
-   POST requires store.manage (mirrors 6D pricing/observations pattern).
+   Manual creation is a first-class zero-AI path. It must not
+   require a scraper, provider credential, quota reservation or
+   source URL. Store catalog writes remain permissioned/audited.
    ============================================================ */
 
 function serialize(p: any) {
   return {
-    ...p,
+    id: p.id,
+    name: p.name,
+    nameFa: p.nameFa,
+    sku: p.sku,
+    categoryId: p.categoryId,
+    brandId: p.brandId,
+    description: p.description,
+    priceUsd: p.priceUsd,
+    oldPriceUsd: p.oldPriceUsd,
+    contactForPrice: p.contactForPrice,
+    stock: p.stock,
+    lowStockThreshold: p.lowStockThreshold,
     images: (() => {
       try { return JSON.parse(p.images || "[]"); } catch { return []; }
     })(),
     compatibleCars: (() => {
       try { return JSON.parse(p.compatibleCars || "[]"); } catch { return []; }
     })(),
+    sourceUrl: p.sourceUrl,
+    active: p.active,
+    featured: p.featured,
+    views: p.views,
+    soldCount: p.soldCount,
     createdAt: p.createdAt?.toISOString?.() ?? null,
     updatedAt: p.updatedAt?.toISOString?.() ?? null,
+    ...(p.category
+      ? { category: { id: p.category.id, name: p.category.name, slug: p.category.slug } }
+      : {}),
+    ...(p.brand
+      ? { brand: { id: p.brand.id, name: p.brand.name, slug: p.brand.slug } }
+      : {}),
   };
 }
 
@@ -75,10 +138,10 @@ export async function GET(req: Request) {
       data: items.map(serialize),
       total,
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error("[store/parts GET] error:", e);
     return NextResponse.json(
-      { success: false, error: e?.message ?? "Internal error" },
+      { success: false, error: "بارگذاری قطعات ناموفق بود." },
       { status: 500 },
     );
   }
@@ -91,47 +154,107 @@ export async function POST(req: Request) {
   }
   try {
     await requirePermission(user.id, 'store.manage');
-    if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   } catch {
     return NextResponse.json({ error: "Forbidden: requires store.manage" }, { status: 403 });
   }
-  try {
-    const body = await req.json();
-    const { name, nameFa, sku, categoryId, brandId, description, priceUsd, oldPriceUsd, contactForPrice, stock, lowStockThreshold, images, compatibleCars, sourceUrl, active, featured } = body;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
 
-    if (!name || !sku || !categoryId || priceUsd === undefined) {
-      return NextResponse.json(
-        { success: false, error: "نام، SKU، دسته‌بندی و قیمت الزامی هستند" },
-        { status: 400 },
-      );
+  const parsed = await readBoundedJson<Record<string, unknown>>(req, MAX_PART_CREATE_BODY_BYTES);
+  if (!parsed.ok) {
+    return NextResponse.json({ success: false, error: parsed.error }, { status: parsed.status });
+  }
+  const body = parsed.value;
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ success: false, error: "بدنه درخواست معتبر نیست." }, { status: 400 });
+  }
+
+  const name = optionalText(body.name, 180);
+  const nameFa = optionalText(body.nameFa, 180);
+  const sku = optionalText(body.sku, 100);
+  const categoryId = optionalText(body.categoryId, 128);
+  const brandId = optionalText(body.brandId, 128);
+  const description = optionalText(body.description, 5000);
+  const sourceUrl = optionalText(body.sourceUrl, 2000);
+  const contactForPrice = body.contactForPrice === true;
+  const priceUsd = boundedNumber(body.priceUsd, { optional: contactForPrice });
+  const oldPriceUsd = boundedNumber(body.oldPriceUsd, { optional: true });
+  const parsedStock = boundedNumber(body.stock, { optional: true, integer: true });
+  const parsedLowStockThreshold = boundedNumber(body.lowStockThreshold, { optional: true, integer: true });
+  const stock = parsedStock ?? 0;
+  const lowStockThreshold = parsedLowStockThreshold ?? 5;
+  const images = parsePartImageUrls(body.images);
+  const compatibleCars = boundedStringArray(body.compatibleCars, 100, 160);
+  const active = body.active === undefined ? true : body.active;
+  const featured = body.featured === undefined ? false : body.featured;
+
+  if (!name || !sku || !categoryId) {
+    return NextResponse.json({ success: false, error: "نام، SKU و دسته‌بندی الزامی هستند." }, { status: 400 });
+  }
+  if (nameFa === undefined || description === undefined || sourceUrl === undefined) {
+    return NextResponse.json({ success: false, error: "یکی از فیلدهای متنی نامعتبر یا بیش از حد مجاز است." }, { status: 400 });
+  }
+  if (body.contactForPrice !== undefined && typeof body.contactForPrice !== "boolean") {
+    return NextResponse.json({ success: false, error: "وضعیت قیمت نامعتبر است." }, { status: 400 });
+  }
+  if (priceUsd === undefined || oldPriceUsd === undefined || parsedStock === undefined || parsedLowStockThreshold === undefined) {
+    return NextResponse.json({ success: false, error: "قیمت یا موجودی باید عدد معتبر و غیرمنفی باشد." }, { status: 400 });
+  }
+  if (stock > MAX_PART_STOCK || lowStockThreshold > MAX_PART_STOCK) {
+    return NextResponse.json({ success: false, error: "مقدار موجودی از حد مجاز بیشتر است." }, { status: 400 });
+  }
+  if (typeof active !== "boolean" || typeof featured !== "boolean") {
+    return NextResponse.json({ success: false, error: "وضعیت فعال یا ویژه نامعتبر است." }, { status: 400 });
+  }
+  if (!images || !compatibleCars) {
+    return NextResponse.json({ success: false, error: "فهرست تصاویر یا خودروهای سازگار نامعتبر است. تصاویر باید URL داخلی رسانه باشند و حداکثر ۲۰ مورد ثبت شوند." }, { status: 400 });
+  }
+  const mediaValidation = await validatePartImageUrls(images, user.id);
+  if (!mediaValidation.ok) {
+    return NextResponse.json({ success: false, error: mediaValidation.error }, { status: mediaValidation.status });
+  }
+  if (sourceUrl && !safeHttpUrl(sourceUrl)) {
+    return NextResponse.json({ success: false, error: "آدرس منبع باید یک URL معتبر HTTP یا HTTPS باشد." }, { status: 400 });
+  }
+
+  try {
+    const [category, brand] = await Promise.all([
+      storeDb.category.findUnique({ where: { id: categoryId }, select: { id: true, name: true, slug: true } }),
+      brandId
+        ? storeDb.brand.findFirst({ where: { id: brandId, active: true }, select: { id: true } })
+        : Promise.resolve(null),
+    ]);
+    if (!category) {
+      return NextResponse.json({ success: false, error: "دسته‌بندی انتخاب‌شده وجود ندارد." }, { status: 400 });
+    }
+    if (brandId && !brand) {
+      return NextResponse.json({ success: false, error: "برند انتخاب‌شده وجود ندارد یا غیرفعال است." }, { status: 400 });
     }
 
-    const existing = await storeDb.part.findUnique({ where: { sku } });
+    const existing = await storeDb.part.findUnique({ where: { sku }, select: { id: true } });
     if (existing) {
-      return NextResponse.json(
-        { success: false, error: "SKU تکراری است" },
-        { status: 400 },
-      );
+      return NextResponse.json({ success: false, error: "SKU تکراری است." }, { status: 409 });
     }
 
     const part = await storeDb.part.create({
       data: {
         name,
-        nameFa: nameFa || null,
+        nameFa,
         sku,
         categoryId,
-        brandId: brandId || null,
-        description: description || null,
-        priceUsd: Number(priceUsd) || 0,
-        oldPriceUsd: oldPriceUsd ? Number(oldPriceUsd) : null,
-        contactForPrice: contactForPrice === true,
-        stock: Number(stock) || 0,
-        lowStockThreshold: Number(lowStockThreshold) || 5,
-        images: JSON.stringify(images || []),
-        compatibleCars: JSON.stringify(compatibleCars || []),
-        sourceUrl: sourceUrl || null,
-        active: active !== false,
-        featured: featured === true,
+        brandId,
+        description,
+        priceUsd: priceUsd ?? 0,
+        oldPriceUsd,
+        contactForPrice,
+        stock,
+        lowStockThreshold,
+        images: JSON.stringify(images),
+        compatibleCars: JSON.stringify(compatibleCars),
+        sourceUrl,
+        active,
+        featured,
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },
@@ -141,9 +264,9 @@ export async function POST(req: Request) {
 
     await logAudit({
       actorId: user.id,
-      actorType: 'ADMIN',
-      action: 'store.part.create',
-      entityType: 'Part',
+      actorType: "ADMIN",
+      action: "store.part.create",
+      entityType: "Part",
       entityId: part.id,
       after: {
         name: part.name,
@@ -154,14 +277,22 @@ export async function POST(req: Request) {
         stock: part.stock,
         active: part.active,
         featured: part.featured,
+        contactForPrice: part.contactForPrice,
+        sourceUrl: part.sourceUrl,
       },
     });
 
-    return NextResponse.json({ success: true, data: serialize(part) });
-  } catch (e: any) {
-    console.error("[store/parts POST] error:", e);
+    const mediaResult = await attachStagedPartImages(mediaValidation.staged, part.id, user.id);
+    return NextResponse.json({
+      success: true,
+      data: serialize(part),
+      mediaStatus: mediaResult.pendingCount > 0 ? "PENDING" : "ATTACHED",
+      mediaPendingCount: mediaResult.pendingCount,
+    }, { status: 201 });
+  } catch (e) {
+    console.error("[store/parts POST] failed:", e);
     return NextResponse.json(
-      { success: false, error: e?.message ?? "Internal error" },
+      { success: false, error: "ثبت قطعه ناموفق بود. لطفاً ورودی‌ها را بررسی و دوباره تلاش کنید." },
       { status: 500 },
     );
   }

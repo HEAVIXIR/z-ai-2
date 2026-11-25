@@ -133,7 +133,7 @@ export default async function ContentDecayPage() {
                 )}
                 <div className="min-w-0">
                   <a
-                    href={`/knowledge/${a.slug}`}
+                    href={`/articles/${a.slug}`}
                     target="_blank"
                     className="block truncate text-sm font-bold text-zinc-900 hover:text-[#F58220]"
                   >

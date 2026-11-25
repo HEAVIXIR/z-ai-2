@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
+import { validateListingAttributeValues } from "@/lib/listing-attributes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -112,6 +114,9 @@ export async function GET(_req: Request, { params }: Args) {
    Returns: { ok: true, count }
    ============================================================ */
 export async function PUT(req: Request, { params }: Args) {
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     if (!id) {
@@ -129,7 +134,7 @@ export async function PUT(req: Request, { params }: Args) {
 
     const listing = await db.listing.findUnique({
       where: { id },
-      select: { id: true, sellerId: true },
+      select: { id: true, sellerId: true, categoryId: true, modelId: true },
     });
     if (!listing) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
@@ -139,129 +144,29 @@ export async function PUT(req: Request, { params }: Args) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const incoming: any[] = Array.isArray(body?.values) ? body.values : [];
-    if (incoming.length === 0) {
+    const incoming: unknown[] = Array.isArray(body?.values) ? body.values : [];
+    const validation = await validateListingAttributeValues(
+      db,
+      { categoryId: listing.categoryId, modelId: listing.modelId },
+      incoming,
+      isAdmin,
+    );
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+    if (validation.values.length === 0) {
       return NextResponse.json({ ok: true, count: 0 });
     }
 
-    // Validate that all attributeIds exist
-    const attrIds = Array.from(
-      new Set(incoming.map((v) => String(v.attributeId)).filter(Boolean)),
+    const ops = validation.values.map((value) =>
+      db.listingAttributeValue.upsert({
+        where: {
+          listingId_attributeId: { listingId: id, attributeId: value.attributeId },
+        },
+        create: { listingId: id, ...value },
+        update: value,
+      }),
     );
-    if (attrIds.length === 0) {
-      return NextResponse.json(
-        { error: "attributeId is required for each value" },
-        { status: 400 },
-      );
-    }
-    const attrs = await db.attributeDefinition.findMany({
-      where: { id: { in: attrIds } },
-      select: { id: true, type: true },
-    });
-    const attrMap = new Map(attrs.map((a) => [a.id, a]));
-    const missing = attrIds.filter((aid) => !attrMap.has(aid));
-    if (missing.length) {
-      return NextResponse.json(
-        { error: `Unknown attributeId: ${missing.join(", ")}` },
-        { status: 400 },
-      );
-    }
-
-    // Build the upsert operations
-    const ops = incoming
-      .filter((v) => v && v.attributeId && attrMap.has(String(v.attributeId)))
-      .map((v) => {
-        const aid = String(v.attributeId);
-        const dateValue =
-          v.dateValue === undefined || v.dateValue === null || v.dateValue === ""
-            ? null
-            : new Date(v.dateValue);
-        return db.listingAttributeValue.upsert({
-          where: {
-            listingId_attributeId: { listingId: id, attributeId: aid },
-          },
-          create: {
-            listingId: id,
-            attributeId: aid,
-            textValue:
-              v.textValue === undefined || v.textValue === null
-                ? null
-                : String(v.textValue),
-            numberValue:
-              v.numberValue === undefined || v.numberValue === null || v.numberValue === ""
-                ? null
-                : Number(v.numberValue),
-            booleanValue:
-              v.booleanValue === undefined || v.booleanValue === null
-                ? null
-                : Boolean(v.booleanValue),
-            dateValue: isNaN(dateValue?.getTime() ?? NaN) ? null : dateValue,
-            optionId:
-              v.optionId === undefined || v.optionId === null || v.optionId === ""
-                ? null
-                : String(v.optionId),
-            unit:
-              v.unit === undefined || v.unit === null || v.unit === ""
-                ? null
-                : String(v.unit),
-            sourceType:
-              v.sourceType === undefined || v.sourceType === null
-                ? isAdmin
-                  ? "ADMIN_VERIFIED"
-                  : "SELLER_INPUT"
-                : String(v.sourceType),
-            confidence:
-              v.confidence === undefined || v.confidence === null
-                ? null
-                : Math.max(0, Math.min(1, Number(v.confidence))),
-            sourceReference:
-              v.sourceReference === undefined || v.sourceReference === null
-                ? null
-                : String(v.sourceReference),
-            verifiedAt: isAdmin ? new Date() : null,
-            verifiedBy: isAdmin ? "admin" : null,
-          },
-          update: {
-            textValue:
-              v.textValue === undefined || v.textValue === null
-                ? null
-                : String(v.textValue),
-            numberValue:
-              v.numberValue === undefined || v.numberValue === null || v.numberValue === ""
-                ? null
-                : Number(v.numberValue),
-            booleanValue:
-              v.booleanValue === undefined || v.booleanValue === null
-                ? null
-                : Boolean(v.booleanValue),
-            dateValue: isNaN(dateValue?.getTime() ?? NaN) ? null : dateValue,
-            optionId:
-              v.optionId === undefined || v.optionId === null || v.optionId === ""
-                ? null
-                : String(v.optionId),
-            unit:
-              v.unit === undefined || v.unit === null || v.unit === ""
-                ? null
-                : String(v.unit),
-            sourceType:
-              v.sourceType === undefined || v.sourceType === null
-                ? isAdmin
-                  ? "ADMIN_VERIFIED"
-                  : "SELLER_INPUT"
-                : String(v.sourceType),
-            confidence:
-              v.confidence === undefined || v.confidence === null
-                ? null
-                : Math.max(0, Math.min(1, Number(v.confidence))),
-            sourceReference:
-              v.sourceReference === undefined || v.sourceReference === null
-                ? null
-                : String(v.sourceReference),
-            verifiedAt: isAdmin ? new Date() : null,
-            verifiedBy: isAdmin ? "admin" : null,
-          },
-        });
-      });
 
     await db.$transaction(ops);
 

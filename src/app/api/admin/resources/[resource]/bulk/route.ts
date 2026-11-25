@@ -19,6 +19,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import '@/lib/admin/resource-index';
 import { executeBulkAction } from '@/lib/admin/bulk-export-engine';
 import { requireAdmin } from '@/lib/admin-guard';
+import { checkCsrf } from "@/lib/csrf";
 import { can, canBulkAction, isAdmin } from '@/lib/authorization';
 import { registry } from '@/lib/admin/resource-registry';
 import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
@@ -26,6 +27,13 @@ import type { TenantAccessContext } from '@/lib/admin/tenant-scope';
 export const dynamic = 'force-dynamic';
 
 type Params = { params: Promise<{ resource: string }> };
+
+// P0 audit: resources that mutate only through dedicated transactional
+// APIs and MUST NOT be bulk-mutated via the Universal Resource bulk
+// endpoint (which bypasses domain state machines, CAS, and audit trails).
+// Mirrors the [id] route's DEDICATED_MUTATION_RESOURCES. buy-requests
+// bulk transitions go through bulkTransitionWanted (canonical service).
+const DEDICATED_MUTATION_RESOURCES = new Set(['procurement', 'suppliers', 'payments', 'buy-requests']);
 
 // PR-SC-00: resolve server-side tenant access context.
 async function resolveTenantCtx(
@@ -42,6 +50,24 @@ async function resolveTenantCtx(
 
 export async function POST(req: NextRequest, { params }: Params) {
   const { resource: resourceKey } = await params;
+  // P0 audit: dedicated-mutation resources (incl. buy-requests) are
+  // 409-blocked from the universal bulk endpoint — they must use their
+  // canonical service APIs (bulkTransitionWanted for buy-requests, etc).
+  if (DEDICATED_MUTATION_RESOURCES.has(resourceKey)) {
+    const perm = resourceKey === 'procurement' ? 'procurement.manage'
+      : resourceKey === 'payments' ? 'payment.manage'
+      : resourceKey === 'buy-requests' ? 'request.manage'
+      : 'store.manage';
+    const [, authError] = await requireAdmin(perm);
+    if (authError) return authError;
+    if (!checkCsrf(req)) {
+      return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+    }
+    return NextResponse.json(
+      { error: 'این منبع فقط از طریق API اختصاصی قابل تغییر است؛ عملیات گروهی Universal غیرفعال است.', code: 'DEDICATED_RESOURCE_BULK_DISABLED' },
+      { status: 409 },
+    );
+  }
   const config = registry.get(resourceKey);
   if (!config) return NextResponse.json({ error: 'Unknown resource' }, { status: 404 });
 
@@ -59,6 +85,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const [user, authError] = await requireAdmin(actionDef.permission);
   if (authError) return authError;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
 
   const hasPerm = await can(user?.id ?? null, actionDef.permission);
   const canBulk = await canBulkAction(user?.id ?? null, `bulk-${body.action}`, resourceKey);

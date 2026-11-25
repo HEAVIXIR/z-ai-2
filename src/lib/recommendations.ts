@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import type { Listing, UserRecommendation } from "@prisma/client";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 
 /* ============================================================
    HEAVIX — Recommendation Engine (P2-24)
@@ -161,6 +162,7 @@ export async function generateRecommendations(
     const watchedListings = await db.listing.findMany({
       where: {
         status: "PUBLISHED",
+        listingType: { in: [...SUPPLY_LISTING_TYPES] },
         id: { in: Array.from(watchedListingIds) },
       },
       select: { id: true, categoryId: true, brandId: true },
@@ -174,6 +176,7 @@ export async function generateRecommendations(
       const similar = await db.listing.findMany({
         where: {
           status: "PUBLISHED",
+          listingType: { in: [...SUPPLY_LISTING_TYPES] },
           id: { notIn: excludeIds },
           OR: [
             ...(wl.categoryId ? [{ categoryId: wl.categoryId }] : []),
@@ -223,6 +226,7 @@ export async function generateRecommendations(
     const freshInWatchedCats = await db.listing.findMany({
       where: {
         status: "PUBLISHED",
+        listingType: { in: [...SUPPLY_LISTING_TYPES] },
         id: { notIn: excludeIds },
         categoryId: { in: Array.from(categoryAffinity.keys()) },
         createdAt: { gte: newCutoff },
@@ -258,6 +262,7 @@ export async function generateRecommendations(
   const trending = await db.listing.findMany({
     where: {
       status: "PUBLISHED",
+      listingType: { in: [...SUPPLY_LISTING_TYPES] },
       id: { notIn: excludeIds },
       // Use createdAt as the trending window (older listings with
       // high viewCount aren't really "trending" anymore).
@@ -281,7 +286,7 @@ export async function generateRecommendations(
   // fall back to all-time trending + newest published listings.
   if (candidates.size === 0) {
     const fallback = await db.listing.findMany({
-      where: { status: "PUBLISHED" },
+      where: { status: "PUBLISHED", listingType: { in: [...SUPPLY_LISTING_TYPES] } },
       orderBy: [{ featured: "desc" }, { viewCount: "desc" }],
       take: TRENDING_LIMIT,
       select: { id: true, viewCount: true },

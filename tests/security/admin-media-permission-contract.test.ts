@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
+  checkCsrf: vi.fn(),
   listAssets: vi.fn(),
   uploadAsset: vi.fn(),
   logAudit: vi.fn(),
@@ -9,6 +10,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/admin-guard", () => ({
   requireAdmin: mocks.requireAdmin,
+}));
+
+vi.mock("@/lib/csrf", () => ({
+  checkCsrf: mocks.checkCsrf,
 }));
 
 vi.mock("@/lib/media-service", () => ({
@@ -26,6 +31,7 @@ import { MAX_UPLOAD_BYTES } from "@/lib/upload-security";
 describe("/api/admin/media permission separation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.checkCsrf.mockReturnValue(true);
     mocks.requireAdmin.mockResolvedValue([{ id: "admin-1" }, null]);
     mocks.listAssets.mockResolvedValue([]);
     mocks.uploadAsset.mockResolvedValue({ ok: true, asset: { id: "asset-1" } });
@@ -34,37 +40,40 @@ describe("/api/admin/media permission separation", () => {
 
   it("uses media.read for listing assets", async () => {
     const response = await GET(new Request("http://localhost/api/admin/media"));
-
     expect(response.status).toBe(200);
     expect(mocks.requireAdmin).toHaveBeenCalledWith("media.read");
     expect(mocks.listAssets).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps media.upload required for upload attempts", async () => {
-    const response = await POST(
-      new Request("http://localhost/api/admin/media", {
-        method: "POST",
-        body: new FormData(),
-      }),
-    );
+  it("rejects cross-origin upload before authorization or body parsing", async () => {
+    mocks.checkCsrf.mockReturnValue(false);
+    const response = await POST(new Request("http://localhost/api/admin/media", {
+      method: "POST",
+      body: new FormData(),
+    }));
+    expect(response.status).toBe(403);
+    expect(mocks.requireAdmin).not.toHaveBeenCalled();
+    expect(mocks.uploadAsset).not.toHaveBeenCalled();
+  });
 
+  it("keeps media.upload required for upload attempts", async () => {
+    const response = await POST(new Request("http://localhost/api/admin/media", {
+      method: "POST",
+      body: new FormData(),
+    }));
     expect(response.status).toBe(400);
     expect(mocks.requireAdmin).toHaveBeenCalledWith("media.upload");
     expect(mocks.uploadAsset).not.toHaveBeenCalled();
   });
+
   it("rejects oversized declared bodies before multipart parsing", async () => {
-    const formData = vi.fn();
     const request = {
       headers: new Headers({
         "content-length": String(MAX_UPLOAD_BYTES + 256 * 1024 + 1),
       }),
-      formData,
     } as unknown as Request;
-
     const response = await POST(request);
-
     expect(response.status).toBe(413);
-    expect(formData).not.toHaveBeenCalled();
     expect(mocks.uploadAsset).not.toHaveBeenCalled();
   });
 
@@ -74,20 +83,17 @@ describe("/api/admin/media permission separation", () => {
       "oversized.jpg",
       { type: "image/jpeg" },
     );
-    const arrayBuffer = vi.spyOn(file, "arrayBuffer");
-    const formData = {
-      get: (name: string) => (name === "file" ? file : null),
-    } as FormData;
-    const request = {
-      headers: new Headers(),
-      formData: vi.fn().mockResolvedValue(formData),
-    } as unknown as Request;
-
+    const arrayBuffer = vi.spyOn(File.prototype, "arrayBuffer");
+    const form = new FormData();
+    form.set("file", file);
+    const request = new Request("http://localhost/api/admin/media", {
+      method: "POST",
+      body: form,
+    });
     const response = await POST(request);
-
     expect(response.status).toBe(413);
     expect(arrayBuffer).not.toHaveBeenCalled();
     expect(mocks.uploadAsset).not.toHaveBeenCalled();
+    arrayBuffer.mockRestore();
   });
-
 });

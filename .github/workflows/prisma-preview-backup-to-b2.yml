@@ -12,6 +12,36 @@ on:
         description: Type BACKUP_PREVIEW_ONLY
         required: true
         type: string
+      rbac_seed:
+        description: Optional RBAC-only seed after exact-SHA paired backup and Worker identity proof
+        required: true
+        type: choice
+        default: SKIP
+        options: [SKIP, RUN_PREVIEW_RBAC_SEED]
+      rbac_seed_confirm:
+        description: Type SEED_RBAC_PREVIEW_ONLY only when explicitly approving the Preview RBAC seed
+        required: false
+        type: string
+      brand_seed:
+        description: Optional additive global brand catalog seed after exact-SHA paired backup and Worker identity proof
+        required: true
+        type: choice
+        default: SKIP
+        options: [SKIP, RUN_PREVIEW_BRAND_SEEDS]
+      brand_seed_confirm:
+        description: Type SEED_PREVIEW_BRANDS_ONLY only when explicitly approving the Preview brand catalog seed
+        required: false
+        type: string
+      model_name_migration:
+        description: Optional additive nullable Listing.modelName and BuyRequest.modelName migrations on App Preview only
+        required: true
+        type: choice
+        default: SKIP
+        options: [SKIP, RUN_PREVIEW_MODEL_NAME_MIGRATIONS]
+      model_name_migration_confirm:
+        description: Type MIGRATE_PREVIEW_MODEL_NAMES_ONLY to approve both additive App Preview migrations
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -22,7 +52,7 @@ concurrency:
 
 jobs:
   paired-backup:
-    if: github.ref == 'refs/heads/security/active-session-hardening-2026-11-08'
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
     environment: preview-backup
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -48,13 +78,20 @@ jobs:
         env:
           DISPATCH_TARGET: ${{ inputs.target }}
           DISPATCH_CONFIRM: ${{ inputs.confirm }}
+          DISPATCH_RBAC_SEED: ${{ inputs.rbac_seed }}
+          DISPATCH_RBAC_CONFIRM: ${{ inputs.rbac_seed_confirm }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/security/active-session-hardening-2026-11-08"
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$DISPATCH_TARGET" = "PREVIEW_ONLY"
           test "$DISPATCH_CONFIRM" = "BACKUP_PREVIEW_ONLY"
-          echo "Preview-only dispatch gates passed."
+          case "$DISPATCH_RBAC_SEED" in
+            SKIP) test -z "$DISPATCH_RBAC_CONFIRM" ;;
+            RUN_PREVIEW_RBAC_SEED) test "$DISPATCH_RBAC_CONFIRM" = "SEED_RBAC_PREVIEW_ONLY" ;;
+            *) echo "Unknown RBAC seed selection."; exit 1 ;;
+          esac
+          echo "Preview-only dispatch gates passed; RBAC seed selection validated."
 
       - name: Install age and AWS CLI
         run: |
@@ -246,6 +283,9 @@ jobs:
       - name: Upload encrypted objects and verify B2 read-back
         shell: bash
         env:
+          RBAC_SEED: ${{ inputs.rbac_seed }}
+          BRAND_SEED: ${{ inputs.brand_seed }}
+          MODEL_NAME_MIGRATION: ${{ inputs.model_name_migration }}
           B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
           B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
@@ -270,6 +310,21 @@ jobs:
           (cd "$WORK/readback" && sha256sum -c ENCRYPTED_SHA256SUMS)
           echo "Encrypted B2 upload and read-back verified."
           echo "Object prefix: s3://$B2_BUCKET/$PREFIX"
+          echo "HEAVIX_BACKUP_PREFIX=$PREFIX" >> "$GITHUB_ENV"
+          EVIDENCE="$RUNNER_TEMP/heavix-preview-backup-evidence"
+          mkdir -m 700 -p "$EVIDENCE"
+          {
+            echo "format=heavix-preview-paired-backup-evidence-v1"
+            echo "backup_sha=$GITHUB_SHA"
+            echo "backup_run_id=$GITHUB_RUN_ID"
+            echo "backup_run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "backup_prefix=$PREFIX"
+            echo "rbac_seed=$RBAC_SEED"
+            echo "brand_seed=$BRAND_SEED"
+            echo "model_name_migration=$MODEL_NAME_MIGRATION"
+            cat "$WORK/ENCRYPTED_SHA256SUMS"
+          } > "$EVIDENCE/backup-evidence.txt"
+          chmod 600 "$EVIDENCE/backup-evidence.txt"
 
       - name: Decrypt, verify plaintext checksums and restore both databases
         shell: bash
@@ -328,3 +383,300 @@ jobs:
           test "$store_count" -gt 0
           echo "PASS: paired dumps decrypted, checksums verified, both PostgreSQL 17 restores completed."
           echo "Restore smoke check: Main tables=$main_count; Store tables=$store_count."
+      - name: Verify backup evidence survived the disposable restore proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+
+      - name: Upload paired backup evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-preview-paired-backup-evidence
+          path: ${{ runner.temp }}/heavix-preview-backup-evidence/backup-evidence.txt
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Set up Bun for Preview catalog and schema operations
+        if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED' || inputs.brand_seed == 'RUN_PREVIEW_BRAND_SEEDS' || inputs.model_name_migration == 'RUN_PREVIEW_MODEL_NAME_MIGRATIONS'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Verify exact Worker binding and seed RBAC on Preview
+        if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED'
+        shell: bash
+        env:
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          PREVIEW_URL: https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -s "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_run_id=$GITHUB_RUN_ID" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+
+          # The Worker health query traverses the Workerd Prisma identity guard.
+          # A 200 + db=up proves its bound database matches the pinned system ID
+          # and the protected OID; no connection string or database identifier is exposed.
+          curl --retry 5 --retry-delay 2 --retry-connrefused --max-time 20 -fsS "$PREVIEW_URL/api/health" -o "$RUNNER_TEMP/preview-health.json"
+          node -e '
+            const fs = require("node:fs");
+            const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (h.status !== "ok" || h.checks?.db !== "up") {
+              throw new Error("Preview Worker database identity/readiness check did not pass.");
+            }
+            process.stdout.write("PASS: Preview Worker app DB is healthy through its identity guard.\n");
+          ' "$RUNNER_TEMP/preview-health.json"
+
+          # Independently prove the backup/seed connection is the same Preview DB.
+          [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
+          CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
+          test -n "$CID"
+          run_preview_sql() {
+            local sql="$1"
+            docker exec -e "HEAVIX_PREVIEW_DATABASE_URL=$MAIN_PREVIEW_DATABASE_URL" -e "HEAVIX_PREVIEW_SQL=$sql" -e PGSSLMODE=verify-full "$CID" bash -ceu 'psql --dbname="$HEAVIX_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$HEAVIX_PREVIEW_SQL"'
+          }
+          observed="$(run_preview_sql "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
+          expected="7701427422680793119|$HEAVIX_APP_PREVIEW_DATABASE_OID"
+          test "$observed" = "$expected"
+          echo "PASS: seed connection matches the pinned Preview cluster and database OID."
+
+          # Seed only the canonical RBAC catalog. This does not run migrations,
+          # taxonomy/catalog seeds, owner backfills, or any Production operation.
+          bun --version
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+          DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-rbac.ts
+
+          role_keys="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT string_agg(key, ',' ORDER BY key) FROM public.\"Role\" WHERE key IN ('ADMIN','BUYER','MODERATOR','SELLER','SUPPORT')")"
+          test "$role_keys" = "ADMIN,BUYER,MODERATOR,SELLER,SUPPORT"
+          permission_count="$(psql "$MAIN_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public."Permission"')"
+          test "$permission_count" -gt 0
+          {
+            echo "## Preview RBAC seed"
+            echo
+            echo "- Exact commit: $GITHUB_SHA"
+            echo "- Paired encrypted backup and disposable restore: passed in this run"
+            echo "- Worker-to-Preview DB identity guard: passed"
+            echo "- Role catalog: ADMIN, BUYER, MODERATOR, SELLER, SUPPORT"
+            echo "- Permission catalog count: $permission_count"
+            echo "- Production: untouched"
+          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/heavix-preview-rbac-evidence"
+          {
+            echo "format=heavix-preview-rbac-seed-evidence-v1"
+            echo "seed_sha=$GITHUB_SHA"
+            echo "backup_run_id=$GITHUB_RUN_ID"
+            echo "role_keys=$role_keys"
+            echo "permission_count=$permission_count"
+            echo "worker_app_db_identity_guard=passed"
+          } > "$RUNNER_TEMP/heavix-preview-rbac-evidence/rbac-seed-evidence.txt"
+
+      - name: Upload Preview RBAC seed evidence
+        if: inputs.rbac_seed == 'RUN_PREVIEW_RBAC_SEED'
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-preview-rbac-seed-evidence
+          path: ${{ runner.temp }}/heavix-preview-rbac-evidence/rbac-seed-evidence.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Apply additive Listing.modelName and BuyRequest.modelName migrations on App Preview
+        if: inputs.model_name_migration == 'RUN_PREVIEW_MODEL_NAME_MIGRATIONS'
+        shell: bash
+        env:
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          MIGRATION_CONFIRM: ${{ inputs.model_name_migration_confirm }}
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$MIGRATION_CONFIRM" = "MIGRATE_PREVIEW_MODEL_NAMES_ONLY"
+          test -s "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_run_id=$GITHUB_RUN_ID" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+
+          PREVIEW_URL="https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev"
+          curl --retry 5 --retry-delay 2 --retry-connrefused --max-time 20 -fsS "$PREVIEW_URL/api/health" -o "$RUNNER_TEMP/preview-health-model-migration.json"
+          node -e '
+            const fs = require("node:fs");
+            const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (h.status !== "ok" || h.checks?.db !== "up") {
+              throw new Error("Preview Worker app DB identity/readiness check failed.");
+            }
+            process.stdout.write("PASS: Preview Worker app DB identity guard.\n");
+          ' "$RUNNER_TEMP/preview-health-model-migration.json"
+
+          [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
+          (( HEAVIX_APP_PREVIEW_DATABASE_OID <= 4294967295 ))
+          CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
+          test -n "$CID"
+          run_preview_sql() {
+            local sql="$1"
+            docker exec -e "HEAVIX_PREVIEW_DATABASE_URL=$MAIN_PREVIEW_DATABASE_URL" -e "HEAVIX_PREVIEW_SQL=$sql" -e PGSSLMODE=verify-full "$CID" bash -ceu 'psql --dbname="$HEAVIX_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$HEAVIX_PREVIEW_SQL"'
+          }
+          observed="$(run_preview_sql "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
+          expected="7701427422680793119|$HEAVIX_APP_PREVIEW_DATABASE_OID"
+          test "$observed" = "$expected"
+          echo "PASS: direct migration connection matches the pinned App Preview cluster and database OID."
+
+          bun --version
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+
+          # Fail closed: only the two explicitly reviewed nullable model-name migrations may be pending.
+          all_migrations="$(find prisma/migrations -mindepth 2 -maxdepth 2 -type f -name migration.sql -printf '%h\n' | sed 's#^prisma/migrations/##' | sort)"
+          applied_migrations="$(run_preview_sql 'SELECT migration_name FROM public."_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL')"
+          mapfile -t pending_migrations < <(comm -23 <(printf '%s\n' "$all_migrations") <(printf '%s\n' "$applied_migrations" | sort))
+          for pending in "${pending_migrations[@]}"; do
+            case "$pending" in
+              20261122203000_listing_model_name|20261123120000_buy_request_model_name) ;;
+              *) echo "FAIL: unrelated pending migration: $pending"; exit 1 ;;
+            esac
+          done
+          echo "PASS: pending migrations are limited to the two approved nullable model-name columns."
+
+          DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx prisma migrate deploy --schema=prisma/schema.prisma
+          column_count="$(run_preview_sql "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND ((table_name='Listing' AND column_name='modelName') OR (table_name='BuyRequest' AND column_name='modelName'))")"
+          test "$column_count" = "2"
+          migration_count="$(run_preview_sql "SELECT count(*) FROM public.\"_prisma_migrations\" WHERE migration_name IN ('20261122203000_listing_model_name','20261123120000_buy_request_model_name') AND finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$migration_count" = "2"
+
+          {
+            echo "## App Preview model-name migrations"
+            echo
+            echo "- Exact Integration commit: $GITHUB_SHA"
+            echo "- Paired encrypted backup and disposable restore: passed in this run"
+            echo "- Worker identity guard and direct App Preview cluster/OID: passed"
+            echo "- Migrations: 20261122203000_listing_model_name, 20261123120000_buy_request_model_name"
+            echo "- Schema change: nullable text columns; existing listings and buy requests unchanged"
+            echo "- Store DB and Production: untouched"
+          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/heavix-preview-model-migration-evidence"
+          {
+            echo "format=heavix-preview-model-name-migrations-v1"
+            echo "migration_sha=$GITHUB_SHA"
+            echo "backup_run_id=$GITHUB_RUN_ID"
+            echo "migrations=20261122203000_listing_model_name,20261123120000_buy_request_model_name"
+            echo "model_name_columns_present=$column_count"
+            echo "migration_records_present=$migration_count"
+            echo "worker_app_db_identity_guard=passed"
+          } > "$RUNNER_TEMP/heavix-preview-model-migration-evidence/evidence.txt"
+
+      - name: Upload App Preview model-name migration evidence
+        if: inputs.model_name_migration == 'RUN_PREVIEW_MODEL_NAME_MIGRATIONS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-preview-listing-model-name-migration-evidence
+          path: ${{ runner.temp }}/heavix-preview-model-migration-evidence/evidence.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Seed the global Preview brand catalog (additive, idempotent)
+        if: inputs.brand_seed == 'RUN_PREVIEW_BRAND_SEEDS'
+        shell: bash
+        env:
+          MAIN_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          BRAND_SEED_CONFIRM: ${{ inputs.brand_seed_confirm }}
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$BRAND_SEED_CONFIRM" = "SEED_PREVIEW_BRANDS_ONLY"
+          test -s "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+          grep -Fxq "backup_run_id=$GITHUB_RUN_ID" "$RUNNER_TEMP/heavix-preview-backup-evidence/backup-evidence.txt"
+
+          # Require the Workerd identity guard AND an independent direct DB identity match.
+          PREVIEW_URL="https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev"
+          curl --retry 5 --retry-delay 2 --retry-connrefused --max-time 20 -fsS "$PREVIEW_URL/api/health" -o "$RUNNER_TEMP/preview-health-brand-seed.json"
+          node -e '
+            const fs = require("node:fs");
+            const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (h.status !== "ok" || h.checks?.db !== "up") {
+              throw new Error("Preview Worker app DB identity/readiness check failed.");
+            }
+            process.stdout.write("PASS: Preview Worker app DB identity guard.\n");
+          ' "$RUNNER_TEMP/preview-health-brand-seed.json"
+          [[ "$HEAVIX_APP_PREVIEW_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
+          (( HEAVIX_APP_PREVIEW_DATABASE_OID <= 4294967295 ))
+          CID="$(docker ps --filter "ancestor=postgres:17" --format '{{.ID}}' | head -n1)"
+          test -n "$CID"
+          run_preview_sql() {
+            local sql="$1"
+            docker exec -e "HEAVIX_PREVIEW_DATABASE_URL=$MAIN_PREVIEW_DATABASE_URL" -e "HEAVIX_PREVIEW_SQL=$sql" -e PGSSLMODE=verify-full "$CID" bash -ceu 'psql --dbname="$HEAVIX_PREVIEW_DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "$HEAVIX_PREVIEW_SQL"'
+          }
+          observed="$(run_preview_sql "SELECT system_identifier::text || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) FROM pg_control_system()")"
+          expected="7701427422680793119|$HEAVIX_APP_PREVIEW_DATABASE_OID"
+          test "$observed" = "$expected"
+          echo "PASS: direct seed connection matches the pinned App Preview cluster and database OID."
+
+          # The seed scripts are additive/idempotent: no deletes, no destructive
+          # category rewrite, and no changes to existing curated identity unless
+          # a seed row explicitly opts into refreshIdentity (none are enabled by this workflow).
+          before="$(run_preview_sql "SELECT (SELECT count(*) FROM public.\"Brand\")::text || '|' || (SELECT count(*) FROM public.\"BrandAlias\")::text || '|' || (SELECT count(*) FROM public.\"BrandIndustry\")::text")"
+          IFS='|' read -r brands_before aliases_before industries_before <<< "$before"
+          [[ "$brands_before" =~ ^[0-9]+$ && "$aliases_before" =~ ^[0-9]+$ && "$industries_before" =~ ^[0-9]+$ ]]
+
+          bun --version
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+          HEAVIX_ENV=preview DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-brands-a.ts --apply
+          HEAVIX_ENV=preview DATABASE_URL="$MAIN_PREVIEW_DATABASE_URL" bunx tsx prisma/seed-brands-b.ts --apply
+
+          after="$(run_preview_sql "SELECT (SELECT count(*) FROM public.\"Brand\")::text || '|' || (SELECT count(*) FROM public.\"BrandAlias\")::text || '|' || (SELECT count(*) FROM public.\"BrandIndustry\")::text || '|' || (SELECT count(*) FROM public.\"Brand\" WHERE active = true AND status = 'ACTIVE')::text || '|' || (SELECT count(DISTINCT lower(\"nameEn\")) FROM public.\"Brand\" WHERE \"nameEn\" IS NOT NULL)::text")"
+          IFS='|' read -r brands_after aliases_after industries_after active_brands distinct_name_en <<< "$after"
+          [[ "$brands_after" =~ ^[0-9]+$ && "$aliases_after" =~ ^[0-9]+$ && "$industries_after" =~ ^[0-9]+$ ]]
+          [[ "$active_brands" =~ ^[0-9]+$ && "$distinct_name_en" =~ ^[0-9]+$ ]]
+          (( brands_after >= brands_before ))
+          (( aliases_after >= aliases_before ))
+          (( industries_after >= industries_before ))
+
+          {
+            echo "## Global Preview brand catalog seed"
+            echo
+            echo "- Exact Integration commit: $GITHUB_SHA"
+            echo "- Paired encrypted backup and disposable restore: passed in this run"
+            echo "- Worker App Preview identity guard: passed"
+            echo "- Direct database identity: pinned App Preview cluster and OID matched"
+            echo "- Brand rows: $brands_before -> $brands_after"
+            echo "- Brand aliases: $aliases_before -> $aliases_after"
+            echo "- Brand-industry links: $industries_before -> $industries_after"
+            echo "- Active brands: $active_brands"
+            echo "- Distinct normalized English names: $distinct_name_en"
+            echo "- Category crosswalk: not run; brand discoverability is global and category-independent"
+            echo "- Store DB and Production: untouched"
+          } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/heavix-preview-brand-evidence"
+          {
+            echo "format=heavix-preview-global-brand-seed-evidence-v1"
+            echo "seed_sha=$GITHUB_SHA"
+            echo "backup_run_id=$GITHUB_RUN_ID"
+            echo "brands_before=$brands_before"
+            echo "brands_after=$brands_after"
+            echo "aliases_before=$aliases_before"
+            echo "aliases_after=$aliases_after"
+            echo "industries_before=$industries_before"
+            echo "industries_after=$industries_after"
+            echo "active_brands=$active_brands"
+            echo "distinct_name_en=$distinct_name_en"
+            echo "worker_app_db_identity_guard=passed"
+          } > "$RUNNER_TEMP/heavix-preview-brand-evidence/brand-seed-evidence.txt"
+
+      - name: Upload Preview global brand seed evidence
+        if: inputs.brand_seed == 'RUN_PREVIEW_BRAND_SEEDS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: heavix-preview-global-brand-seed-evidence
+          path: ${{ runner.temp }}/heavix-preview-brand-evidence/brand-seed-evidence.txt
+          if-no-files-found: error
+          retention-days: 7

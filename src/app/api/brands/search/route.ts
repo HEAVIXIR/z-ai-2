@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { searchBrands } from "@/lib/search";
+import { db } from "@/lib/db";
+import { BRAND_UNAVAILABLE_STATUSES } from "@/lib/brand-labels";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,7 +9,8 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/brands/search?q=...
  *
- * Public, no-auth, alias-aware brand search.
+ * Public, no-auth, alias-aware global brand search. Category selection does
+ * not constrain brand identity or visibility.
  *
  * P1-18: delegates to `searchBrands` (src/lib/search.ts) which performs
  * Persian normalization (ي→ی, ك→ک, ZWNJ strip, Arabic→Persian digits,
@@ -23,11 +26,21 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const rawQ = url.searchParams.get("q")?.trim() ?? "";
-    if (!rawQ) {
-      return NextResponse.json({ brands: [] });
-    }
-
-    const brands = await searchBrands(rawQ, { take: 20 });
+    // Empty query powers the initial picker drawer: show active global suggestions.
+    // Typed queries search the full catalog and never apply a category visibility filter.
+    const brands = rawQ
+      ? await searchBrands(rawQ, { take: 20 })
+      : await db.brand.findMany({
+          where: { active: true, status: { notIn: [...BRAND_UNAVAILABLE_STATUSES] } },
+          take: 20,
+          orderBy: [{ featured: "desc" }, { sortOrder: "asc" }, { name: "asc" }],
+          select: {
+            id: true, slug: true, name: true, nameEn: true, shortName: true,
+            country: true, logoUrl: true, type: true, status: true,
+            verification: true, featured: true,
+            _count: { select: { listings: { where: { status: "PUBLISHED" } } } },
+          },
+        }).then((rows) => rows.map((b) => ({ ...b, listingsCount: b._count.listings })));
 
     // Backward-compat: the original endpoint returned `_count: { listings }`.
     // Map `listingsCount` back to that shape so existing clients

@@ -33,6 +33,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { logAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
+import { getAIProviderConfigPublic } from "@/lib/ai-provider-router";
 import { toFa, faDate, timeAgo } from "@/lib/format";
 import {
   Brain,
@@ -82,6 +83,8 @@ export default async function AIControlPlanePage() {
       </div>
     );
   }
+
+  const providerConfig = getAIProviderConfigPublic();
 
   // ── 2. Stats grid (4 canonical AI domain counts) ──
   // Run in parallel so a slow model doesn't block the others.
@@ -152,6 +155,30 @@ export default async function AIControlPlanePage() {
           (اصل ۸ HBR-1.0).
         </p>
       </div>
+
+      {/* Provider configuration visibility — secrets are never rendered. */}
+      <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-zinc-900">پیکربندی Provider هوش مصنوعی</h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Provider فعلی از متغیرهای محیطی خوانده می‌شود؛ تغییر آن فعلاً از پنل انجام نمی‌شود و نیازمند تغییر تنظیمات Preview و راه‌اندازی مجدد است.
+            </p>
+          </div>
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${providerConfig.hasApiKey ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+            {providerConfig.hasApiKey ? "تنظیمات اتصال موجود است" : "تنظیمات اتصال ناقص است"}
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-xl bg-zinc-50 p-3"><p className="text-[11px] text-zinc-500">Provider فعال</p><p className="mt-1 font-mono text-sm font-bold">{providerConfig.provider.toUpperCase()}</p></div>
+          <div className="rounded-xl bg-zinc-50 p-3"><p className="text-[11px] text-zinc-500">مدل پیش‌فرض</p><p className="mt-1 font-mono text-sm font-bold">{providerConfig.model}</p></div>
+          <div className="rounded-xl bg-zinc-50 p-3"><p className="text-[11px] text-zinc-500">مهلت درخواست</p><p className="mt-1 text-sm font-bold">{providerConfig.timeoutMs} ms</p></div>
+          <div className="rounded-xl bg-zinc-50 p-3"><p className="text-[11px] text-zinc-500">روش مدیریت</p><p className="mt-1 text-sm font-bold">Environment-only</p></div>
+        </div>
+        <p className="mt-3 text-xs leading-6 text-amber-700">
+          تولید تصویر، ویدئو و جستجوی وبِ مبتنی بر SDK در حال حاضر به قابلیت‌های اختصاصی ZAI وابسته‌اند؛ انتخاب Provider دیگر این عملیات را خودکار جایگزین نمی‌کند.
+        </p>
+      </section>
 
       {/* Sovereignty banner */}
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -240,7 +267,7 @@ export default async function AIControlPlanePage() {
                     <th className="px-3 py-3 text-center font-bold">وضعیت</th>
                     <th className="px-3 py-3 text-center font-bold">تأخیر</th>
                     <th className="px-3 py-3 text-center font-bold">توکن</th>
-                    <th className="px-3 py-3 text-center font-bold">هزینه</th>
+                    <th className="px-3 py-3 text-center font-bold">سقف رزروشده (تخمینی)</th>
                     <th className="px-3 py-3 text-center font-bold">تاریخ</th>
                   </tr>
                 </thead>
@@ -272,7 +299,7 @@ export default async function AIControlPlanePage() {
                         {l.tokensUsed != null ? toFa(l.tokensUsed) : "—"}
                       </td>
                       <td className="px-3 py-3 text-center text-xs text-zinc-500">
-                        {l.cost != null ? `$${toFa(l.cost.toFixed(4))}` : "—"}
+                        {l.cost != null ? `${toFa(l.cost.toFixed(4))}` : "—"}
                       </td>
                       <td
                         className="px-3 py-3 text-center text-[11px] text-zinc-500"

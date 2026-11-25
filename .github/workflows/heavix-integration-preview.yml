@@ -1,0 +1,305 @@
+name: HEAVIX Integration Preview (GitHub Actions)
+
+on:
+  push:
+    branches:
+      - integration/preview-readiness-workerd-2026-11-15
+    paths:
+      - "src/**"
+      - "prisma/**"
+      - "public/**"
+      - "scripts/**"
+      - "package.json"
+      - "bun.lock"
+      - "next.config.ts"
+      - "open-next.config.ts"
+      - "wrangler.jsonc"
+      - ".github/workflows/heavix-integration-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-integration-preview
+  cancel-in-progress: true
+
+jobs:
+  build-and-preview:
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HEAVIX_BUILD_TARGET: cloudflare
+      HEAVIX_ENV: preview
+      NEXT_PUBLIC_SITE_URL: https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev
+      NODE_ENV: production
+      HEAVIX_NEXT_BUNDLER: webpack
+      UV_THREADPOOL_SIZE: "4"
+      CI: "1"
+    steps:
+      - name: Checkout exact Integration commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Verify branch and Cloudflare credential availability
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "integration/preview-readiness-workerd-2026-11-15"
+          test -n "${CLOUDFLARE_API_TOKEN}" || {
+            echo "::error::CLOUDFLARE_API_TOKEN repository secret is not configured."
+            exit 1
+          }
+          echo "Integration-only deployment guard passed."
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: heavix-next-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.ref_name }}
+          restore-keys: |
+            heavix-next-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.ref_name }}-
+            heavix-next-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate both Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Build OpenNext with the proven HEAVIX Webpack profile
+        run: |
+          set -euo pipefail
+          ulimit -n 4096 2>/dev/null || true
+          echo "HEAVIX_NOFILE_SOFT=$(ulimit -Sn) HARD=$(ulimit -Hn)"
+          node scripts/patch-next-nft-concurrency.cjs
+          bun run build:cloudflare
+          test -s .open-next/worker.js
+          test -d .open-next/assets
+
+      - name: Deploy only the Integration Worker Preview
+        id: preview
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "3fe0437a0aab4bafb2e728e458f67ea0"
+        run: |
+          set -euo pipefail
+          output="$(bunx wrangler preview --name "integration/preview-readiness-workerd-2026-11-15" --worker-name "heavix-preview" --json)"
+          printf '%s\\n' "$output"
+          # Wrangler may emit human-readable progress before its JSON result.
+          # Scan for the JSON object containing preview.urls instead of piping
+          # the entire mixed stdout stream directly into jq.
+          preview_url="$(printf '%s' "$output" | node -e '
+            let input = "";
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", chunk => input += chunk);
+            process.stdin.on("end", () => {
+              for (let i = 0; i < input.length; i++) {
+                if (input[i] !== "{") continue;
+                try {
+                  const parsed = JSON.parse(input.slice(i));
+                  const url = parsed && parsed.preview && parsed.preview.urls && parsed.preview.urls[0];
+                  if (typeof url === "string" && url.startsWith("https://")) {
+                    process.stdout.write(url);
+                    return;
+                  }
+                } catch (_) {}
+              }
+              process.stderr.write("Could not locate Wrangler preview JSON containing preview.urls[0].\\n");
+              process.exit(1);
+            });
+          ')"
+          test -n "$preview_url"
+          echo "preview_url=$preview_url" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Preview responds
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
+        run: |
+          set -euo pipefail
+          root_code="000"
+          for attempt in {1..9}; do
+            root_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-preview-root.html" -w '%{http_code}' "$PREVIEW_URL/" || true)"
+            root_code="${root_code:-000}"
+            [ "$root_code" = "200" ] && break
+            sleep 3
+          done
+          echo "HEAVIX_PREVIEW_ROOT_HTTP=$root_code"
+          health_code="000"
+          health_ok="false"
+          health_attempt=0
+          # Retry at the workflow boundary: each curl is a separate Worker request.
+          # Do not retry inside /api/health, whose Promise.race cannot cancel Prisma queries.
+          for attempt in {1..5}; do
+            health_attempt="$attempt"
+            health_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-preview-health.json" -w '%{http_code}' "$PREVIEW_URL/api/health" || true)"
+            health_code="${health_code:-000}"
+            if [ "$health_code" = "200" ] && node -e '
+              const fs = require("node:fs");
+              try {
+                const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                process.exit(h.status === "ok" && h.checks?.db === "up" && h.checks?.storeDb === "up" ? 0 : 1);
+              } catch { process.exit(1); }
+            ' "$RUNNER_TEMP/heavix-preview-health.json"; then
+              health_ok="true"
+              break
+            fi
+            echo "Health attempt $attempt/5 did not meet App DB + Store DB readiness (HTTP $health_code)."
+            if [ "$attempt" -lt 5 ]; then sleep 7; fi
+          done
+          echo "HEAVIX_PREVIEW_HEALTH_HTTP=$health_code"
+          echo "HEAVIX_PREVIEW_HEALTH_ATTEMPTS=$health_attempt"
+          if [ -s "$RUNNER_TEMP/heavix-preview-health.json" ]; then
+            cat "$RUNNER_TEMP/heavix-preview-health.json"
+          fi
+          {
+            echo "- Root HTTP: ${root_code:-000}"
+            echo "- Health HTTP: ${health_code:-000}"
+            echo "- Health attempts: ${health_attempt}/5"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$root_code" != "200" ]; then
+            echo "::error::Integration Preview root must return HTTP 200 (received ${root_code:-000})."
+            exit 1
+          fi
+          echo "PASS: Integration Preview root returned HTTP 200."
+          if [ "$health_ok" != "true" ]; then
+            echo "::error::Integration Preview did not report both App DB and Store DB up after 5 independent health requests (last HTTP ${health_code:-000})."
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require("node:fs");
+          const health = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/heavix-preview-health.json", "utf8"));
+          const db = health.checks?.db ?? "missing";
+          const storeDb = health.checks?.storeDb ?? "missing";
+          console.log(JSON.stringify({ status: health.status, db, storeDb }, null, 2));
+          if (health.status !== "ok" || db !== "up" || storeDb !== "up") {
+            console.error("Preview health contract failed: both App DB and Store DB must be up.");
+            process.exit(1);
+          }
+          NODE
+          echo "PASS: Integration Preview App DB and Store DB both report up after ${health_attempt} attempt(s)."
+
+          # Exercise the same-origin CSRF gate and the real login route with a
+          # synthetic non-existent account. Expected 401 proves the Worker
+          # reached application auth instead of returning a network/CPU error.
+          preview_origin="${PREVIEW_URL%/}"
+          login_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-login-smoke.json" -w '%{http_code}' \
+            -X POST "$PREVIEW_URL/api/auth/login" \
+            -H "Origin: $preview_origin" \
+            -H "Referer: $preview_origin/login" \
+            -H "Content-Type: application/json" \
+            --data '{"email":"preview-healthcheck@invalid.example","password":"not-a-real-preview-password"}' || true)"
+          echo "HEAVIX_PREVIEW_LOGIN_SMOKE_HTTP=$login_code"
+          if [ "$login_code" != "401" ]; then
+            cat "$RUNNER_TEMP/heavix-login-smoke.json" 2>/dev/null || true
+            echo "::error::Preview login smoke must reach application auth and return 401 for a synthetic account (received ${login_code:-000})."
+            exit 1
+          fi
+          echo "PASS: Preview login route passed same-origin CSRF and returned expected 401 for synthetic credentials."
+          echo "- Login smoke HTTP: $login_code" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "- App DB: up"
+            echo "- Store DB: up"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          taxonomy_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-taxonomy.json" -w '%{http_code}' "$PREVIEW_URL/api/taxonomy" || true)"
+          echo "HEAVIX_PREVIEW_TAXONOMY_HTTP=$taxonomy_code"
+          if [ "$taxonomy_code" != "200" ]; then
+            echo "::error::Integration Preview taxonomy API must return HTTP 200 (received ${taxonomy_code:-000})."
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require("node:fs");
+          const data = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/heavix-taxonomy.json", "utf8"));
+          const rootCount = (data.catalogRoots?.length ?? 0) + (data.marketplaceRoots?.length ?? 0) + (data.serviceRoots?.length ?? 0) + (data.fallbackRoots?.length ?? 0);
+          const machinery = data.catalogRoots?.find((root) => root.slug === "machinery");
+          const road = machinery?.children?.find((child) => child.slug === "road-construction");
+          const hasExcavator = road?.children?.some((child) => child.slug === "excavator");
+          const checks = {
+            rootCount,
+            transactionTypes: data.transactionTypes?.length ?? 0,
+            serviceTypes: data.serviceTypes?.length ?? 0,
+            applicationIndustries: data.applicationIndustries?.length ?? 0,
+            machineryL1: machinery?.children?.length ?? 0,
+            hasNestedExcavator: Boolean(hasExcavator),
+          };
+          console.log(JSON.stringify(checks, null, 2));
+          if (rootCount !== 14 || checks.transactionTypes < 6 || checks.transactionTypes > 7 || checks.serviceTypes !== 9 || checks.applicationIndustries !== 16 || checks.machineryL1 < 12 || !hasExcavator) {
+            console.error("Integration Preview taxonomy contract failed.");
+            process.exit(1);
+          }
+          if (checks.transactionTypes === 6) {
+            console.warn("SERVICE_OFFER is not present in the Preview DB yet; the additive taxonomy seed has not been applied.");
+          }
+          NODE
+          detail_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-excavator-category.json" -w '%{http_code}' "$PREVIEW_URL/api/taxonomy/categories/cat-excavator" || true)"
+          echo "HEAVIX_PREVIEW_EXCAVATOR_DETAIL_HTTP=$detail_code"
+          if [ "$detail_code" != "200" ]; then
+            echo "::error::Excavator category detail API must return HTTP 200 (received ${detail_code:-000})."
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/heavix-excavator-category.json", "utf8"));
+          const children = payload.category?.children ?? [];
+          console.log(JSON.stringify({ excavatorChildren: children.map((child) => child.slug) }, null, 2));
+          if (children.length < 3) {
+            console.error("Excavator detail must expose at least three L3 configurations.");
+            process.exit(1);
+          }
+          NODE
+          echo "PASS: Excavator detail API exposes L3 configurations."
+
+          brand_code="$(curl -sS --max-time 30 -o "$RUNNER_TEMP/heavix-brand-suggestions.json" -w '%{http_code}' "$PREVIEW_URL/api/brands/search" || true)"
+          echo "HEAVIX_PREVIEW_BRAND_SUGGESTIONS_HTTP=$brand_code"
+          if [ "$brand_code" != "200" ]; then
+            echo "::error::Global brand suggestion API must return HTTP 200 (received ${brand_code:-000})."
+            exit 1
+          fi
+          node <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/heavix-brand-suggestions.json", "utf8"));
+          const brands = Array.isArray(payload.brands) ? payload.brands : [];
+          console.log(JSON.stringify({ brandSuggestions: brands.length, sample: brands.slice(0, 3).map((b) => ({ name: b.name, status: b.status })) }, null, 2));
+          if (brands.length === 0) {
+            console.error("Global brand registry returned zero selectable suggestions; Step 3 cannot show brands until the Preview DB is safely seeded/reconciled.");
+            process.exit(1);
+          }
+          NODE
+          echo "PASS: Global brand suggestion API returned selectable brands."
+          echo "- Brand suggestions: verified non-empty" >> "$GITHUB_STEP_SUMMARY"
+          echo "HEAVIX_PREVIEW_EXCAVATOR_DETAIL_HTTP=$detail_code" >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS: Integration Preview exposes the 14-root taxonomy, 6–7 transaction types, 9 service types, 16 application industries, and nested machinery categories."
+          {
+            echo "- Taxonomy API HTTP: ${taxonomy_code:-000}"
+            echo "- Taxonomy contract: 14 roots / 6–7 transactions / 9 services / 16 industries"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish Preview URL in job summary
+        if: always() && steps.preview.outputs.preview_url != ''
+        env:
+          PREVIEW_URL: ${{ steps.preview.outputs.preview_url }}
+        run: |
+          {
+            echo "## HEAVIX Integration Preview"
+            echo
+            echo "- Branch: integration/preview-readiness-workerd-2026-11-15"
+            echo "- Commit: ${GITHUB_SHA}"
+            echo "- Preview: ${PREVIEW_URL}"
+            echo "- Production deploy: not invoked"
+            echo "- Database migrations/seeds: not invoked"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+# Manual-dispatch fallback: this Integration-only workflow can also be triggered by a push to this file.

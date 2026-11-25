@@ -1,0 +1,158 @@
+name: HEAVIX Canonical Preview Worker Deploy
+# Owner-approved, Preview-only redacted DB identity diagnostic deployment request (2026-11-18).
+# Re-authorized by owner for the current Integration head; Production and database writes remain prohibited.
+
+on:
+  push:
+    branches:
+      - integration/preview-readiness-workerd-2026-11-15
+    paths:
+      - ".github/workflows/heavix-canonical-preview-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: heavix-canonical-preview-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-preview-only:
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HEAVIX_BUILD_TARGET: cloudflare
+      HEAVIX_ENV: preview
+      NEXT_PUBLIC_SITE_URL: https://heavix-preview.heavixir.workers.dev
+      NODE_ENV: production
+      HEAVIX_NEXT_BUNDLER: webpack
+      UV_THREADPOOL_SIZE: "4"
+      CI: "1"
+      CLOUDFLARE_ACCOUNT_ID: "3fe0437a0aab4bafb2e728e458f67ea0"
+    steps:
+      - name: Checkout exact Integration commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Enforce Preview-only deployment boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "integration/preview-readiness-workerd-2026-11-15"
+          grep -Eq '^  "name": "heavix-preview",' wrangler.jsonc
+          grep -Eq '^    "HEAVIX_ENV": "preview",' wrangler.jsonc
+          ! grep -Eq '^  "routes"[[:space:]]*:' wrangler.jsonc
+          ! grep -Eq '^  "env"[[:space:]]*:' wrangler.jsonc
+          echo "Preview-only Worker guard passed."
+          test -n "${{ secrets.CLOUDFLARE_API_TOKEN }}" || {
+            echo "::error::CLOUDFLARE_API_TOKEN is not configured."
+            exit 1
+          }
+
+      - name: Wait for exact-commit CI to pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            runs="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100")"
+            ci="$(printf '%s' "$runs" | jq -c --arg sha "$GITHUB_SHA" '[.workflow_runs[] | select(.name == "CI" and .event == "push" and .head_sha == $sha)] | sort_by(.created_at) | last // empty')"
+            if [ -n "$ci" ]; then
+              status="$(printf '%s' "$ci" | jq -r '.status')"
+              conclusion="$(printf '%s' "$ci" | jq -r '.conclusion // empty')"
+              if [ "$status" = "completed" ]; then
+                test "$conclusion" = "success" || {
+                  echo "::error::Exact-commit CI conclusion: $conclusion"
+                  exit 1
+                }
+                echo "Exact-commit CI passed."
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "::error::Timed out waiting for exact-commit CI."
+          exit 1
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: heavix-canonical-preview-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
+          restore-keys: |
+            heavix-next-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}-integration/preview-readiness-workerd-2026-11-15
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate both Prisma clients
+        run: |
+          bunx prisma generate --schema=prisma/schema.prisma
+          bunx prisma generate --schema=prisma/store/schema.prisma
+
+      - name: Build OpenNext Worker
+        run: |
+          set -euo pipefail
+          ulimit -n 4096 2>/dev/null || true
+          node scripts/patch-next-nft-concurrency.cjs
+          bun run build:cloudflare
+          test -s .open-next/worker.js
+          test -d .open-next/assets
+
+      - name: Validate exact Preview Worker deployment (dry run)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          bunx wrangler deploy --name heavix-preview --dry-run
+
+      - name: Deploy canonical Preview Worker only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          bunx wrangler deploy --name heavix-preview
+
+      - name: Verify canonical Preview and both databases
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://heavix-preview.heavixir.workers.dev"
+          curl --retry 8 --retry-delay 3 --retry-connrefused --max-time 20 -fsS "$base/" -o /dev/null
+          health_code="$(curl -sS --max-time 20 -o "$RUNNER_TEMP/heavix-canonical-preview-health.json" -w '%{http_code}' "$base/api/health" || true)"
+          cat "$RUNNER_TEMP/heavix-canonical-preview-health.json"
+          test "$health_code" = "200"
+          node -e '
+            const fs = require("fs");
+            const h = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (h.status !== "ok" || h.checks?.db !== "up" || h.checks?.storeDb !== "up") {
+              throw new Error("Canonical Preview database health gate failed");
+            }
+            console.log("Canonical Preview and both databases are healthy.");
+          ' "$RUNNER_TEMP/heavix-canonical-preview-health.json"
+
+      - name: Publish deployment evidence
+        if: always()
+        run: |
+          {
+            echo "## HEAVIX Canonical Preview Deployment"
+            echo
+            echo "- Worker: heavix-preview"
+            echo "- Environment: Preview only"
+            echo "- Commit: ${GITHUB_SHA}"
+            echo "- URL: https://heavix-preview.heavixir.workers.dev"
+            echo "- Production deployment: not invoked"
+            echo "- Database migrations/seeds: not invoked"
+            echo "- Secret values: not changed"
+          } >> "$GITHUB_STEP_SUMMARY"

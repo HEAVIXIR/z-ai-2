@@ -1,4 +1,4 @@
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { logAudit } from "@/lib/audit";
 
 // SERVER-ONLY — this module imports z-ai-web-dev-sdk + Prisma and
@@ -54,8 +54,8 @@ export type ListingAnalysis = {
 };
 
 export type ListingAnalysisResult =
-  | { success: true; analysis: ListingAnalysis | null }
-  | { success: false; error: string; analysis: null };
+  | { success: true; analysis: ListingAnalysis | null; tokensUsed?: number | null }
+  | { success: false; error: string; analysis: null; tokensUsed?: number | null };
 
 export type ImprovedListingContent = {
   source: "AI_SUGGESTED";
@@ -140,15 +140,18 @@ export async function analyzeListing(input: {
   images?: string[];
   price?: number | string | null;
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<ListingAnalysisResult> {
-  const { title, description, images, price, userId } = input;
+  const { title, description, images, price, userId, signal } = input;
   try {
     const titleStr = String(title ?? "").trim();
     if (!titleStr) {
       return { success: false, error: "title is required", analysis: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       title: titleStr,
       description: (description ?? "").slice(0, 4000) || null,
@@ -162,12 +165,16 @@ export async function analyzeListing(input: {
         { role: "user", content: userPrompt },
       ],
       thinking: { type: "disabled" },
+      signal,
     });
+    const tokensUsed = Number.isFinite(completion?.usage?.total_tokens)
+      ? completion.usage!.total_tokens!
+      : null;
     const raw = completion?.choices?.[0]?.message?.content || "";
     const parsed = safeParseJson(raw);
 
     if (!parsed || typeof parsed !== "object") {
-      return { success: true, analysis: null };
+      return { success: true, analysis: null, tokensUsed };
     }
 
     const p = parsed as Record<string, any>;
@@ -234,7 +241,7 @@ export async function analyzeListing(input: {
       /* best-effort audit — never throw */
     });
 
-    return { success: true, analysis };
+    return { success: true, analysis, tokensUsed };
   } catch (err: any) {
     return {
       success: false,
@@ -273,7 +280,9 @@ export async function improveListingContent(input: {
       return { success: false, error: "title is required", improved: null };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       title: titleStr,
       description: (description ?? "").slice(0, 4000) || null,

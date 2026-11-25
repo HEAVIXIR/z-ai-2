@@ -55,9 +55,12 @@ vi.mock("@/lib/db", () => ({
   },
 }));
 
-vi.mock("z-ai-web-dev-sdk", () => ({
-  default: {
-    create: vi.fn(async () => ({
+vi.mock("@/lib/ai-provider-router", () => ({
+  getAIProvider: vi.fn(() => ({
+    ok: true as const,
+    provider: "zai" as const,
+    model: "test-model",
+    client: {
       chat: {
         completions: {
           create: vi.fn(async () => ({
@@ -65,16 +68,18 @@ vi.mock("z-ai-web-dev-sdk", () => ({
           })),
         },
       },
-    })),
-  },
+    },
+  })),
+  getZAISDK: vi.fn(() => ({ ok: false as const, reason: "non-chat operations not mocked in this test" })),
 }));
 
 import { POST } from "@/app/api/ai-market-analyst/route";
-import ZAI from "z-ai-web-dev-sdk";
+
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
 import { can } from "@/lib/authorization";
 import { db } from "@/lib/db";
 
+import { getAIProvider } from "@/lib/ai-provider-router";
 function makeRequest(body: unknown = { question: "تحلیل بازار" }): Request {
   return new Request("http://localhost/api/ai-market-analyst", {
     method: "POST",
@@ -96,7 +101,7 @@ describe("POST /api/ai-market-analyst — auth and deny-before-provider contract
 
     expect(response.status).toBe(401);
     expect(preflightAIRequest).not.toHaveBeenCalled();
-    expect(ZAI.create).not.toHaveBeenCalled();
+    expect(getAIProvider).not.toHaveBeenCalled();
     expect(db.listing.count).not.toHaveBeenCalled();
     expect(can).not.toHaveBeenCalled();
   });
@@ -109,7 +114,7 @@ describe("POST /api/ai-market-analyst — auth and deny-before-provider contract
 
     expect(response.status).toBe(403);
     expect(preflightAIRequest).not.toHaveBeenCalled();
-    expect(ZAI.create).not.toHaveBeenCalled();
+    expect(getAIProvider).not.toHaveBeenCalled();
     expect(db.listing.count).not.toHaveBeenCalled();
   });
 
@@ -126,7 +131,7 @@ describe("POST /api/ai-market-analyst — auth and deny-before-provider contract
       user: { id: "admin-1" },
       inputLength: expect.any(Number),
     });
-    expect(ZAI.create).not.toHaveBeenCalled();
+    expect(getAIProvider).not.toHaveBeenCalled();
     expect(db.listing.count).not.toHaveBeenCalled();
   });
 
@@ -139,7 +144,7 @@ describe("POST /api/ai-market-analyst — auth and deny-before-provider contract
 
     expect(response.status).toBe(200);
     expect(body.answer).toBe("تحلیل آزمایشی بازار");
-    expect(ZAI.create).toHaveBeenCalledTimes(1);
+    expect(getAIProvider).toHaveBeenCalledTimes(1);
     expect(recordAICost).toHaveBeenCalledWith("MARKET_ANALYST", 0.05, "admin-1");
     expect(db.aIGatewayLog.create).toHaveBeenCalled();
   });

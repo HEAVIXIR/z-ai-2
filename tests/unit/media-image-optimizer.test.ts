@@ -1,6 +1,37 @@
-import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
+import { beforeAll, describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { optimizeImageBuffer } from "@/lib/media-image-optimizer";
+
+beforeAll(async () => {
+  const wasmPaths = [
+    "../../node_modules/@jsquash/jpeg/codec/dec/mozjpeg_dec.wasm",
+    "../../node_modules/@jsquash/png/codec/pkg/squoosh_png_bg.wasm",
+    "../../node_modules/@jsquash/webp/codec/dec/webp_dec.wasm",
+    "../../node_modules/@jsquash/webp/codec/enc/webp_enc.wasm",
+    "../../node_modules/@jsquash/resize/lib/resize/pkg/squoosh_resize_bg.wasm",
+  ];
+  const binaries = await Promise.all(
+    wasmPaths.map((path) => readFile(new URL(path, import.meta.url))),
+  );
+  const modules = await Promise.all(
+    binaries.map((binary) =>
+      WebAssembly.compile(
+        binary.buffer.slice(
+          binary.byteOffset,
+          binary.byteOffset + binary.byteLength,
+        ) as ArrayBuffer,
+      ),
+    ),
+  );
+  globalThis.__HEAVIX_WASM_MODULES__ = {
+    JPEG_DEC_WASM: modules[0],
+    PNG_WASM: modules[1],
+    WEBP_DEC_WASM: modules[2],
+    WEBP_ENC_WASM: modules[3],
+    RESIZE_WASM: modules[4],
+  };
+});
 
 describe("optimizeImageBuffer", () => {
   it("re-encodes JPEG with orientation applied and embedded metadata removed", async () => {

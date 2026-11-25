@@ -114,7 +114,7 @@ export default function BatchLogoSearchButton() {
           const putRes = await fetch(`/api/admin/brands/${b.id}/logo`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ logoUrl: firstUrl }),
+            body: JSON.stringify({ logoUrl: firstUrl, source: "AI_SEARCH" }),
           });
           const putData = await putRes.json().catch(() => null);
           if (!putRes.ok || !putData?.ok) {

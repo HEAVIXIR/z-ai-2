@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
    PHASE1-PROCUREMENT-SHIPPING-DEEP — partial receiving endpoint.
 
    POST : receive `receivedQty` units against a single PurchaseOrderItem.
-          Body: { poItemId, receivedQty }
+          Body: { poItemId, receivedQty, warehouseId }
           Side-effects:
             - increments PurchaseOrderItem.received
             - creates StockMovement (RECEIVE) + adjusts Part.stock
@@ -53,32 +53,42 @@ export async function POST(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  try {
-    await requirePermission(user.id, 'procurement.manage');
-    if (!checkCsrf(req)) {
-      return NextResponse.json(
-        { error: "CSRF check failed" },
-        { status: 403 },
-      );
-    }
-  } catch {
+  if (!checkCsrf(req)) {
     return NextResponse.json(
-      { error: "Forbidden: requires procurement.manage" },
+      { error: "CSRF check failed" },
       { status: 403 },
     );
   }
-  // The procurementId + poId path params exist to scope the URL; the
-  // service validates the POItem independently. We don't need to read
-  // them beyond the destructure (they're used for route clarity + the
-  // audit trail reconstructs the PO from the POItem).
-  await params;
+  try {
+    await requirePermission(user.id, 'procurement.manage');
+    await requirePermission(user.id, 'inventory.manage');
+  } catch {
+    return NextResponse.json(
+      { error: "Forbidden: requires procurement.manage and inventory.manage" },
+      { status: 403 },
+    );
+  }
+  const { id: procurementId, poId: purchaseOrderId } = await params;
   try {
     const body = await req.json();
-    const { poItemId, receivedQty } = body;
+    const { poItemId, receivedQty, warehouseId } = body;
+    if (
+      typeof poItemId !== "string" || !poItemId.trim() ||
+      typeof warehouseId !== "string" || !warehouseId.trim() ||
+      !Number.isSafeInteger(receivedQty) || receivedQty <= 0
+    ) {
+      return NextResponse.json(
+        { success: false, error: "شناسه قلم، انبار و تعداد صحیح مثبت الزامی است" },
+        { status: 400 },
+      );
+    }
     const result = await receivePurchaseOrderItem(
       poItemId,
       receivedQty,
+      warehouseId,
       user.id,
+      procurementId,
+      purchaseOrderId,
     );
     return NextResponse.json({ success: true, data: result });
   } catch (e: any) {

@@ -15,6 +15,8 @@ import {
   Eye,
 } from "lucide-react";
 import { toFa, formatCompactPrice } from "@/lib/format";
+import Link from "next/link";
+import StorePartImageUploader from "@/components/store/StorePartImageUploader";
 
 /* ============================================================
    /admin/store/parts — HEAVIX parts CRUD
@@ -33,7 +35,7 @@ type Part = {
   contactForPrice: boolean;
   stock: number;
   lowStockThreshold: number;
-  images: any[];
+  images: string[];
   compatibleCars: any[];
   sourceUrl: string | null;
   active: boolean;
@@ -69,6 +71,11 @@ export default function StorePartsPage() {
   const [editing, setEditing] = useState<Part | null>(null);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
+  const [mediaRepairPartId, setMediaRepairPartId] = useState<string | null>(null);
+  const [mediaRepairPending, setMediaRepairPending] = useState(0);
+  const [mediaRepairing, setMediaRepairing] = useState(false);
+  const [mediaCleaning, setMediaCleaning] = useState(false);
 
   // Form state
   const [form, setForm] = useState({
@@ -146,11 +153,13 @@ export default function StorePartsPage() {
       active: true,
       featured: false,
     });
+    setImages([]);
     setModalOpen(true);
   };
 
   const openEdit = (p: Part) => {
     setEditing(p);
+    setImages(Array.isArray(p.images) ? p.images.filter((value): value is string => typeof value === "string") : []);
     setForm({
       name: p.name,
       nameFa: p.nameFa ?? "",
@@ -191,11 +200,12 @@ export default function StorePartsPage() {
         priceUsd: Number(form.priceUsd) || 0,
         oldPriceUsd: form.oldPriceUsd ? Number(form.oldPriceUsd) : null,
         contactForPrice: form.contactForPrice,
-        stock: Number(form.stock) || 0,
+        ...(!editing ? { stock: Number(form.stock) || 0 } : {}),
         lowStockThreshold: Number(form.lowStockThreshold) || 5,
         sourceUrl: form.sourceUrl || null,
         active: form.active,
         featured: form.featured,
+        images,
       };
       const url = editing
         ? `/api/admin/store/parts/${editing.id}`
@@ -208,13 +218,60 @@ export default function StorePartsPage() {
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "خطا");
+      const savedPartId = json.data?.id ?? editing?.id ?? null;
+      const pendingMedia = Number(json.mediaPendingCount) || 0;
+      const cleanupPending = Number(json.mediaCleanupPendingCount) || 0;
+      setMediaRepairPartId(pendingMedia > 0 && savedPartId ? savedPartId : null);
+      setMediaRepairPending(pendingMedia);
       setModalOpen(false);
-      setToast(editing ? "قطعه به‌روزرسانی شد" : "قطعه ایجاد شد");
+      setToast(pendingMedia > 0
+        ? "قطعه ذخیره شد؛ اتصال برخی تصاویر نیاز به بازیابی دارد."
+        : cleanupPending > 0
+          ? "قطعه ذخیره شد؛ پاکسازی برخی تصاویر حذف‌شده در صف باقی مانده است."
+          : editing ? "قطعه به‌روزرسانی شد" : "قطعه ایجاد شد");
       await load();
     } catch (e: any) {
       setToast(e.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const retryMedia = async () => {
+    if (!mediaRepairPartId || mediaRepairing) return;
+    setMediaRepairing(true);
+    try {
+      const res = await fetch(`/api/admin/store/parts/${encodeURIComponent(mediaRepairPartId)}/media`, { method: "POST", cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok && res.status !== 202) throw new Error(json.error || "بازیابی تصاویر ناموفق بود.");
+      const pending = Number(json.pendingCount) || 0;
+      setMediaRepairPending(pending);
+      if (pending === 0) {
+        setMediaRepairPartId(null);
+        setToast("اتصال تصاویر با موفقیت تکمیل شد.");
+      } else {
+        setToast(`${pending} تصویر هنوز در انتظار اتصال است.`);
+      }
+      await load();
+    } catch (e: any) {
+      setToast(e.message || "بازیابی تصاویر ناموفق بود.");
+    } finally {
+      setMediaRepairing(false);
+    }
+  };
+
+  const cleanupMedia = async () => {
+    if (mediaCleaning) return;
+    setMediaCleaning(true);
+    try {
+      const res = await fetch("/api/admin/store/parts/media/cleanup", { method: "POST", cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok && res.status !== 202) throw new Error(json.error || "پاکسازی تصاویر ناموفق بود.");
+      setToast(`${Number(json.deletedCount) || 0} فایل موقت/بدون مرجع پاکسازی شد؛ موارد معلق: ${Number(json.pendingCount) || 0}`);
+    } catch (e: any) {
+      setToast(e.message || "پاکسازی تصاویر ناموفق بود.");
+    } finally {
+      setMediaCleaning(false);
     }
   };
 
@@ -224,7 +281,8 @@ export default function StorePartsPage() {
       const res = await fetch(`/api/admin/store/parts/${p.id}`, { method: "DELETE" });
       const json = await res.json();
       if (!json.success) throw new Error(json.error || "خطا");
-      setToast("قطعه حذف شد");
+      const cleanupPending = Number(json.mediaCleanupPendingCount) || 0;
+      setToast(cleanupPending > 0 ? `قطعه حذف شد؛ ${cleanupPending} فایل رسانه برای پاکسازی مجدد باقی مانده است.` : "قطعه حذف شد");
       await load();
     } catch (e: any) {
       setToast(e.message);
@@ -255,6 +313,15 @@ export default function StorePartsPage() {
             {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
           </button>
           <button
+            onClick={() => void cleanupMedia()}
+            disabled={mediaCleaning}
+            className="flex h-10 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-600 transition hover:bg-zinc-50 disabled:opacity-50"
+            title="پاکسازی تصاویر موقت و بدون مرجع قدیمی‌تر از ۲۴ ساعت"
+          >
+            {mediaCleaning ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+            پاکسازی رسانه
+          </button>
+          <button
             onClick={openCreate}
             className="flex h-10 items-center gap-2 rounded-xl bg-[#F58220] px-4 text-sm font-bold text-white shadow-sm transition hover:bg-[#e0701a]"
           >
@@ -263,6 +330,16 @@ export default function StorePartsPage() {
           </button>
         </div>
       </div>
+
+      {mediaRepairPartId && mediaRepairPending > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <span>{mediaRepairPending} تصویر پس از ذخیره قطعه هنوز متصل نشده است. تصاویر تا تکمیل اتصال خصوصی می‌مانند.</span>
+          <button onClick={() => void retryMedia()} disabled={mediaRepairing} className="flex h-9 items-center gap-2 rounded-lg bg-amber-700 px-3 text-xs font-bold text-white disabled:opacity-50">
+            {mediaRepairing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            تلاش مجدد اتصال
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="rounded-xl border border-zinc-200 bg-white p-4">
@@ -457,8 +534,19 @@ export default function StorePartsPage() {
                 />
               </div>
               <div>
-                <label className={LABEL_CLS}>موجودی</label>
-                <input value={form.stock} onChange={(e) => setForm({ ...form, stock: onlyDigits(e.target.value) })} className={INPUT_CLS} dir="ltr" />
+                <label className={LABEL_CLS}>{editing ? "موجودی فعلی (فقط خواندنی)" : "موجودی اولیه (بدون تخصیص انبار)"}</label>
+                {editing ? (
+                  <>
+                    <input value={form.stock} readOnly className={INPUT_CLS + " cursor-not-allowed bg-zinc-100 text-zinc-500"} dir="ltr" />
+                    <p className="mt-1 text-[11px] text-zinc-500">تغییر موجودی فقط از مسیر رسمی عملیات انبار انجام می‌شود.</p>
+                    <Link href="/admin/store/inventory" className="mt-1 inline-block text-[11px] font-bold text-[#F58220] hover:underline">رفتن به مدیریت انبار</Link>
+                  </>
+                ) : (
+                  <>
+                    <input value={form.stock} onChange={(e) => setForm({ ...form, stock: onlyDigits(e.target.value) })} className={INPUT_CLS} dir="ltr" />
+                    <p className="mt-1 text-[11px] text-amber-700">این مقدار اولیه هنوز به انبار مشخصی تخصیص ندارد.</p>
+                  </>
+                )}
               </div>
               <div>
                 <label className={LABEL_CLS}>آستانه موجودی کم</label>
@@ -473,6 +561,7 @@ export default function StorePartsPage() {
                   className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-800 outline-none transition focus:border-[#F58220]"
                 />
               </div>
+              <StorePartImageUploader images={images} onChange={setImages} />
               <div className="md:col-span-2">
                 <label className={LABEL_CLS}>آدرس منبع (اختیاری)</label>
                 <input

@@ -1,4 +1,5 @@
 "use client";
+import BrandManagementNav from "@/components/admin/BrandManagementNav";
 
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -7,10 +8,9 @@ import {
   Loader2,
   CheckCircle2,
   Save,
-  Trash2,
+  Pencil,
   Globe,
   Building2,
-  X,
   AlertCircle,
 } from "lucide-react";
 import { toFa } from "@/lib/format";
@@ -57,6 +57,7 @@ export default function BrandFamiliesPage() {
   const [created, setCreated] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [slugEdited, setSlugEdited] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,8 +95,8 @@ export default function BrandFamiliesPage() {
     }
     setCreating(true);
     try {
-      const res = await fetch("/api/brand-families", {
-        method: "POST",
+      const res = await fetch(editingId ? "/api/brand-families/" + editingId : "/api/brand-families", {
+        method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name.trim(),
@@ -113,6 +114,7 @@ export default function BrandFamiliesPage() {
       }
       setForm({ ...EMPTY_FORM });
       setSlugEdited(false);
+      setEditingId(null);
       setCreated(true);
       setTimeout(() => setCreated(false), 2500);
       await load();
@@ -128,6 +130,7 @@ export default function BrandFamiliesPage() {
 
   return (
     <div className="space-y-6">
+      <BrandManagementNav active="families" />
       {/* Header */}
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-black text-zinc-900">
@@ -233,14 +236,23 @@ export default function BrandFamiliesPage() {
             />
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {editingId && (
+              <button
+                type="button"
+                onClick={() => { setEditingId(null); setForm({ ...EMPTY_FORM }); setSlugEdited(false); setErr(null); }}
+                className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm font-bold text-zinc-600 hover:bg-zinc-50"
+              >
+                انصراف
+              </button>
+            )}
             <button
               onClick={submit}
               disabled={creating}
               className="inline-flex items-center gap-2 rounded-xl bg-[#F58220] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#ff8c38] disabled:opacity-50"
             >
               {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : created ? <CheckCircle2 className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-              {creating ? "در حال ذخیره..." : created ? "ذخیره شد!" : "افزودن خانواده"}
+              {creating ? "در حال ذخیره..." : created ? "ذخیره شد!" : editingId ? "ذخیره تغییرات" : "افزودن خانواده"}
             </button>
           </div>
         </div>
@@ -315,14 +327,26 @@ export default function BrandFamiliesPage() {
 
                   <div className="flex justify-end border-t border-zinc-100 pt-2">
                     <button
-                      className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-red-50 hover:text-red-500"
-                      aria-label="حذف"
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-600 transition hover:bg-orange-50 hover:text-[#F58220]"
                       onClick={() => {
-                        // Soft placeholder: no DELETE route provided in scope.
-                        // Visualizes delete affordance for future work.
+                        setEditingId(f.id);
+                        setForm({
+                          name: f.name ?? "",
+                          nameEn: f.nameEn ?? "",
+                          slug: f.slug ?? "",
+                          description: f.description ?? "",
+                          website: f.website ?? "",
+                          country: f.country ?? "",
+                          logoUrl: f.logoUrl ?? "",
+                        });
+                        setSlugEdited(true);
+                        setErr(null);
+                        setCreated(false);
                       }}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Pencil className="h-3.5 w-3.5" />
+                      ویرایش خانواده
                     </button>
                   </div>
                 </div>

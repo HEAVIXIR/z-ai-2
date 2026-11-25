@@ -33,6 +33,10 @@ export const listingBuilderSchema = z.object({
   condition: z.string().trim().max(50).optional(),
   price: z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   description: z.string().trim().max(5000).optional(),
+  priceType: z.enum(["NEGOTIABLE", "FIXED", "CALL_FOR_PRICE"]).optional(),
+  province: z.string().trim().max(100).optional(),
+  city: z.string().trim().max(100).optional(),
+  specs: z.record(z.string(), z.string().trim().max(500)).optional(),
 }).strict();
 
 export const moderationSchema = z.object({

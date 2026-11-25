@@ -64,12 +64,16 @@ export default function AdminServicesPage() {
   const toggle = async (s: Service, field: "active" | "featured") => {
     setWorking(true);
     try {
-      await fetch("/api/admin/services", {
+      const res = await fetch("/api/admin/services", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: s.id, [field]: !s[field] }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error ?? "به‌روزرسانی خدمت ناموفق بود.");
       await load();
+    } catch (error: any) {
+      toast({ title: "ذخیره انجام نشد", description: error?.message ?? "خطای شبکه", variant: "destructive" });
     } finally {
       setWorking(false);
     }
@@ -79,9 +83,13 @@ export default function AdminServicesPage() {
     if (!confirm(`حذف «${s.nameFa}»؟`)) return;
     setWorking(true);
     try {
-      await fetch(`/api/admin/services/${s.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/services/${s.id}`, { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error ?? "حذف خدمت ناموفق بود.");
       toast({ title: "خدمت حذف شد" });
       await load();
+    } catch (error: any) {
+      toast({ title: "حذف انجام نشد", description: error?.message ?? "خطای شبکه", variant: "destructive" });
     } finally {
       setWorking(false);
     }
@@ -93,20 +101,16 @@ export default function AdminServicesPage() {
     if (!swapWith) return;
     setWorking(true);
     try {
-      // Swap sortOrder between the two
-      await Promise.all([
-        fetch("/api/admin/services", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: s.id, sortOrder: swapWith.sortOrder }),
-        }),
-        fetch("/api/admin/services", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: swapWith.id, sortOrder: s.sortOrder }),
-        }),
-      ]);
+      const res = await fetch("/api/admin/services", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: s.id, swapWithId: swapWith.id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error ?? "تغییر ترتیب خدمات ناموفق بود.");
       await load();
+    } catch (error: any) {
+      toast({ title: "تغییر ترتیب انجام نشد", description: error?.message ?? "خطای شبکه", variant: "destructive" });
     } finally {
       setWorking(false);
     }

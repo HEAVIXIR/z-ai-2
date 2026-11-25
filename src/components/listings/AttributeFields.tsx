@@ -83,6 +83,8 @@ export type AttributeDef = {
 // Per-categoryId in-memory cache so the wizard's stepper can re-mount
 // AttributeFields without refetching on every step change.
 const ATTR_CACHE = new Map<string, AttributeDef[]>();
+const attrCacheKey = (categoryId: string, modelId?: string | null) =>
+  `${categoryId}::${modelId ?? "category"}`;
 
 const inputBase =
   "h-11 w-full rounded-xl border bg-black/50 px-3 text-sm text-white outline-none transition placeholder:text-white/25 ";
@@ -109,18 +111,20 @@ export function attrHelp(a: AttributeDef): string | null {
 
 /** Module-level cache accessor (also used by the wizard to convert
     form values to the API array shape on submit). */
-export function getCachedAttributes(categoryId: string): AttributeDef[] | undefined {
-  return ATTR_CACHE.get(categoryId);
+export function getCachedAttributes(categoryId: string, modelId?: string | null): AttributeDef[] | undefined {
+  return ATTR_CACHE.get(attrCacheKey(categoryId, modelId));
 }
 
 export default function AttributeFields({
   categoryId,
+  modelId,
   values,
   onChange,
   errors,
   onAttributesLoaded,
 }: {
   categoryId: string | null;
+  modelId?: string | null;
   values: AttributeValue;
   onChange: (next: AttributeValue) => void;
   errors?: Record<string, string>;
@@ -129,6 +133,7 @@ export default function AttributeFields({
   const [attributes, setAttributes] = useState<AttributeDef[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const firedLoadedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -136,12 +141,13 @@ export default function AttributeFields({
       setAttributes([]);
       return;
     }
+    const cacheKey = attrCacheKey(categoryId, modelId);
     // Sync from cache first for instant render.
-    const cached = ATTR_CACHE.get(categoryId);
+    const cached = ATTR_CACHE.get(cacheKey);
     if (cached) {
       setAttributes(cached);
-      if (firedLoadedRef.current !== categoryId) {
-        firedLoadedRef.current = categoryId;
+      if (firedLoadedRef.current !== cacheKey) {
+        firedLoadedRef.current = cacheKey;
         onAttributesLoaded?.(cached);
       }
     }
@@ -152,17 +158,17 @@ export default function AttributeFields({
     (async () => {
       try {
         const res = await fetch(
-          `/api/categories/${encodeURIComponent(categoryId)}/attributes`,
+          `/api/categories/${encodeURIComponent(categoryId)}/attributes${modelId ? `?modelId=${encodeURIComponent(modelId)}` : ""}`,
           { cache: "no-store" },
         );
         if (!res.ok) throw new Error("fetch failed");
         const data = (await res.json()) as { attributes: AttributeDef[] };
         if (!alive) return;
         const list = data.attributes ?? [];
-        ATTR_CACHE.set(categoryId, list);
+        ATTR_CACHE.set(cacheKey, list);
         setAttributes(list);
-        if (firedLoadedRef.current !== categoryId) {
-          firedLoadedRef.current = categoryId;
+        if (firedLoadedRef.current !== cacheKey) {
+          firedLoadedRef.current = cacheKey;
           onAttributesLoaded?.(list);
         }
       } catch (err: any) {
@@ -174,7 +180,7 @@ export default function AttributeFields({
     return () => {
       alive = false;
     };
-  }, [categoryId]);
+  }, [categoryId, modelId, retryKey]);
 
   if (!categoryId) {
     return (
@@ -195,8 +201,15 @@ export default function AttributeFields({
 
   if (error && attributes.length === 0) {
     return (
-      <div className="rounded-xl border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-xs font-bold text-red-400">
-        ⚠ {error}
+      <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/[0.06] px-4 py-3 text-xs font-bold text-red-300">
+        <p>⚠ {error}</p>
+        <button
+          type="button"
+          onClick={() => setRetryKey((current) => current + 1)}
+          className="mt-3 rounded-lg border border-red-300/30 px-3 py-1.5 font-bold hover:bg-red-300/10"
+        >
+          تلاش مجدد برای بارگذاری ویژگی‌ها
+        </button>
       </div>
     );
   }
@@ -581,6 +594,7 @@ type PayloadEntry = {
   booleanValue?: boolean | null;
   dateValue?: string | null;
   optionId?: string | null;
+  selectedOptionIds?: string[];
   unit?: string | null;
   sourceType: string;
 };
@@ -593,7 +607,12 @@ export function buildAttributePayload(
   for (const a of attributes) {
     const k = attrKey(a);
     const raw = values[k];
-    if (raw === undefined || raw === null || raw === "") continue;
+    if (
+      raw === undefined ||
+      raw === null ||
+      raw === "" ||
+      (Array.isArray(raw) && raw.length === 0)
+    ) continue;
     const entry: PayloadEntry = {
       attributeId: a.id,
       unit: a.unit ?? null,
@@ -607,8 +626,14 @@ export function buildAttributePayload(
         entry.optionId = String(raw);
         break;
       case "MULTI_SELECT": {
+        // Persist option IDs as a typed array. The WANTED API stores these
+        // in BuyRequestAttributeOption child rows; serializing them into
+        // textValue makes type validation ambiguous and loses relational shape.
         const arr = Array.isArray(raw) ? raw : String(raw).split("|");
-        entry.textValue = arr.filter(Boolean).join(",");
+        entry.selectedOptionIds = arr.map(String).map((v) => v.trim()).filter(Boolean);
+        // Keep the legacy comma-separated slot for ListingAttributeValue;
+        // WANTED normalizes selectedOptionIds and ignores this transport copy.
+        entry.textValue = entry.selectedOptionIds.join(",");
         break;
       }
       case "RANGE": {
@@ -628,7 +653,10 @@ export function buildAttributePayload(
       case "SIZE":
       case "WEIGHT":
       case "YEAR":
-        entry.numberValue = typeof raw === "number" ? raw : Number(raw) || null;
+        {
+          const parsed = typeof raw === "number" ? raw : Number(raw);
+          entry.numberValue = Number.isFinite(parsed) ? parsed : null;
+        }
         break;
       default:
         entry.textValue = String(raw);

@@ -5,7 +5,7 @@
    §STEP 6 upload pipeline:
 
        Size  →  Magic bytes  →  (Decode)  →  Malware scan  →
-       EXIF sanitize  →  Resize/WebP/AVIF  →  Storage  →  URL
+       EXIF sanitize  →  Resize/PNG/WebP  →  Storage  →  URL
 
    This module covers:
      • `detectImageType()`      — magic-bytes sniffing (NEVER trust MIME).
@@ -19,15 +19,14 @@
    The client-supplied `file.type` and original filename are NEVER
    trusted; both are replaced server-side.
 
+   Supported static formats (GIF/BMP/animated WebP are rejected):
    Magic-byte signatures:
      JPEG   FF D8 FF
      PNG    89 50 4E 47 0D 0A 1A 0A
-     GIF    47 49 46 38 (37 a | 39 a)        → "GIF87a" / "GIF89a"
      WebP   52 49 46 46 ?? ?? ?? ?? 57 45 42 50   (RIFF…WEBP)
-     BMP    42 4D
    ============================================================ */
 
-export type ImageType = "jpeg" | "png" | "gif" | "webp" | "bmp";
+export type ImageType = "jpeg" | "png" | "webp";
 
 export interface DetectedImage {
   type: ImageType;
@@ -40,17 +39,13 @@ export interface DetectedImage {
 const EXT_BY_TYPE: Record<ImageType, string> = {
   jpeg: "jpg",
   png: "png",
-  gif: "gif",
   webp: "webp",
-  bmp: "bmp",
 };
 
 const MIME_BY_TYPE: Record<ImageType, string> = {
   jpeg: "image/jpeg",
   png: "image/png",
-  gif: "image/gif",
   webp: "image/webp",
-  bmp: "image/bmp",
 };
 
 /** Maximum upload size — 4 MiB to fit the hosting request-body limit. */
@@ -84,23 +79,6 @@ export function detectImageType(buffer: Buffer): ImageType | null {
     buffer[7] === 0x0a
   ) {
     return "png";
-  }
-
-  // GIF: "GIF87a" or "GIF89a"
-  if (
-    buffer[0] === 0x47 && // G
-    buffer[1] === 0x49 && // I
-    buffer[2] === 0x46 && // F
-    buffer[3] === 0x38 && // 8
-    (buffer[4] === 0x37 || buffer[4] === 0x39) && // 7 or 9
-    buffer[5] === 0x61 // a
-  ) {
-    return "gif";
-  }
-
-  // BMP: "BM"
-  if (buffer[0] === 0x42 && buffer[1] === 0x4d) {
-    return "bmp";
   }
 
   // WebP: "RIFF"...."WEBP"
@@ -185,6 +163,20 @@ export interface UploadValidation {
  * On failure: `{ ok: false, error }` with a Persian message suitable
  * for surfacing to the user.
  */
+function isAnimatedWebp(buffer: Buffer): boolean {
+  if (buffer.length < 20) return false;
+  let offset = 12;
+  while (offset + 8 <= buffer.length) {
+    const chunkType = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    if (chunkType === "ANIM" || chunkType === "ANMF") return true;
+    const nextOffset = offset + 8 + chunkSize + (chunkSize & 1);
+    if (nextOffset <= offset || nextOffset > buffer.length) return false;
+    offset = nextOffset;
+  }
+  return false;
+}
+
 export function validateImageBuffer(buffer: Buffer): UploadValidation {
   if (!buffer || buffer.length === 0) {
     return { ok: false, error: "فایل خالی است." };
@@ -196,10 +188,13 @@ export function validateImageBuffer(buffer: Buffer): UploadValidation {
     };
   }
   const detected = detectImage(buffer);
+  if (detected?.type === "webp" && isAnimatedWebp(buffer)) {
+    return { ok: false, error: "تصاویر متحرک پشتیبانی نمی‌شوند. لطفاً یک تصویر ثابت ارسال کنید." };
+  }
   if (!detected) {
     return {
       ok: false,
-      error: "فرمت فایل پشتیبانی نمی‌شود. فقط JPG، PNG، GIF، WebP، BMP.",
+      error: "فرمت فایل پشتیبانی نمی‌شود. فقط JPG، PNG و WebP مجاز هستند.",
     };
   }
   return {

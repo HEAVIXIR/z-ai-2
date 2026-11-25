@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { hasPermission } from "@/lib/rbac";
 import { logAudit } from "@/lib/audit";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
+import { getAIProvider, getZAISDK } from "@/lib/ai-provider-router";
 
 /* ============================================================
    POST /api/admin/knowledge/generate-article
@@ -55,20 +56,14 @@ async function _doPost(
     : "GUIDE";
   const generateImage = body?.generateImage !== false; // default true
 
-  // Lazy-load ZAI so module imports cleanly when SDK not used.
-  let zai: any = null;
-  try {
-    const ZAIModule = await import("z-ai-web-dev-sdk");
-    const ZAI = (ZAIModule as any).default ?? ZAIModule;
-    zai = await ZAI.create();
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+  // Resolve the AI provider via the central router. This
+  // replaces the lazy `import("z-ai-web-dev-sdk") + ZAI.create()`
+  // pattern, which fails on Cloudflare Workers because the SDK
+  // reads `.z-ai-config` from disk.
+  const provider = getAIProvider();
+  if (!provider.ok) {
     return NextResponse.json(
-      {
-        error:
-          "سرویس هوش مصنوعی در دسترس نیست. لطفاً بعداً تلاش کنید.",
-        detail: msg,
-      },
+      { error: "سرویس هوش مصنوعی در دسترس نیست. لطفاً بعداً تلاش کنید.", detail: provider.reason },
       { status: 502 },
     );
   }
@@ -90,7 +85,7 @@ Topic: """${topic}"""`;
   let content = "";
 
   try {
-    const completion = await zai.chat.completions.create({
+    const completion = await provider.client.chat.completions.create({
       messages: [
         { role: "system", content: prompt },
         { role: "user", content: topic },
@@ -135,7 +130,9 @@ Topic: """${topic}"""`;
   if (generateImage) {
     try {
       const imagePrompt = buildCoverPrompt(topic, title);
-      const imgResp = await zai.images.generations.create({
+      const zaiSdk = getZAISDK();
+      if (!zaiSdk.ok) throw new Error(zaiSdk.reason);
+      const imgResp = await zaiSdk.sdk.images.generations.create({
         prompt: imagePrompt,
         size: "1344x768",
         signal: controller.signal,

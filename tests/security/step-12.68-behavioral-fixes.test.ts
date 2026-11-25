@@ -56,11 +56,14 @@ describe("W-02: Registration code length contract (P0-C-01)", () => {
     expect(pageContent).not.toContain("code.length !== 5");
   });
 
-  it("devCode maps to devEmailCode (not devCode)", () => {
-    // BEFORE: data.devCode (API never returns this field → dev code never shown)
-    // AFTER: data.devEmailCode (matches API contract)
-    expect(pageContent).toContain("data.devEmailCode");
+  it("does not expose development verification codes in the registration UI", () => {
+    // Email verification codes are delivered through the configured email provider;
+    // development-only codes must never be rendered into the browser.
+    expect(pageContent).not.toContain("data.devEmailCode");
     expect(pageContent).not.toMatch(/setDevCode\(data\.devCode\b/);
+    const registerRoute = read("src/app/api/auth/register/route.ts");
+    expect(registerRoute).not.toContain("devEmailCode");
+    expect(registerRoute).not.toContain("devCode");
   });
 
   it("placeholder has 6 chars (not 5)", () => {
@@ -79,9 +82,9 @@ describe("W-03: POST /api/listings auth + sellerId integrity (P0-C-03)", () => {
     expect(postIdx).toBeGreaterThan(-1);
     const postBody = routeContent.slice(postIdx);
 
-    // Auth check must appear before body parsing
+    // Auth must run before the bounded JSON reader consumes the request stream.
     const authIdx = postBody.indexOf("getCurrentUser()");
-    const bodyIdx = postBody.indexOf("req.json()");
+    const bodyIdx = postBody.indexOf("readBoundedJson");
     expect(authIdx).toBeGreaterThan(-1);
     expect(bodyIdx).toBeGreaterThan(-1);
     expect(authIdx).toBeLessThan(bodyIdx);

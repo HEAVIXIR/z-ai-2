@@ -113,7 +113,7 @@ describe('Phase Marketplace-2B — Admin Audit Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (15) covers most mutations (21)', () => {
+    it('total audits (15) covers most mutations (22)', () => {
       let totalMut = 0;
       let totalAudit = 0;
       for (const f of listRouteFiles()) {
@@ -123,7 +123,7 @@ describe('Phase Marketplace-2B — Admin Audit Contract Tests', () => {
         totalMut += mutMatches.length;
         totalAudit += auditMatches.length;
       }
-      expect(totalMut).toBe(21);
+      expect(totalMut).toBe(22);
       expect(totalAudit).toBeGreaterThanOrEqual(15);
     });
   });

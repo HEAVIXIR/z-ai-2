@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 /* ============================================================
    /api/taxonomy/brands/[id]/categories
@@ -21,7 +22,7 @@ export async function GET(
   const links = await db.brandCategory.findMany({
     where: { brandId: id },
     include: { category: true },
-    orderBy: { displayOrder: "asc" },
+    orderBy: { category: { name: "asc" } },
   });
   return NextResponse.json({ success: true, data: links });
 }
@@ -31,27 +32,27 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
 
   try {
     const { id } = await params;
+    const brand = await db.brand.findUnique({ where: { id }, select: { id: true } });
+    if (!brand) return NextResponse.json({ error: "Brand not found" }, { status: 404 });
     const body = await req.json();
     const categoryId = String(body.categoryId ?? "");
     if (!categoryId) return NextResponse.json({ error: "categoryId required" }, { status: 400 });
 
+    const category = await db.category.findFirst({
+      where: { id: categoryId, active: true },
+      select: { id: true },
+    });
+    if (!category) return NextResponse.json({ error: "دسته‌بندی معتبر یا فعال نیست." }, { status: 404 });
+
+    // BrandCategory is a pure many-to-many link in the current Prisma schema.
     const link = await db.brandCategory.upsert({
       where: { brandId_categoryId: { brandId: id, categoryId } },
-      update: {
-        isActive: body.isActive ?? true,
-        isFeatured: body.isFeatured ?? false,
-        displayOrder: body.displayOrder ?? 0,
-      },
-      create: {
-        brandId: id,
-        categoryId,
-        isActive: body.isActive ?? true,
-        isFeatured: body.isFeatured ?? false,
-        displayOrder: body.displayOrder ?? 0,
-      },
+      update: {},
+      create: { brandId: id, categoryId },
     });
     return NextResponse.json({ success: true, data: link });
   } catch (e: any) {
@@ -64,6 +65,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
 
   try {
     const { id } = await params;
@@ -71,8 +73,8 @@ export async function DELETE(
     const categoryId = url.searchParams.get("categoryId");
     if (!categoryId) return NextResponse.json({ error: "categoryId required" }, { status: 400 });
 
-    await db.brandCategory.delete({
-      where: { brandId_categoryId: { brandId: id, categoryId } },
+    await db.brandCategory.deleteMany({
+      where: { brandId: id, categoryId },
     });
     return NextResponse.json({ success: true });
   } catch {

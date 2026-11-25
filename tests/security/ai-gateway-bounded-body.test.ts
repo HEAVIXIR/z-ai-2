@@ -4,7 +4,15 @@ import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({
   preflight: vi.fn(),
   recordCost: vi.fn(),
-  createProvider: vi.fn(),
+  // getAIProvider returns { ok: true, provider, model, client } on success.
+  // Tests that want to assert the provider was NOT called can use a mock
+  // that returns { ok: false } — the gateway short-circuits on that.
+  createProvider: vi.fn(() => ({
+    ok: true as const,
+    provider: "zai" as const,
+    model: "test-model",
+    client: { chat: { completions: { create: vi.fn(async () => ({ choices: [{ message: { content: "{}" } }] })) } } },
+  })),
   logAudit: vi.fn(),
   createGatewayLog: vi.fn(),
 }));
@@ -33,8 +41,9 @@ vi.mock("@/lib/db", () => ({
 }));
 vi.mock("@/lib/audit", () => ({ logAudit: mocks.logAudit }));
 vi.mock("@/lib/error-tracking", () => ({ trackError: vi.fn() }));
-vi.mock("z-ai-web-dev-sdk", () => ({
-  default: { create: mocks.createProvider },
+vi.mock("@/lib/ai-provider-router", () => ({
+  getAIProvider: mocks.createProvider,
+  getZAISDK: vi.fn(() => ({ ok: false as const, reason: "not mocked" })),
 }));
 
 import { POST } from "@/app/api/ai-gateway/route";

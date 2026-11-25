@@ -22,6 +22,9 @@ services:
     env_file: .env.production
     environment:
       - NODE_ENV=production
+      # Manual pg_dump execution is opt-in. Keep false until backup/restore,
+      # encryption, retention, and off-host recovery are independently proven.
+      - HEAVIX_BACKUP_EXECUTION_ENABLED=${HEAVIX_BACKUP_EXECUTION_ENABLED:-false}
       - DATABASE_URL=postgresql://heavix:${DB_PASSWORD}@db:5432/heavix?schema=public
       - STORE_DATABASE_URL=postgresql://heavix:${DB_PASSWORD}@store-db:5432/heavix_store?schema=public
       - HEAVIX_DOMAIN=${HEAVIX_DOMAIN}

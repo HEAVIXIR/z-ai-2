@@ -1,5 +1,7 @@
 import { db } from "@/lib/db";
 import { normalizeAliasValue } from "@/lib/brand-alias";
+import { BRAND_UNAVAILABLE_STATUSES } from "@/lib/brand-labels";
+import { SUPPLY_LISTING_TYPES } from "@/lib/transaction-type-routing";
 
 /* ============================================================
    HEAVIX — Search normalization + indexing layer (P1-18)
@@ -211,7 +213,12 @@ export async function searchListings(
   const limit = Math.min(100, Math.max(1, params.limit ?? 20));
   const offset = Math.max(0, params.offset ?? 0);
 
-  const where: PrismaWhere = { status: "PUBLISHED" };
+  const where: PrismaWhere = {
+    status: "PUBLISHED",
+    // Public catalog search must never surface legacy demand-side rows
+    // that were incorrectly materialized as Listing records.
+    listingType: { in: [...SUPPLY_LISTING_TYPES] },
+  };
 
   // Free text
   const q = params.q?.trim();
@@ -449,29 +456,32 @@ export interface BrandSearchHit {
  */
 export async function searchBrands(
   q: string,
-  opts: { take?: number } = {},
+  opts: { take?: number; categoryId?: string } = {},
 ): Promise<BrandSearchHit[]> {
   const rawQ = (q ?? "").trim();
   if (!rawQ) return [];
   const normQ = normalizeAliasValue(rawQ);
   const take = Math.min(50, Math.max(1, opts.take ?? 20));
 
-  // Note: SQLite `contains` is ASCII-case-insensitive but Persian
-  // letters are case-less, so we still pass the normalized query.
-  // The raw query is also OR-ed in so partial English matches
-  // (e.g. "cat" → "Caterpillar") work.
+  // PostgreSQL contains is case-sensitive unless mode is explicit.
+  // Use insensitive matching for canonical names and normalized aliases so
+  // lower-case English queries work even before an alias backfill completes.
   const where: PrismaWhere = {
+    active: true,
+    status: { notIn: [...BRAND_UNAVAILABLE_STATUSES] },
     OR: [
-      { name: { contains: rawQ } },
-      { name: { contains: normQ } },
-      { nameEn: { contains: rawQ } },
-      { nameEn: { contains: normQ } },
-      { shortName: { contains: rawQ } },
-      { shortName: { contains: normQ } },
+      { name: { contains: rawQ, mode: "insensitive" } },
+      { name: { contains: normQ, mode: "insensitive" } },
+      { nameEn: { contains: rawQ, mode: "insensitive" } },
+      { nameEn: { contains: normQ, mode: "insensitive" } },
+      { shortName: { contains: rawQ, mode: "insensitive" } },
+      { shortName: { contains: normQ, mode: "insensitive" } },
       { aliases: { some: { normalizedValue: { contains: normQ } } } },
     ],
   };
-
+  // Brand identity is global across the marketplace. Category associations
+  // remain useful for facets and recommendations, but must never hide a
+  // valid brand from the canonical brand picker.
   const brands = await db.brand.findMany({
     where: where as any,
     take,

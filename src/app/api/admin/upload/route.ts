@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-guard";
+import { checkCsrf } from "@/lib/csrf";
 import { uploadAsset } from "@/lib/media-service";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload-security";
 
@@ -20,6 +21,10 @@ const MAX_UPLOAD_REQUEST_BYTES = MAX_ADMIN_UPLOAD_BYTES + 256 * 1024;
 export async function POST(req: Request) {
   const [user, error] = await requireAdmin("media.upload");
   if (error) return error;
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
 
   // Reject oversized declared bodies before multipart parsing. This is an early
   // guard only; the parsed File.size check remains authoritative.
@@ -62,6 +67,7 @@ export async function POST(req: Request) {
     const result = await uploadAsset({
       file: Buffer.from(await file.arrayBuffer()),
       uploadedBy: user?.id ?? null,
+      actorType: "ADMIN",
       originalFilename: file.name,
       altText,
       entityType,

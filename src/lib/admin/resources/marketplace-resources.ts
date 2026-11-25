@@ -760,9 +760,15 @@ export const buyRequestConfig: AdminResourceConfig = {
     { key: 'province', label: 'استان', type: 'text',
       validation: { maxLength: 100, message: 'استان نباید بیش از ۱۰۰ نویسه باشد' } },
     { key: 'deadline', label: 'مهلت', type: 'text' },
-    { key: 'status', label: 'وضعیت', type: 'select', options: [
-      { value: 'ACTIVE', label: 'فعال' }, { value: 'CLOSED', label: 'بسته' },
-    ]},
+    // P0 audit (B1): status is intentionally NOT in the editable `fields`
+    // list. It remains in `columns` (read-only display). Status transitions
+    // go through the canonical wanted-service state machine via
+    // /api/admin/requests/* (publishWanted / closeWantedByAdmin /
+    // fulfillWanted). The universal PATCH would write status directly,
+    // bypassing CAS + the transition matrix — and buy-requests is now in
+    // DEDICATED_MUTATION_RESOURCES so the universal PATCH is 409-blocked
+    // anyway. Removing status from fields ensures the universal form UI
+    // never renders it as an input at all.
     { key: 'verified', label: 'تأییدشده', type: 'boolean' },
     { key: 'requesterName', label: 'نام درخواست‌کننده', type: 'text',
       validation: { minLength: 2, maxLength: 100, message: 'نام درخواست‌کننده باید بین ۲ تا ۱۰۰ نویسه باشد' } },

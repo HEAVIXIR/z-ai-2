@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+import { getAIProvider } from "@/lib/ai-provider-router";
 /* ============================================================
    STEP 11.41 — AI Gateway Pilot: ai-search migration test
    ------------------------------------------------------------
@@ -37,9 +38,12 @@ vi.mock("@/lib/api-helpers", () => ({
   parseBig: vi.fn(),
   parseNumber: vi.fn(),
 }));
-vi.mock("z-ai-web-dev-sdk", () => ({
-  default: {
-    create: vi.fn(async () => ({
+vi.mock("@/lib/ai-provider-router", () => ({
+  getAIProvider: vi.fn(() => ({
+    ok: true as const,
+    provider: "zai" as const,
+    model: "test-model",
+    client: {
       chat: {
         completions: {
           create: vi.fn(async () => ({
@@ -47,8 +51,9 @@ vi.mock("z-ai-web-dev-sdk", () => ({
           })),
         },
       },
-    })),
-  },
+    },
+  })),
+  getZAISDK: vi.fn(() => ({ ok: false as const, reason: "non-chat operations not mocked in this test" })),
 }));
 
 const { POST } = await import("@/app/api/ai-search/route");

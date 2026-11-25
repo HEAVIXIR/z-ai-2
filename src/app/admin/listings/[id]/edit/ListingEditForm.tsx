@@ -226,6 +226,8 @@ export default function ListingEditForm({
   // ── Images ──
   const [images, setImages] = useState(initial.images);
   const [uploading, setUploading] = useState(false);
+  const [mediaRetrying, setMediaRetrying] = useState(false);
+  const [mediaPendingCount, setMediaPendingCount] = useState(0);
 
   // ── Attributes ──
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
@@ -448,6 +450,10 @@ export default function ListingEditForm({
       const d = await res.json();
       if (d.ok || d.success) {
         setImages(d.listing?.images ?? [...images, { id: `tmp-${Date.now()}`, url, alt: null, isPrimary: images.length === 0, sortOrder: images.length }]);
+        setMediaPendingCount(Number(d.mediaPendingCount) || 0);
+        if (d.mediaStatus === "PENDING") {
+          setError("تصویر به آگهی اضافه شد، اما انتقال نهایی آن کامل نشده است. از گزینه بازیابی تصاویر دوباره تلاش کنید.");
+        }
       } else {
         setError(d.error ?? "خطا در افزودن تصویر");
       }
@@ -455,6 +461,37 @@ export default function ListingEditForm({
       setError("خطای شبکه");
     }
     setUploading(false);
+  };
+
+  const retryMediaRecovery = async () => {
+    setMediaRetrying(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/listings/${encodeURIComponent(initial.id)}/media`, {
+        method: "POST",
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 202) {
+        throw new Error(data.error ?? "بازیابی تصاویر ناموفق بود.");
+      }
+      const pending = Number(data.pendingCount) || 0;
+      setMediaPendingCount(pending);
+      const listingRes = await fetch(apiBase, { cache: "no-store" });
+      if (listingRes.ok) {
+        const listingData = await listingRes.json();
+        if (Array.isArray(listingData.listing?.images)) setImages(listingData.listing.images);
+      }
+      if (pending > 0) {
+        setError(`${pending} تصویر هنوز در انتظار اتصال نهایی است. می‌توانید دوباره تلاش کنید.`);
+      } else {
+        setSuccess("بازیابی تصاویر با موفقیت تکمیل شد.");
+      }
+    } catch (retryError) {
+      setError(retryError instanceof Error ? retryError.message : "بازیابی تصاویر ناموفق بود.");
+    } finally {
+      setMediaRetrying(false);
+    }
   };
 
   const setPrimary = async (imgId: string) => {
@@ -1029,10 +1066,28 @@ export default function ListingEditForm({
 
           {/* Images */}
           <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-black text-zinc-900">تصاویر ({images.length})</h2>
-              <span className="text-[10px] text-zinc-400">اولین تصویر = تصویر اصلی</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-zinc-400">اولین تصویر = تصویر اصلی</span>
+                {!isAdmin && (
+                  <button
+                    type="button"
+                    onClick={retryMediaRecovery}
+                    disabled={mediaRetrying || uploading}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-bold text-amber-800 disabled:opacity-50"
+                  >
+                    {mediaRetrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                    {mediaRetrying ? "در حال بازیابی…" : "بررسی و بازیابی تصاویر"}
+                  </button>
+                )}
+              </div>
             </div>
+            {mediaPendingCount > 0 && (
+              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                {mediaPendingCount} تصویر هنوز در انتظار اتصال نهایی است.
+              </p>
+            )}
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
               {images.map((img, idx) => (
                 <div
@@ -1093,7 +1148,7 @@ export default function ListingEditForm({
                   onChange={(v) => {
                     if (v) addImageByUrl(v);
                   }}
-                  endpoint="/api/admin/upload"
+                  endpoint={isAdmin ? "/api/admin/upload" : "/api/media/staging"}
                   label=""
                   removable={false}
                   className="h-full w-full"
@@ -1224,6 +1279,19 @@ export default function ListingEditForm({
               </div>
             </div>
           </section>
+
+          {/* Exact-serial duplicate review signal: show prominently to moderators. */}
+          {isAdmin && adminNotes.includes("AUTO_DUPLICATE_REVIEW") && (
+            <section role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 shadow-sm">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                <div>
+                  <h2 className="text-sm font-black">بررسی تکراری بودن آگهی ضروری است</h2>
+                  <p className="mt-1 text-xs leading-6">شماره سریال ماشین با آگهی دیگری تطبیق داشته است. پیش از تأیید یا انتشار، آگهی‌های مرتبط و یادداشت داخلی را بررسی کنید. این هشدار به‌تنهایی به معنی رد آگهی نیست.</p>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Admin notes (admin only) */}
           {isAdmin && (

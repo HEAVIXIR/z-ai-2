@@ -46,10 +46,10 @@ type SellerRow = {
 };
 
 export default async function AdminSellersPage() {
-  // Query: every user whose role is SELLER, plus include their
-  // FoundingSeller record (if any) and listing counts.
+  // Query: every user assigned the canonical SELLER role through UserRole,
+  // plus include their FoundingSeller record (if any) and listing counts.
   const users = await db.user.findMany({
-    where: { role: "SELLER" },
+    where: { userRoles: { some: { role: { key: "SELLER" } } } },
     orderBy: { createdAt: "desc" },
     include: {
       foundingStatus: true,

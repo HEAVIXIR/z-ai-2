@@ -1,4 +1,4 @@
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 import { logAudit } from "@/lib/audit";
 
 // SERVER-ONLY — imports z-ai-web-dev-sdk.
@@ -200,6 +200,7 @@ export async function enhanceMatchScore(input: {
   buyRequest: BuyRequestInput;
   candidateListings: CandidateListingInput[];
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<EnhancedMatchResult> {
   const { buyRequest, candidateListings, userId } = input;
   try {
@@ -213,7 +214,9 @@ export async function enhanceMatchScore(input: {
     // Cap candidates so we don't blow the prompt window.
     const capped = candidateListings.slice(0, 25);
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       buyRequest: compactBuyRequest(buyRequest),
       candidates: capped.map(compactListing),
@@ -224,6 +227,7 @@ export async function enhanceMatchScore(input: {
         { role: "system", content: ENHANCE_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";
@@ -287,6 +291,7 @@ export async function generateMatchExplanation(input: {
   listing: CandidateListingInput;
   matchScore?: number;
   userId?: string | null;
+  signal?: AbortSignal;
 }): Promise<MatchExplanationResult> {
   const { buyRequest, listing, matchScore, userId } = input;
   try {
@@ -298,7 +303,9 @@ export async function generateMatchExplanation(input: {
       };
     }
 
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const userPrompt = JSON.stringify({
       buyRequest: compactBuyRequest(buyRequest),
       listing: compactListing(listing),
@@ -310,6 +317,7 @@ export async function generateMatchExplanation(input: {
         { role: "system", content: EXPLAIN_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
       ],
+      signal: input.signal,
       thinking: { type: "disabled" },
     });
     const raw = completion?.choices?.[0]?.message?.content || "";

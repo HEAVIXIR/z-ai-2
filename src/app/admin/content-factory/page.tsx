@@ -247,7 +247,7 @@ export default function AIContentFactoryPage() {
             <div className="flex items-center gap-2 py-2">
               {savedSlug && (
                 <Link
-                  href={`/knowledge/${savedSlug}`}
+                  href={`/articles/${savedSlug}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100"

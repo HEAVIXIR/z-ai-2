@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
 import { slugify } from "@/lib/api-helpers";
 import { logAudit } from "@/lib/audit";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,9 +46,11 @@ export async function GET() {
 export async function POST(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
-    if (!body?.nameFa) {
+    const nameFa = typeof body?.nameFa === "string" ? body.nameFa.trim() : "";
+    if (!nameFa) {
       return NextResponse.json(
         { error: "nameFa is required" },
         { status: 400 },
@@ -56,7 +59,7 @@ export async function POST(req: Request) {
     const key =
       typeof body.key === "string" && body.key.trim()
         ? slugify(body.key)
-        : slugify(body.nameFa) || `service-${Date.now()}`;
+        : slugify(nameFa) || `service-${Date.now()}`;
 
     // Ensure key uniqueness
     let finalKey = key;
@@ -68,13 +71,12 @@ export async function POST(req: Request) {
     const service = await db.service.create({
       data: {
         key: finalKey,
-        nameFa: String(body.nameFa),
-        nameEn: body.nameEn ? String(body.nameEn) : null,
-        description: body.description ? String(body.description) : null,
-        icon: body.icon ? String(body.icon) : null,
-        imageUrl: body.imageUrl ? String(body.imageUrl) : null,
-        sortOrder:
-          typeof body.sortOrder === "number" ? body.sortOrder : Number(body.sortOrder) || 0,
+        nameFa,
+        nameEn: body.nameEn ? String(body.nameEn).trim() : null,
+        description: body.description ? String(body.description).trim() : null,
+        icon: body.icon ? String(body.icon).trim() : null,
+        imageUrl: body.imageUrl ? String(body.imageUrl).trim() : null,
+        sortOrder: Number.isInteger(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
         active: body.active !== false,
         featured: !!body.featured,
       },
@@ -93,7 +95,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { status: err?.code === "P2002" ? 409 : 500 },
     );
   }
 }
@@ -108,6 +110,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   const unauth = await requireAuth();
   if (unauth) return unauth;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const body = await req.json().catch(() => ({}));
     const id = typeof body.id === "string" ? body.id : null;
@@ -119,6 +122,27 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
+    if (typeof body.swapWithId === "string" && body.swapWithId !== id) {
+      const other = await db.service.findUnique({ where: { id: body.swapWithId } });
+      if (!other) return NextResponse.json({ error: "Swap target not found" }, { status: 404 });
+      const [service] = await db.$transaction([
+        db.service.update({ where: { id }, data: { sortOrder: other.sortOrder } }),
+        db.service.update({ where: { id: other.id }, data: { sortOrder: existing.sortOrder } }),
+      ]);
+      const sessionUser = await getCurrentUser();
+      await logAudit({
+        actorId: sessionUser?.id ?? null,
+        actorType: "ADMIN",
+        action: "admin.services.reorder",
+        entityType: "Service",
+        entityId: id,
+        before: { sortOrder: existing.sortOrder },
+        after: { sortOrder: service.sortOrder, swapWithId: other.id },
+        reason: "via admin API",
+      });
+      return NextResponse.json({ ok: true, service });
+    }
+
     const data: any = {};
     const allowed = [
       "nameFa", "nameEn", "description", "icon", "imageUrl",
@@ -127,8 +151,11 @@ export async function PATCH(req: Request) {
     for (const k of allowed) {
       if (k in body) {
         if (k === "active" || k === "featured") data[k] = Boolean(body[k]);
-        else if (k === "sortOrder") data[k] = Number(body[k]) || 0;
-        else data[k] = body[k] === undefined ? null : body[k];
+        else if (k === "sortOrder") {
+          const value = Number(body[k]);
+          if (!Number.isInteger(value)) return NextResponse.json({ error: "sortOrder must be an integer" }, { status: 400 });
+          data[k] = value;
+        } else data[k] = body[k] == null ? null : String(body[k]).trim();
       }
     }
 
@@ -161,7 +188,7 @@ export async function PATCH(req: Request) {
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { status: err?.code === "P2002" ? 409 : 500 },
     );
   }
 }

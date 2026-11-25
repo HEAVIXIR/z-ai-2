@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { checkCsrf } from "@/lib/csrf";
 import { requirePermission } from "@/lib/authorization";
 import { getClientIp } from "@/lib/request-context";
 import { logAudit } from "@/lib/audit";
@@ -41,6 +42,10 @@ export async function POST(
       { error: "Forbidden: requires company.verify" },
       { status: 403 },
     );
+  }
+
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   }
 
   try {

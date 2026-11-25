@@ -1,0 +1,69 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "heavix-preview",
+  "main": ".open-next/worker.js",
+  // Keep the established preview runtime date pinned. Populate process.env
+  // from Worker bindings for the Prisma 6 PPG adapter path.
+  "compatibility_date": "2026-10-28",
+  "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"],
+  // This Worker is the Integration Preview runtime. The observed 10 ms CPU
+  // ceiling terminated bcrypt verification before the login handler could
+  // respond. Keep a bounded 500 ms ceiling; this does not change paid-plan
+  // selection and prevents an unbounded runaway invocation.
+  "limits": { "cpu_ms": 500 },
+  // Homepage rendering performs multiple PostgreSQL round trips. Smart
+  // Placement optimizes fetch execution near the observed backend; static
+  // assets remain served from the nearest edge location.
+  "placement": { "mode": "smart" },
+  "vars": {
+    "HEAVIX_ENV": "preview",
+    "HEAVIX_PREVIEW_ORIGIN": "https://heavix-preview.heavixir.workers.dev",
+    "NODE_ENV": "production",
+    "AI_PROVIDER": "zai",
+    "ZAI_MODEL": "glm-4.6-flash",
+    "AI_REQUEST_TIMEOUT_MS": "120000",
+    "HEAVIX_BACKUP_EXECUTION_ENABLED": "false",
+    "B2_BUCKET_NAME": "heavix-dev-assets",
+    "B2_MEDIA_PREFIX": "heavix-media/",
+    "B2_REGION": "us-east-005",
+    "B2_S3_ENDPOINT": "https://s3.us-east-005.backblazeb2.com"
+  },
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "observability": { "enabled": true },
+  "previews": {
+    "vars": {
+      "HEAVIX_ENV": "preview",
+      "HEAVIX_PREVIEW_ORIGIN": "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev",
+      "NODE_ENV": "production",
+      "AI_PROVIDER": "zai",
+      "ZAI_MODEL": "glm-4.6-flash",
+      "AI_REQUEST_TIMEOUT_MS": "120000",
+      "HEAVIX_BACKUP_EXECUTION_ENABLED": "false",
+      "B2_BUCKET_NAME": "heavix-dev-assets",
+      "B2_MEDIA_PREFIX": "heavix-media/",
+      "B2_REGION": "us-east-005",
+      "B2_S3_ENDPOINT": "https://s3.us-east-005.backblazeb2.com"
+    },
+    "observability": {
+      "enabled": true,
+      "logs": { "enabled": true, "persist": true, "head_sampling_rate": 1 },
+      "traces": { "enabled": true, "persist": true, "head_sampling_rate": 1 }
+    }
+  },
+  "secrets": {
+    "required": [
+      "DATABASE_URL",
+      "STORE_DATABASE_URL",
+      "HEAVIX_APP_PREVIEW_DATABASE_OID",
+      "HEAVIX_STORE_PREVIEW_DATABASE_OID",
+      "B2_KEY_ID",
+      "B2_APPLICATION_KEY",
+      // AI provider — required for AI features (search enhance,
+      // listing builder, content assistant, matching enhance,
+      // operational signals, gateway, scraper). Fail-closed
+      // when absent. See src/lib/ai-provider.ts.
+      "ZAI_BASE_URL",
+      "ZAI_API_KEY"
+    ]
+  }
+}

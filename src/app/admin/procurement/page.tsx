@@ -39,6 +39,8 @@ type Procurement = {
   company: { id: string; name: string; slug: string } | null;
 };
 
+type SupplierOption = { id: string; name: string; nameFa: string | null };
+
 const STATUS_CLS: Record<string, string> = {
   DRAFT: "bg-zinc-100 text-zinc-600",
   PUBLISHED: "bg-emerald-100 text-emerald-700",
@@ -55,6 +57,15 @@ const STATUS_LABELS: Record<string, string> = {
   AWARDED: "تأییدشده",
   COMPLETED: "تکمیل‌شده",
   CANCELLED: "لغوشده",
+};
+
+const PROCUREMENT_STATUS_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ["PUBLISHED", "CANCELLED"],
+  PUBLISHED: ["QUOTING", "CANCELLED"],
+  QUOTING: ["AWARDED", "CANCELLED"],
+  AWARDED: ["COMPLETED", "CANCELLED"],
+  COMPLETED: [],
+  CANCELLED: [],
 };
 
 const INPUT_CLS =
@@ -137,17 +148,29 @@ export default function AdminProcurementPage() {
       // The store procurement API doesn't support a bulk POST endpoint —
       // bulk status change is implemented as a fan-out of PATCH calls.
       const ids = Array.from(selected);
-      await Promise.all(
-        ids.map((id) =>
-          fetch(`/api/admin/store/procurement/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status }),
-          }),
-        ),
+      const results = await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const response = await fetch(`/api/admin/store/procurement/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            return { id, ok: response.ok && payload.success === true, error: payload.error };
+          } catch {
+            return { id, ok: false, error: "خطای شبکه" };
+          }
+        }),
       );
-      setSelected(new Set());
-      flash("عملیات گروهی انجام شد");
+      const failedIds = results.filter((result) => !result.ok).map((result) => result.id);
+      setSelected(new Set(failedIds));
+      const succeeded = results.length - failedIds.length;
+      if (failedIds.length === 0) {
+        flash(`عملیات برای ${toFa(succeeded)} مناقصه انجام شد`);
+      } else {
+        flash(`${toFa(succeeded)} موفق، ${toFa(failedIds.length)} ناموفق؛ موارد ناموفق انتخاب‌شده باقی ماندند`);
+      }
       await load();
     } finally {
       setActing(false);
@@ -179,6 +202,13 @@ export default function AdminProcurementPage() {
     setEditOpen(true);
   };
 
+  const selectedItems = items.filter((item) => selected.has(item.id));
+  const canBulkPublish = selectedItems.length > 0 && selectedItems.every((item) => item.status === "DRAFT");
+  const canBulkQuoting = selectedItems.length > 0 && selectedItems.every((item) => item.status === "PUBLISHED");
+  const canBulkAward = selectedItems.length > 0 && selectedItems.every((item) => item.status === "QUOTING" && item.company !== null);
+  const canBulkComplete = selectedItems.length > 0 && selectedItems.every((item) => item.status === "AWARDED");
+  const canBulkCancel = selectedItems.length > 0 && selectedItems.every((item) => ["DRAFT", "PUBLISHED", "QUOTING", "AWARDED"].includes(item.status));
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -191,6 +221,13 @@ export default function AdminProcurementPage() {
             مشاهده و مدیریت مناقصات خرید ثبت‌شده توسط سازمان‌ها
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href="/admin/store/procurement-orders"
+          className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-700 hover:border-[#F58220] hover:text-[#F58220]"
+        >
+          دریافت سفارش‌های خرید
+        </Link>
         <button
           onClick={load}
           className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-600 hover:border-[#F58220] hover:text-[#F58220]"
@@ -198,6 +235,7 @@ export default function AdminProcurementPage() {
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           به‌روزرسانی
         </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -260,15 +298,22 @@ export default function AdminProcurementPage() {
           </span>
           <button
             onClick={() => bulkStatus("PUBLISHED")}
-            disabled={acting}
+            disabled={acting || !canBulkPublish}
             className="inline-flex items-center gap-1 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-600 disabled:opacity-60"
           >
             <CheckCircle2 className="h-3.5 w-3.5" />
             انتشار
           </button>
           <button
+            onClick={() => bulkStatus("QUOTING")}
+            disabled={acting || !canBulkQuoting}
+            className="inline-flex items-center gap-1 rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-600 disabled:opacity-60"
+          >
+            شروع دریافت پیشنهاد
+          </button>
+          <button
             onClick={() => bulkStatus("AWARDED")}
-            disabled={acting}
+            disabled={acting || !canBulkAward}
             className="inline-flex items-center gap-1 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-60"
           >
             <Award className="h-3.5 w-3.5" />
@@ -276,7 +321,7 @@ export default function AdminProcurementPage() {
           </button>
           <button
             onClick={() => bulkStatus("COMPLETED")}
-            disabled={acting}
+            disabled={acting || !canBulkComplete}
             className="inline-flex items-center gap-1 rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-600 disabled:opacity-60"
           >
             <Archive className="h-3.5 w-3.5" />
@@ -284,7 +329,7 @@ export default function AdminProcurementPage() {
           </button>
           <button
             onClick={() => bulkStatus("CANCELLED")}
-            disabled={acting}
+            disabled={acting || !canBulkCancel}
             className="inline-flex items-center gap-1 rounded-lg bg-red-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-600 disabled:opacity-60"
           >
             <Ban className="h-3.5 w-3.5" />
@@ -473,8 +518,36 @@ function EditProcurementModal({
   const [budgetMax, setBudgetMax] = useState(procurement.budgetMax ?? "");
   const [deadline, setDeadline] = useState(toLocalInputValue(procurement.deadline));
   const [status, setStatus] = useState(procurement.status);
+  const [supplierId, setSupplierId] = useState(procurement.company?.id ?? "");
+  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(true);
+  const [supplierLoadError, setSupplierLoadError] = useState<string | null>(null);
+  const availableStatuses = [
+    procurement.status,
+    ...(PROCUREMENT_STATUS_TRANSITIONS[procurement.status] ?? []),
+  ].filter((value) => value !== "AWARDED" || Boolean(supplierId));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingSuppliers(true);
+    fetch("/api/admin/store/suppliers?active=true", { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok || payload.success !== true) {
+          throw new Error(payload.error ?? "دریافت فهرست تأمین‌کنندگان ناموفق بود");
+        }
+        if (active) setSuppliers(payload.data ?? []);
+      })
+      .catch((cause) => {
+        if (active) setSupplierLoadError(cause instanceof Error ? cause.message : "خطا در دریافت تأمین‌کنندگان");
+      })
+      .finally(() => {
+        if (active) setLoadingSuppliers(false);
+      });
+    return () => { active = false; };
+  }, []);
 
   const save = async () => {
     setError(null);
@@ -500,6 +573,7 @@ function EditProcurementModal({
           budgetMax: budgetMax ? onlyDigits(budgetMax) : null,
           deadline: deadline ? new Date(deadline).toISOString() : null,
           status,
+          supplierId: supplierId || null,
         }),
       });
       const json = await res.json();
@@ -563,11 +637,28 @@ function EditProcurementModal({
               <input type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} dir="ltr" className={INPUT_CLS} />
             </div>
             <div>
+              <label className={LABEL_CLS}>تأمین‌کننده برنده</label>
+              <select
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
+                disabled={loadingSuppliers || procurement.status === "AWARDED" || procurement.status === "COMPLETED"}
+                className={INPUT_CLS}
+              >
+                <option value="">بدون تأمین‌کننده</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.nameFa || supplier.name}
+                  </option>
+                ))}
+              </select>
+              {supplierLoadError && <p className="mt-1 text-xs text-red-600">{supplierLoadError}</p>}
+            </div>
+            <div>
               <label className={LABEL_CLS}>وضعیت</label>
               <select value={status} onChange={(e) => setStatus(e.target.value)} className={INPUT_CLS}>
-                {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
+                {availableStatuses.map((value) => (
+                  <option key={value} value={value}>
+                    {STATUS_LABELS[value] ?? value}
                   </option>
                 ))}
               </select>

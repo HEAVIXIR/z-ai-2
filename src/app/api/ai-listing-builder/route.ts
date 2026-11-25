@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
+import { checkCsrf } from "@/lib/csrf";
+import { readBoundedJson } from "@/lib/read-bounded-json";
+import {
+  validateLLMJson,
+  listingBuilderSchema,
+  MAX_LISTING_BUILDER_OUTPUT_CHARS,
+} from "@/lib/ai-gateway-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,14 +31,31 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json().catch(() => ({}));
-  const description = String(body.description ?? "").trim();
+  if (!checkCsrf(req)) {
+    return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
+  }
+
+  const parsedBody = await readBoundedJson<unknown>(req, 64 * 1024);
+  if (!parsedBody.ok) {
+    return NextResponse.json(
+      { error: parsedBody.error },
+      { status: parsedBody.status },
+    );
+  }
+  if (!parsedBody.value || typeof parsedBody.value !== "object" || Array.isArray(parsedBody.value)) {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const body = parsedBody.value as Record<string, unknown>;
+  const description = typeof body.description === "string" ? body.description.trim() : "";
   if (!description) {
     return NextResponse.json({ error: "description is required" }, { status: 400 });
   }
+  if (description.length > 20_000) {
+    return NextResponse.json({ error: "description is too long" }, { status: 400 });
+  }
 
   // STEP 11.42 GATEWAY PHASE 1: pre-flight check (policy + auth + quota + budget)
-  const inputLen = Math.min(1_000_000, JSON.stringify(body ?? "").length);
+  const inputLen = JSON.stringify(body).length;
   const preflight = await preflightAIRequest({
     taskType: "LISTING_BUILDER",
     user: { id: user.id },
@@ -53,7 +77,9 @@ export async function POST(req: Request) {
   const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
 
   try {
-    const zai = await ZAI.create();
+    const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
     const sys = `You are HEAVIX listing builder. From a free-text description (often Persian) of a heavy-machinery sale ad, extract structured JSON with these keys (omit if not present):
 {
   "title": "concise listing title in Persian",
@@ -78,11 +104,17 @@ Return ONLY JSON.`;
       signal: controller.signal,
     } as any);
     const raw = completion?.choices?.[0]?.message?.content || "";
-    const jsonStr = raw.replace(/```json|```/g, "").trim();
-    const start = jsonStr.indexOf("{");
-    const end = jsonStr.lastIndexOf("}");
-    const extracted: any =
-      start >= 0 && end > start ? JSON.parse(jsonStr.slice(start, end + 1)) : {};
+    const validated = validateLLMJson(
+      raw,
+      listingBuilderSchema,
+      MAX_LISTING_BUILDER_OUTPUT_CHARS,
+    );
+    if (!validated.success) {
+      const validationError = new Error("AI output validation failed") as Error & { code?: string };
+      validationError.code = "AI_OUTPUT_INVALID";
+      throw validationError;
+    }
+    const extracted = validated.data;
 
     // STEP 11.42 GATEWAY PHASE 1: record cost + log to AIGatewayLog
     const latencyMs = Date.now() - startTime;
@@ -149,8 +181,14 @@ Return ONLY JSON.`;
         },
       });
     } catch { /* best-effort */ }
+    if (err?.code === "AI_OUTPUT_INVALID") {
+      return NextResponse.json(
+        { error: "AI returned an invalid listing structure" },
+        { status: 502 },
+      );
+    }
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Unable to build listing from description" },
       { status: 500 },
     );
   }

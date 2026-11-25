@@ -11,7 +11,7 @@ import {
 } from "@/lib/ai-policy";
 import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
-import ZAI from "z-ai-web-dev-sdk";
+import { getAIProvider } from "@/lib/ai-provider-router";
 import { readBoundedJson } from "@/lib/read-bounded-json";
 
 import {
@@ -159,7 +159,9 @@ export async function POST(req: NextRequest) {
 
   // ── Route to the appropriate AI handler ─────────────────────
   let result: any = null;
-  let model = policy.model === "default" ? "z-ai-default" : policy.model;
+  let model = policy.model === "default" ? "default" : policy.model;
+  let requestModel = policy.model;
+  let tokensUsed: number | null = null;
   let success = true;
   let errorMsg: string | null = null;
 
@@ -169,13 +171,37 @@ export async function POST(req: NextRequest) {
   const timeoutTimer = setTimeout(() => controller.abort(), policy.timeoutMs);
 
   try {
-    const zai = await ZAI.create();
+    let providerResult: ReturnType<typeof getAIProvider> | null = null;
+    const getProviderClient = () => {
+      if (!providerResult) providerResult = getAIProvider();
+      if (!providerResult.ok) throw new Error(providerResult.reason);
+      requestModel = policy.model === "default" ? providerResult.model : policy.model;
+      model = `${providerResult.provider}:${requestModel}`;
+      const client = providerResult.client;
+      return {
+        chat: {
+          completions: {
+            create: async (request: Parameters<typeof client.chat.completions.create>[0]) => {
+              const response = await client.chat.completions.create(request);
+              tokensUsed = Number.isFinite(response.usage?.total_tokens)
+                ? response.usage!.total_tokens!
+                : null;
+              if (response.model) model = `${providerResult!.provider}:${response.model}`;
+              return response;
+            },
+          },
+        },
+      };
+    };
 
     switch (task) {
       case "SEARCH":
       case "SEMANTIC_SEARCH": {
+        const zai = getProviderClient();
         const query = String(input?.query || "");
         const llmRes = await zai.chat.completions.create({
+          model: requestModel,
+          max_tokens: policy.maxOutputTokens,
           messages: [
             {
               role: "system",
@@ -193,8 +219,11 @@ export async function POST(req: NextRequest) {
       }
 
       case "LISTING_BUILDER": {
+        const zai = getProviderClient();
         const desc = String(input?.description || "");
         const llmRes = await zai.chat.completions.create({
+          model: requestModel,
+          max_tokens: policy.maxOutputTokens,
           messages: [
             {
               role: "system",
@@ -241,8 +270,11 @@ export async function POST(req: NextRequest) {
       }
 
       case "MODERATION": {
+        const zai = getProviderClient();
         const text = String(input?.text || "");
         const llmRes = await zai.chat.completions.create({
+          model: requestModel,
+          max_tokens: policy.maxOutputTokens,
           messages: [
             {
               role: "system",
@@ -360,6 +392,7 @@ export async function POST(req: NextRequest) {
         input: JSON.stringify(input).substring(0, 500),
         output: JSON.stringify(result).substring(0, 500),
         latencyMs,
+        tokensUsed,
         cost: recordedCost || null,
         success,
         error: errorMsg,

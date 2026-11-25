@@ -8925,3 +8925,149 @@ Stage Summary:
   * origin/security/49.2X-08-vA-vE-completion: 81f07f44412ab404086a87bf85789ae92e05a499
   * origin/ci/production-gates: 98614cd56a653423ee9efce0a1aded477a6d51a5  (still at main — push was rejected)
 - PR #3: untouched (no `gh` CLI available to query status programmatically, but no git operation touched its branch or commits).
+
+---
+
+## PHASE H.2 — Listing-form completion hardening (2026-11-19)
+
+**Branch:** `integration/preview-readiness-workerd-2026-11-15`
+**Directive:** Senior-manager PHASE H.2 (final listing form completion).
+
+### Delivered WITHOUT a migration (committed this phase)
+- **H.2.3 (P1):** fixed the WANTED+SERVICE_REQUEST `canProceed` short-circuit
+  in `listings/new/page.tsx` — the service-flow branch now also enforces the
+  WANTED quantity/budget/deadline checks (previously bypassed).
+- **H.2.4a (P0 security):** added CSRF to `/api/wanted/[id]` PATCH/DELETE
+  (cross-site close was possible; DELETE delegates to PATCH so both are covered).
+- **H.2.4b (P0 security):** added CSRF + rate-limit + bounded body to the
+  legacy `/api/requests` POST, `/api/rfq` POST, and `/api/rfq/[id]/quotes`
+  POST (all were unguarded). Added `LISTING_CREATE`/`REQUEST_CREATE`/
+  `RFQ_CREATE`/`QUOTE_SUBMIT` presets.
+- **H.2.4c (P0 integrity):** `/api/wanted` POST now fails closed on invalid
+  `categoryId`/`brandId`/`modelId`/`serviceTypeId` (existence + brand↔model +
+  category↔model compatibility) and validates `attributeValues` shape.
+  Previously best-effort (NULL on miss / unvalidated).
+- **H.2.4d:** RENT server-side validation (rentalPeriod enum+required,
+  deposit≥0, minimumRentalPeriod int≥1, availabilityEnd>start) + AUCTION
+  client `canProceed` (reservePrice≥startPrice, endDate>startDate) +
+  SALE/RENT price-"0" client fix.
+- **H.2.4e (idempotency):** audit-log-backed idempotency via the existing
+  `AuditLog.idempotencyKey` column (no migration). `logAudit` writes the key;
+  `createWanted` forwards it; `/api/wanted` + `/api/listings` POST do
+  check-before-create on retry; the wizard sends `Idempotency-Key` header.
+- **H.2.4e:** added `LISTING_CREATE` rate-limit + `marketplace.listing.create`
+  audit log to `/api/listings` POST (was missing — only RFQ/Auction children
+  were audited).
+- **H.2.6:** `rejectWanted` service function + `reject` action in the bulk +
+  single-row admin routes (REJECTED was terminal but unreachable). Dashboard
+  counters now include REJECTED + EXPIRED separately.
+
+### BLOCKED (proposal only — migration gate)
+- **H.2.2:** WANTED structured storage (quantity/categoryId/brandId/modelId/
+  serviceTypeId/attributeValues as canonical FKs/relations on `BuyRequest`).
+  Execution-ready migration SQL + schema diff + service code + round-trip test
+  plan in `docs/operations/RFC-WANTED-STRUCTURAL-STORAGE-H2.md`. Migration
+  execution NOT authorized (backup/restore gate).
+- **H.2.5:** media orphan-cleanup audit + proposal in
+  `docs/operations/MEDIA-ORPHAN-CLEANUP-PROPOSAL.md`. SALE/RENT/AUCTION/SERVICE
+  media pipeline (staging→ListingImage relation→attach→retry→display) verified
+  sound; orphan sweep is the only open item.
+- **H.2.8:** Preview #346 still blocked (schema drift — `Listing.serviceTypeId`
+  migration not applied to Preview DB). Read-only diagnosis continued; no
+  deploy/mutation.
+
+### Tests
+- Updated `tests/unit/listing-taxonomy-domain-forms.test.ts` +
+  `tests/security/step-13.31-error-leak.test.ts` to match the new behavior.
+- Added `tests/contract/phase-h2-listing-form-hardening.test.ts` (21 contract
+  tests covering H.2.3/4a/4b/4c/4d/4e/6).
+- typecheck + lint clean; full suite: only DB/env-dependent tests fail (store/
+  phaseN need PostgreSQL+seed — green in CI).
+
+### Identity preservation
+- H.1 preserved: `/dashboard/wanted` success destination, server-side auth +
+  `userId` ownership filter, public WANTED ACTIVE-only, Step 1 intent selector.
+- Token scrubbed from disk after use; no leakage in commits/logs/issues.
+
+---
+
+## PHASE H.3 — WANTED structured storage implementation (2026-11-19)
+
+**Branch:** `integration/preview-readiness-workerd-2026-11-15`
+**Directive:** Senior-manager H.3 (fix attribute model + WANTED migration, implement
+atomic storage + DB-level idempotency, complete validation + read paths).
+
+### Implemented (code authored — migration execution still gated)
+
+**Schema (`prisma/schema.prisma`):**
+- `BuyRequest` gains canonical structured columns: `quantity Int?`,
+  `categoryId/brandId/modelId/serviceTypeId String?` (FK, SetNull), `intent String?`,
+  `idempotencyKey String? @unique` (DB-enforced idempotency).
+- Relations: `categoryRef/brandRef/modelRef/serviceTypeRef` (SetNull on taxonomy delete).
+- **Parent/child attribute model** (fixes the H.2-rev2 senior-manager audit finding):
+  - `BuyRequestAttributeValue` (parent): one row per (request, attribute). Real FK to
+    `AttributeDefinition` (Cascade). `@@unique([buyRequestId, attributeId])`.
+  - `BuyRequestAttributeOption` (child): one row per selected option for MULTI_SELECT.
+    Real FK to `AttributeOption` (Cascade) + to parent (Cascade).
+    `@@unique([attributeValueId, optionId])`.
+  - No partial indexes, no ON DELETE SET NULL collision (the flaw the manager caught).
+- Back-relations added to Category, Brand, ProductModel, ServiceType,
+  AttributeDefinition, AttributeOption.
+
+**Migration (`prisma/migrations/20261119160000_wanted_structural_storage/migration.sql`):**
+- Additive, nullable columns. Real FK constraints. 9 FKs + 3 unique indexes +
+  6 supporting indexes. Execution-ready.
+
+**Separate guarded workflow (`.github/workflows/app-preview-wanted-structural-migration.yml`):**
+- Independent of PR #347 (which applies `20261118152000_link_listing_service_rfq`).
+- Expects 7 pre-apply / 8 post-apply (i.e. #347's migration already ran).
+- Own typed confirmation `APPLY_APP_PREVIEW_20261119160000`.
+- Same backup + read-back + disposable-restore + identity-verify gate as #347.
+
+**Service layer (`src/lib/wanted-service.ts`):**
+- `createWanted` now writes the structured FK columns + attribute parent/child rows
+  inside a single `$transaction` (atomic — no orphan BuyRequest without its spec).
+- DB-level idempotency: `idempotencyKey` written to `BuyRequest.idempotencyKey` (@unique).
+  `catch P2002` on concurrent double-submit → fetch existing row → return idempotently.
+  Closes the truly-concurrent gap the audit-log-backed idempotency left open.
+- `getWanted` returns structured fields + resolved taxonomy names + attribute
+  parent/child (read path complete).
+- `listWanted` filters by canonical `categoryId` FK (no more name-resolution best-effort).
+
+**Attribute validation (`src/lib/buy-request-attributes.ts` — new):**
+- `validateBuyRequestAttributeValues` mirrors `validateListingAttributeValues`:
+  fail-closed on type/slot mismatch, category/model membership (CategoryAttribute +
+  ProductModelAttribute outOfScope), SELECT option ownership, MULTI_SELECT option
+  ownership. Runs BEFORE the create so a bad payload never reaches the transaction.
+
+**Dashboard (`src/app/dashboard/wanted/page.tsx`):**
+- Displays structured taxonomy names (categoryRef/brandRef/modelRef/serviceTypeRef) +
+  quantity, alongside the existing free-text display names.
+
+**API (`src/app/api/wanted/route.ts`):**
+- `?mine=true` returns structured fields + resolved taxonomy names.
+
+### Tests
+- `tests/contract/phase-h2-listing-form-hardening.test.ts`: 37 contract tests (was 26),
+  all green. New H.3 block (11 tests) locks: schema columns, FK relations, parent/child
+  model, back-relations, migration SQL, createWanted atomic write + P2002 catch,
+  attribute validation, getWanted read path, listWanted canonical filter, dashboard
+  display, separate guarded workflow.
+- typecheck + lint clean (0 errors).
+- Full suite: 4554 passed, 133 failed (all DB/env-dependent — same level as before,
+  no new regressions).
+
+### Still BLOCKED (migration execution — per directive)
+- The migration file exists in `prisma/migrations/` but is NOT executed. It applies
+  only via the separate guarded workflow, on the Integration branch, after #347's
+  migration has run (7 pre / 8 post), with backup + read-back + disposable-restore.
+- Preview #346 still blocked (schema drift). #347 still awaiting external write-access
+  reviewer approval.
+- Real DB round-trip behavioral tests (quantity/categoryId/brandId+modelId/serviceTypeId/
+  attributeValues typed round-trip, fail-closed invalid IDs, idempotent replay, negative
+  ownership) are GATED on the migration being applied — they run in CI with PostgreSQL
+  once the guarded workflow dispatches.
+
+### Identity preservation
+- H.1 preserved. H.2 preserved (CSRF, rate-limit, bounded body, fail-closed taxonomy
+  validation, reject action, dashboard counters). Token scrubbed from disk after use.

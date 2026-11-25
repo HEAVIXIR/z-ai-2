@@ -1,0 +1,269 @@
+name: HEAVIX App Preview backup and single migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: App Preview only; Store and Production are excluded
+        required: true
+        type: choice
+        options: [APP_PREVIEW_ONLY]
+      confirm:
+        description: Type APPLY_APP_PREVIEW_20261118152000
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-app-preview-single-migration
+  cancel-in-progress: false
+
+jobs:
+  backup-restore-and-migrate:
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    environment: preview-backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      restore-db:
+        image: postgres:17
+        env:
+          POSTGRES_USER: restore
+          POSTGRES_PASSWORD: local-restore-only
+          POSTGRES_DB: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U restore -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    steps:
+      - name: Checkout exact Integration commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Enforce exact branch, commit and App Preview-only approval
+        shell: bash
+        env:
+          DISPATCH_TARGET: ${{ inputs.target }}
+          DISPATCH_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$DISPATCH_TARGET" = "APP_PREVIEW_ONLY"
+          test "$DISPATCH_CONFIRM" = "APPLY_APP_PREVIEW_20261118152000"
+          echo "PASS: exact Integration commit and explicit App Preview-only migration approval."
+
+      - name: Install age, AWS CLI, PostgreSQL client and Bun
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes age awscli postgresql-client
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Validate App Preview backup credentials and encryption keypair
+        shell: bash
+        env:
+          APP_PREVIEW_DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+          AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
+        run: |
+          set -euo pipefail
+          test -n "$APP_PREVIEW_DATABASE_URL"
+          case "$APP_PREVIEW_DATABASE_URL" in postgres://*|postgresql://*) ;; *) echo "Invalid App Preview URL scheme."; exit 1 ;; esac
+          test "$B2_S3_ENDPOINT" = "s3.us-east-005.backblazeb2.com"
+          test "$B2_BUCKET" = "heavix-db-backups"
+          test -n "$B2_APPLICATION_KEY_ID"
+          test -n "$B2_APPLICATION_KEY"
+          test -n "$AGE_RECIPIENT"
+          test -n "$AGE_IDENTITY"
+          printf '%s\n' "$AGE_IDENTITY" > "$RUNNER_TEMP/age-identity.txt"
+          chmod 600 "$RUNNER_TEMP/age-identity.txt"
+          derived="$(age-keygen -y "$RUNNER_TEMP/age-identity.txt")"
+          test "$derived" = "$AGE_RECIPIENT"
+          rm -f "$RUNNER_TEMP/age-identity.txt"
+          echo "PASS: App Preview backup destination and encryption keypair validated; values redacted."
+
+      - name: Verify exact App Preview identity, TLS and clean migration starting state
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+        run: |
+          set -euo pipefail
+          export PGSSLMODE=verify-full
+          [[ "$EXPECTED_DATABASE_OID" =~ ^[1-9][0-9]{0,9}$ ]]
+          (( EXPECTED_DATABASE_OID <= 4294967295 ))
+          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+          expected="postgres|$EXPECTED_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
+          test "$identity" = "$expected"
+          read_only="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_setting('transaction_read_only') = 'off'")"
+          test "$read_only" = "t"
+          history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          expected_history="6|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes,20261116120000_industrial_marketplace_identity_core,20261116130000_company_invitations"
+          test "$history" = "$expected_history"
+          unfinished="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")"
+          test "$unfinished" = "0"
+          rolled_back="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE rolled_back_at IS NOT NULL")"
+          test "$rolled_back" = "0"
+          test "$(find prisma/migrations -mindepth 2 -maxdepth 2 -name migration.sql -type f | wc -l | tr -d ' ')" = "7"
+          schema_preconditions="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (to_regclass('public.\"ServiceType\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"RFQ\"') IS NOT NULL)::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='serviceTypeId'))::text || '|' || (NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='RFQ' AND column_name='listingId'))::text")"
+          test "$schema_preconditions" = "true|true|true|true"
+          echo "PASS: App Preview exact identity; exactly six reviewed migrations; no unfinished/rolled-back migrations; single expected pending migration and schema preconditions."
+
+      - name: Create encrypted App Preview-only backup
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          umask 077
+          WORK="$RUNNER_TEMP/heavix-app-preview-backup"
+          mkdir -m 700 -p "$WORK"
+          pg_dump --serializable-deferrable --format=custom --no-owner --no-acl --dbname="$DATABASE_URL" > "$WORK/app-preview.dump"
+          test -s "$WORK/app-preview.dump"
+          pg_restore --list "$WORK/app-preview.dump" > "$WORK/restore.list"
+          test -s "$WORK/restore.list"
+          sha256sum "$WORK/app-preview.dump" > "$WORK/SHA256SUMS"
+          {
+            echo "format=heavix-app-preview-backup-v1"
+            echo "created_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "backup_sha=$GITHUB_SHA"
+            echo "app_system_identifier=7701427422680793119"
+            echo "app_database_oid=${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}"
+            cat "$WORK/SHA256SUMS"
+          } > "$WORK/manifest.txt"
+          age -r "$AGE_RECIPIENT" -o "$WORK/app-preview.dump.age" "$WORK/app-preview.dump"
+          age -r "$AGE_RECIPIENT" -o "$WORK/manifest.txt.age" "$WORK/manifest.txt"
+          sha256sum "$WORK/app-preview.dump.age" "$WORK/manifest.txt.age" > "$WORK/ENCRYPTED_SHA256SUMS"
+          rm -f "$WORK/app-preview.dump" "$WORK/manifest.txt" "$WORK/SHA256SUMS"
+          echo "PASS: App Preview dump created, listed, checksummed and encrypted."
+
+      - name: Upload encrypted backup and verify object read-back
+        shell: bash
+        env:
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          AWS_REGION: us-east-005
+          AWS_DEFAULT_REGION: us-east-005
+          AWS_EC2_METADATA_DISABLED: "true"
+        run: |
+          set -euo pipefail
+          export AWS_ACCESS_KEY_ID="$B2_APPLICATION_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$B2_APPLICATION_KEY"
+          WORK="$RUNNER_TEMP/heavix-app-preview-backup"
+          PREFIX="preview/app-only/$(date -u +%Y/%m/%d)/$GITHUB_SHA/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          ENDPOINT="https://$B2_S3_ENDPOINT"
+          for file in app-preview.dump.age manifest.txt.age ENCRYPTED_SHA256SUMS; do
+            aws --endpoint-url "$ENDPOINT" s3 cp "$WORK/$file" "s3://$B2_BUCKET/$PREFIX/$file" --only-show-errors
+          done
+          mkdir -m 700 "$WORK/readback"
+          for file in app-preview.dump.age manifest.txt.age ENCRYPTED_SHA256SUMS; do
+            aws --endpoint-url "$ENDPOINT" s3 cp "s3://$B2_BUCKET/$PREFIX/$file" "$WORK/readback/$file" --only-show-errors
+          done
+          (cd "$WORK/readback" && sha256sum -c ENCRYPTED_SHA256SUMS)
+          echo "HEAVIX_BACKUP_PREFIX=$PREFIX" >> "$GITHUB_ENV"
+          echo "PASS: encrypted App Preview backup read-back checksums verified."
+
+      - name: Decrypt and restore backup into disposable PostgreSQL 17
+        shell: bash
+        env:
+          AGE_IDENTITY: ${{ secrets.AGE_IDENTITY }}
+          RESTORE_PASSWORD: local-restore-only
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/heavix-app-preview-backup"
+          printf '%s\n' "$AGE_IDENTITY" > "$WORK/age-identity.txt"
+          chmod 600 "$WORK/age-identity.txt"
+          age -d -i "$WORK/age-identity.txt" -o "$WORK/app-preview.dump" "$WORK/readback/app-preview.dump.age"
+          age -d -i "$WORK/age-identity.txt" -o "$WORK/manifest.txt" "$WORK/readback/manifest.txt.age"
+          grep -Fxq "backup_sha=$GITHUB_SHA" "$WORK/manifest.txt"
+          (cd "$WORK" && sha256sum -c <(grep 'app-preview.dump$' manifest.txt))
+          export PGPASSWORD="$RESTORE_PASSWORD"
+          createdb -h 127.0.0.1 -U restore app_preview_restore
+          pg_restore --list "$WORK/app-preview.dump" > "$WORK/restore.list"
+          if grep -Eq ' EXTENSION - prisma_postgres' "$WORK/restore.list"; then
+            awk 'index($0, " EXTENSION - prisma_postgres") || index($0, " COMMENT - EXTENSION prisma_postgres") {next} {sub(/\r$/, ""); print}' "$WORK/restore.list" > "$WORK/restore.filtered.list"
+            pg_restore --exit-on-error --no-owner --no-acl --use-list="$WORK/restore.filtered.list" -h 127.0.0.1 -U restore -d app_preview_restore "$WORK/app-preview.dump"
+          else
+            pg_restore --exit-on-error --no-owner --no-acl -h 127.0.0.1 -U restore -d app_preview_restore "$WORK/app-preview.dump"
+          fi
+          table_count="$(psql -h 127.0.0.1 -U restore -d app_preview_restore -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")"
+          test "$table_count" -gt 0
+          echo "PASS: encrypted App Preview backup decrypted, checksum verified and restored into disposable PostgreSQL 17 ($table_count tables)."
+          rm -rf "$WORK"
+
+      - name: Recheck App Preview identity and exact migration gate immediately before apply
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+          test "$identity" = "postgres|$EXPECTED_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
+          history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          test "$history" = "6|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes,20261116120000_industrial_marketplace_identity_core,20261116130000_company_invitations"
+          test "$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")" = "0"
+          echo "PASS: exact App Preview identity and migration state revalidated immediately before apply."
+
+      - name: Install dependencies and generate App Prisma client
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+
+      - name: Apply the single reviewed App Preview migration
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          # The preflight proves six exact successful migrations and exactly one
+          # additional repository migration. Store schema/URL are never supplied.
+          bunx prisma migrate deploy --schema=prisma/schema.prisma
+
+      - name: Verify only the requested App Preview migration and schema objects
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+          EXPECTED_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+          EXPECTED_SYSTEM_IDENTIFIER: "7701427422680793119"
+          PGSSLMODE: verify-full
+        run: |
+          set -euo pipefail
+          identity="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+          test "$identity" = "postgres|$EXPECTED_DATABASE_OID|$EXPECTED_SYSTEM_IDENTIFIER"
+          history="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*)::text || '|' || string_agg(migration_name, ',' ORDER BY migration_name) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")"
+          expected="7|20261025081255_init_postgresql_baseline,20261025193000_add_auditlog_idempotency_key,20261112160000_add_selectable_hero_templates,20261114150000_product_model_attributes,20261116120000_industrial_marketplace_identity_core,20261116130000_company_invitations,20261118152000_link_listing_service_rfq"
+          test "$history" = "$expected"
+          test "$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")" = "0"
+          schema="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='serviceTypeId')::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='RFQ' AND column_name='listingId')::text || '|' || (SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND ((tablename='Listing' AND indexname='Listing_serviceTypeId_idx') OR (tablename='RFQ' AND indexname='RFQ_listingId_key')))::text || '|' || (SELECT count(*) FROM pg_constraint WHERE conname IN ('Listing_serviceTypeId_fkey','RFQ_listingId_fkey'))::text")"
+          test "$schema" = "1|1|2|2"
+          {
+            echo "## App Preview single migration result"
+            echo
+            echo "- Exact Integration SHA: $GITHUB_SHA"
+            echo "- App Preview only: `20261118152000_link_listing_service_rfq` applied and verified."
+            echo "- Backup: encrypted B2 read-back and disposable PostgreSQL 17 restore passed before apply."
+            echo "- Schema: both nullable columns, two indexes and two foreign keys verified."
+            echo "- Store: no Store database URL or credentials were provided to this job."
+            echo "- Production: not accessed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS: only the requested App Preview migration is recorded and its schema objects are present."

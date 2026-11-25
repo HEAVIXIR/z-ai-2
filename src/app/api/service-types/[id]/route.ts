@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdminPermission } from "@/lib/auth-helpers/require-admin";
+import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ interface Args {
 /* PATCH /api/service-types/[id] — admin update. */
 export async function PATCH(req: Request, { params }: Args) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
@@ -23,14 +25,22 @@ export async function PATCH(req: Request, { params }: Args) {
     const allowed = ["nameFa", "nameEn", "description", "icon", "active", "sortOrder"];
     for (const k of allowed) {
       if (k in body) {
-        if (k === "active") data[k] = Boolean(body[k]);
-        else if (k === "sortOrder") data[k] = Number(body[k]) || 0;
-        else data[k] = body[k] === undefined ? null : body[k];
+        if (k === "active") {
+          data[k] = Boolean(body[k]);
+        } else if (k === "sortOrder") {
+          const value = Number(body[k]);
+          if (!Number.isInteger(value)) {
+            return NextResponse.json({ error: "sortOrder must be an integer" }, { status: 400 });
+          }
+          data[k] = value;
+        } else {
+          data[k] = body[k] == null ? null : String(body[k]).trim();
+        }
       }
     }
     if (body.key && body.key !== existing.key) {
       const dup = await db.serviceType.findUnique({
-        where: { key: String(body.key) },
+        where: { key: String(body.key).trim().toUpperCase() },
       });
       if (dup && dup.id !== id) {
         return NextResponse.json(
@@ -38,21 +48,22 @@ export async function PATCH(req: Request, { params }: Args) {
           { status: 409 },
         );
       }
-      data.key = String(body.key);
+      data.key = String(body.key).trim().toUpperCase();
     }
     const type = await db.serviceType.update({ where: { id }, data });
     return NextResponse.json({ ok: true, type });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message ?? "Server error" },
-      { status: 500 },
+      { status: err?.code === "P2002" ? 409 : 500 },
     );
   }
 }
 
 /* DELETE /api/service-types/[id] — admin delete. */
-export async function DELETE(_req: Request, { params }: Args) {
+export async function DELETE(req: Request, { params }: Args) {
   const __auth = await requireAdminPermission("taxonomy.write"); if (__auth.error) return __auth.error;
+  if (!checkCsrf(req)) return NextResponse.json({ error: "CSRF check failed" }, { status: 403 });
   try {
     const { id } = await params;
     await db.serviceType.delete({ where: { id } });

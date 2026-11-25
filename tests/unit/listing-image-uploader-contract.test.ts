@@ -1,0 +1,45 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+describe("Listing image upload contract", () => {
+  const read = (relativePath: string) =>
+    readFileSync(path.join(process.cwd(), relativePath), "utf8");
+
+  it("uploads real files through the permission-checked media endpoint", () => {
+    const source = read("src/components/listings/ListingImageUploader.tsx");
+    expect(source).toContain('fetch("/api/media/staging"');
+    expect(source).toContain('body.append("file", prepared.file)');
+    expect(source).toContain("prepareImageForUpload(source, policy.maxImageBytes)");
+    expect(source).toContain("result?.url");
+    expect(source).not.toContain("placeholder-");
+    expect(source).toContain('accept="image/jpeg,image/png,image/webp"');
+    expect(source).toContain("SUPPORTED_IMAGE_TYPES.has(source.type)");
+  });
+
+  it("renders actual uploaded image URLs and supports removal", () => {
+    const source = read("src/components/listings/ListingImageUploader.tsx");
+    expect(source).toContain("<img");
+    expect(source).toContain("onChange(images.filter");
+    expect(source).toContain("FREE_LISTING_IMAGE_POLICY");
+    expect(source).toContain("policyReady");
+    expect(source).toContain("const maxImages = policy.maxImages");
+    expect(source).toContain('next.tier === "PREMIUM"');
+    expect(source).toContain("required = false");
+    expect(source).toContain("افزودن تصویر اختیاری است");
+    expect(source).toContain("prepareImageForUpload(source, policy.maxImageBytes)");
+    expect(source).toContain('fetch("/api/media/staging"');
+  });
+
+  it("uses the real uploader in the listing wizard instead of placeholder URLs", () => {
+    const source = read("src/app/listings/new/page.tsx");
+    expect(source).toContain("<ListingImageUploader");
+    expect(source).toContain("images={images}");
+    expect(source).toContain("onChange={handleImagesChange}");
+    expect(source).toContain("onAssetsChange={handleStagedAssetsChange}");
+    expect(source).toContain("<ListingImageUploader");
+    expect(source).not.toContain('{transactionType !== "WANTED" && (');
+    expect(source).toContain('entityType={isServiceRequest || transactionType === "WANTED" ? "BuyRequest" : "Listing"}');
+    expect(source).not.toContain("placeholder-${Date.now()}");
+  });
+});

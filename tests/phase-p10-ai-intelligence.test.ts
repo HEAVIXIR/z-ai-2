@@ -212,13 +212,22 @@ describe("Phase 10 — every AI output type is marked AI_SUGGESTED + verified:fa
 });
 
 // ══════════════════════════════════════════════════════════════
-// 5. z-ai-web-dev-sdk IS SERVER-ONLY + PERMISSION KEY EXISTS
+// 5. AI modules route through the central provider adapter
+//    (no direct z-ai-web-dev-sdk imports — Workers-compatible)
 // ══════════════════════════════════════════════════════════════
-describe("Phase 10 — z-ai-web-dev-sdk is server-only + ai.execute permission exists", () => {
-  it("every AI service module imports z-ai-web-dev-sdk", () => {
+describe("Phase 10 — AI modules route through the central provider adapter (no direct SDK imports)", () => {
+  it("every AI service module imports from the central router, not from z-ai-web-dev-sdk directly", () => {
     for (const f of [LIB_LISTING, LIB_SEARCH, LIB_MATCHING, LIB_CONTENT, LIB_OPERATIONAL]) {
       const c = read(f);
-      expect(c).toMatch(/import.*ZAI.*from\s*['"]z-ai-web-dev-sdk['"]/);
+      // Each module must import getAIProvider (for chat) or
+      // getZAISDK (for non-chat) from the central router.
+      expect(c).toMatch(/from\s*['"]@\/lib\/ai-provider-router['"]/);
+      // And must NOT import z-ai-web-dev-sdk directly (that
+      // would bypass the router and break Cloudflare Workers
+      // compatibility, since ZAI.create() reads .z-ai-config
+      // from disk).
+      expect(c).not.toMatch(/from\s*['"]z-ai-web-dev-sdk['"]/);
+      expect(c).not.toMatch(/import\(['"]z-ai-web-dev-sdk['"]\)/);
     }
   });
 

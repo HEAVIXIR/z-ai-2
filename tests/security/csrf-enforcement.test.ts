@@ -39,8 +39,34 @@ import { checkCsrf } from "@/lib/csrf";
 // Helpers — build a Request with specific method + headers.
 // ─────────────────────────────────────────────────────────────
 
-const TRUSTED_ORIGIN =
-  (process.env.NEXTAUTH_URL || "http://localhost:3000").replace(/\/+$/, "");
+// Keep this contract test hermetic: deployment-level allowlist variables may
+// be present in CI, but these cases intentionally exercise only localhost.
+const TRUSTED_ORIGIN = "http://localhost:3000";
+const ORIGIN_ENV_KEYS = [
+  "NEXTAUTH_URL",
+  "NEXT_PUBLIC_SITE_URL",
+  "VERCEL_URL",
+  "VERCEL_BRANCH_URL",
+  "VERCEL_PROJECT_PRODUCTION_URL",
+] as const;
+const ORIGINAL_ORIGIN_ENV = Object.fromEntries(
+  ORIGIN_ENV_KEYS.map((key) => [key, process.env[key]]),
+) as Record<(typeof ORIGIN_ENV_KEYS)[number], string | undefined>;
+
+beforeAll(() => {
+  process.env.NEXTAUTH_URL = TRUSTED_ORIGIN;
+  for (const key of ORIGIN_ENV_KEYS) {
+    if (key !== "NEXTAUTH_URL") delete process.env[key];
+  }
+});
+
+afterAll(() => {
+  for (const key of ORIGIN_ENV_KEYS) {
+    const original = ORIGINAL_ORIGIN_ENV[key];
+    if (original === undefined) delete process.env[key];
+    else process.env[key] = original;
+  }
+});
 
 function makeReq(
   method: string,
@@ -228,56 +254,35 @@ describe("F-004 fix: malformed Origin / Referer are rejected", () => {
 // Non-browser client exemptions (webhook / cron / API token)
 // ─────────────────────────────────────────────────────────────
 
-describe("F-006 fix: non-browser clients are exempt from CSRF", () => {
-  it("POST with Authorization: Bearer header → true (API token client)", () => {
-    expect(
-      checkCsrf(
-        makeReq("POST", {
-          headers: { authorization: "Bearer some-jwt-or-opaque-token" },
-        }),
-      ),
-    ).toBe(true);
+describe("F-006 fix: non-browser headers never bypass CSRF", () => {
+  it("POST with Authorization: Bearer header but no Origin/Referer → false", () => {
+    expect(checkCsrf(makeReq("POST", {
+      headers: { authorization: "Bearer some-jwt-or-opaque-token" },
+    }))).toBe(false);
   });
 
-  it("POST with x-cron-key header → true (cron ticker client)", () => {
-    expect(
-      checkCsrf(
-        makeReq("POST", {
-          headers: { "x-cron-key": process.env.CRON_SECRET || "test-cron-key" },
-        }),
-      ),
-    ).toBe(true);
+  it("POST with x-cron-key header but no Origin/Referer → false", () => {
+    expect(checkCsrf(makeReq("POST", {
+      headers: { "x-cron-key": process.env.CRON_SECRET || "test-cron-key" },
+    }))).toBe(false);
   });
 
-  it("POST with x-webhook-signature header → true (webhook callback)", () => {
-    expect(
-      checkCsrf(
-        makeReq("POST", {
-          headers: { "x-webhook-signature": "sha256=abc123" },
-        }),
-      ),
-    ).toBe(true);
+  it("POST with x-webhook-signature header but no Origin/Referer → false", () => {
+    expect(checkCsrf(makeReq("POST", {
+      headers: { "x-webhook-signature": "sha256=abc123" },
+    }))).toBe(false);
   });
 
-  it("POST with x-api-key header → true (internal API token client)", () => {
-    expect(
-      checkCsrf(
-        makeReq("POST", {
-          headers: { "x-api-key": "internal-service-key" },
-        }),
-      ),
-    ).toBe(true);
+  it("POST with x-api-key header but no Origin/Referer → false", () => {
+    expect(checkCsrf(makeReq("POST", {
+      headers: { "x-api-key": "internal-service-key" },
+    }))).toBe(false);
   });
 
-  it("POST with empty Authorization header (no value) → false (still CSRF-checked)", () => {
-    // An empty Authorization header should NOT exempt the request.
-    expect(
-      checkCsrf(
-        makeReq("POST", {
-          headers: { authorization: "" },
-        }),
-      ),
-    ).toBe(false);
+  it("POST with empty Authorization header (no value) → false", () => {
+    expect(checkCsrf(makeReq("POST", {
+      headers: { authorization: "" },
+    }))).toBe(false);
   });
 });
 

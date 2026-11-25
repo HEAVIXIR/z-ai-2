@@ -74,6 +74,8 @@ function fmtDim(num: number, unit: Unit): string { return `${num}${unit}`; }
 
 export default function HeroEditorPage() {
   const [config, setConfig] = useState<HeroConfig>(DEFAULTS);
+  const [activeTemplate, setActiveTemplate] = useState<"classic" | "cinematic-industrial">("classic");
+  const [cinematicConfig, setCinematicConfig] = useState<any>({ backgroundImage: "/images/hero/hero-construction.png", backgroundPosition: "center 48%", overlay: 0.62, metricsTitle: "آمار زنده HEAVIX", showMetrics: true, showSearch: true, cards: [ { id: "exclusive", eyebrow: "HEAVIX EXCLUSIVE", title: "فروش ویژه", image: "/images/hero/card-exclusive.png", href: "/listings?featured=true", visible: true }, { id: "featured", eyebrow: "FEATURED LISTINGS", title: "آگهی‌های منتخب", image: "/images/hero/card-featured.png", href: "/listings?featured=true", visible: true }, { id: "services", eyebrow: "PROFESSIONAL SERVICES", title: "خدمات تخصصی", image: "/images/hero/card-services.png", href: "/services", visible: true } ] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -83,6 +85,8 @@ export default function HeroEditorPage() {
     fetch("/api/admin/hero").then(r => r.json()).then(d => {
       const hero = d.data || d.hero || d;
       if (hero && (hero.badge !== undefined || hero.title1 !== undefined)) setConfig({ ...DEFAULTS, ...hero });
+      if (hero?.activeTemplate === "cinematic-industrial") setActiveTemplate("cinematic-industrial");
+      if (hero?.cinematicConfig) { try { setCinematicConfig({ ...cinematicConfig, ...JSON.parse(hero.cinematicConfig) }); } catch {} }
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
@@ -91,7 +95,7 @@ export default function HeroEditorPage() {
   const save = async () => {
     setSaving(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/hero", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+      const res = await fetch("/api/admin/hero", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...config, activeTemplate, cinematicConfig: JSON.stringify(cinematicConfig) }) });
       const d = await res.json();
       setMsg(d.success || d.ok ? "✓ ذخیره شد" : "خطا: " + (d.error || ""));
     } catch { setMsg("خطای شبکه"); }
@@ -128,6 +132,32 @@ export default function HeroEditorPage() {
         <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-[#F58220] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#ff8c38] disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}ذخیره</button>
       </div>
       {msg && <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-bold text-zinc-700">{msg}</div>}
+      <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+        <div><h2 className="text-base font-black text-zinc-900">قالب فعال هیرو</h2><p className="mt-1 text-xs text-zinc-500">قالب فعلی حفظ می‌شود؛ انتخاب قالب فقط نمایش صفحه اصلی را تغییر می‌دهد.</p></div>
+        <select value={activeTemplate} onChange={e => setActiveTemplate(e.target.value as any)} className={inputCls}>
+          <option value="classic">قالب فعلی HEAVIX</option>
+          <option value="cinematic-industrial">قالب سینمایی صنعتی (مرجع جدید)</option>
+        </select>
+        {activeTemplate === "cinematic-industrial" && <>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div><label className={labelCls}>تصویر پس‌زمینهٔ مشترک</label><MediaUploader value={cinematicConfig.backgroundImage || ""} onChange={(v) => setCinematicConfig((s:any) => ({...s,backgroundImage:v}))} endpoint="/api/admin/upload" compact /></div>
+            <div><label className={labelCls}>عنوان پنل آمار</label><input className={inputCls} value={cinematicConfig.metricsTitle || ""} onChange={e => setCinematicConfig((s:any)=>({...s,metricsTitle:e.target.value}))} /></div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {cinematicConfig.cards.map((card:any,index:number) => <div key={card.id} className="space-y-2 rounded-xl border border-zinc-200 p-3">
+              <div className="text-xs font-black text-zinc-700">کارت {index+1}</div>
+              <MediaUploader value={card.image || ""} onChange={(v) => setCinematicConfig((s:any)=>({...s,cards:s.cards.map((x:any,i:number)=>i===index?{...x,image:v}:x)}))} endpoint="/api/admin/upload" compact />
+              <input aria-label="عنوان کارت" className={inputCls} value={card.title || ""} onChange={e=>setCinematicConfig((s:any)=>({...s,cards:s.cards.map((x:any,i:number)=>i===index?{...x,title:e.target.value}:x)}))} placeholder="عنوان کارت" />
+              <input aria-label="برچسب کارت" className={inputCls} value={card.eyebrow || ""} onChange={e=>setCinematicConfig((s:any)=>({...s,cards:s.cards.map((x:any,i:number)=>i===index?{...x,eyebrow:e.target.value}:x)}))} placeholder="برچسب انگلیسی" />
+              <input aria-label="پیوند کارت" className={inputCls} value={card.href || ""} onChange={e=>setCinematicConfig((s:any)=>({...s,cards:s.cards.map((x:any,i:number)=>i===index?{...x,href:e.target.value}:x)}))} placeholder="/listings" />
+            </div>)}
+          </div>
+          <div className="flex flex-wrap gap-5 text-sm text-zinc-700">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={cinematicConfig.showMetrics !== false} onChange={e=>setCinematicConfig((s:any)=>({...s,showMetrics:e.target.checked}))}/> نمایش آمار واقعی</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={cinematicConfig.showSearch !== false} onChange={e=>setCinematicConfig((s:any)=>({...s,showSearch:e.target.checked}))}/> نمایش جست‌وجوی واقعی بازار</label>
+          </div>
+        </>}
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_minmax(380px,520px)]">
         <div className="space-y-4">

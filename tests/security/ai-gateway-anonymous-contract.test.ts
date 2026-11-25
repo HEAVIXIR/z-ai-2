@@ -105,8 +105,14 @@ vi.mock("@/lib/error-tracking", () => ({
   trackError: () => {},
 }));
 
-vi.mock("z-ai-web-dev-sdk", () => ({
-  default: { create: async () => ({ chat: { completions: { create: async () => ({}) } } }) },
+vi.mock("@/lib/ai-provider-router", () => ({
+  getAIProvider: () => ({
+    ok: true as const,
+    provider: "zai" as const,
+    model: "test-model",
+    client: { chat: { completions: { create: async () => ({}) } } },
+  }),
+  getZAISDK: () => ({ ok: false as const, reason: "not mocked" }),
 }));
 
 // ── Import AFTER vi.mock so mocks are in effect ────────────────

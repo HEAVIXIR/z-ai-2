@@ -57,7 +57,7 @@ export default function BrandsSection({
           {sorted.slice(0, 24).map((b) => (
             <Link
               key={b.id}
-              href={`/listings?brand=${b.slug}`}
+              href={`/brands/${encodeURIComponent(b.slug)}`}
               className="group relative flex flex-col items-center gap-2.5 overflow-hidden rounded-2xl border border-white/8 bg-white/[0.02] p-4 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1.5 hover:border-[#F58220]/40 hover:bg-[#F58220]/[0.04] hover:shadow-[0_12px_40px_-10px_rgba(245,130,32,0.3)]"
             >
               {/* Hover glow */}
@@ -95,7 +95,7 @@ export default function BrandsSection({
         {/* Footer */}
         <div className="mt-10 flex justify-center">
           <Link
-            href="/listings"
+            href="/brands"
             className="inline-flex h-12 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-8 text-sm font-bold text-white transition-all duration-300 hover:border-[#F58220]/40 hover:bg-[#F58220]/10 hover:text-[#F58220]"
           >
             همهٔ برندها ({toFa(totalBrands)})

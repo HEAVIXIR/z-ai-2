@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@prisma/client": ["./src/lib/generated/worker-client/client.ts"],
+      "@/lib/generated/store-client": ["./src/lib/generated/store-worker-client/client.ts"],
+      "@/lib/db": ["./src/lib/db.worker.ts"],
+      "@/lib/store-db": ["./src/lib/store-db.worker.ts"],
+      "@/*": ["./src/*"]
+    }
+  }
+}

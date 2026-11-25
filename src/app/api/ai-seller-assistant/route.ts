@@ -3,8 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { isAdmin } from "@/lib/authorization";
 import { preflightAIRequest, recordAICost } from "@/lib/ai-policy";
-import ZAI from "z-ai-web-dev-sdk";
-
+import { getAIProvider, AIProviderError } from "@/lib/ai-provider-router";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -127,7 +126,9 @@ export async function GET(req: Request) {
     // LLM suggestions
     let aiSuggestions: string[] = [];
     try {
-      const zai = await ZAI.create();
+      const __provider = getAIProvider();
+    if (!__provider.ok) { throw new Error(__provider.reason); }
+    const zai = __provider.client;
       const completion = await zai.chat.completions.create({
         messages: [
           {

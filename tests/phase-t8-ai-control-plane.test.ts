@@ -28,7 +28,7 @@ import fs from 'fs';
 const PERMISSIONS_FILE = 'src/lib/authorization/permissions.ts';
 const SCHEMA_FILE = 'prisma/schema.prisma';
 const AI_PAGE = 'src/app/admin/ai/page.tsx';
-const NAV_SEED = 'prisma/seed-admin-navigation.ts';
+const NAV_DEFAULTS = 'src/lib/admin/navigation-defaults.ts';
 const AI_GATEWAY_ROUTE = 'src/app/api/ai-gateway/route.ts';
 const AI_AGENTS_ROUTE = 'src/app/api/admin/ai-agents/route.ts';
 const AI_AGENTS_LIB = 'src/lib/ai-agents/index.ts';
@@ -177,11 +177,11 @@ describe('T8 AI Control Plane — Admin Page Contract', () => {
 // ══════════════════════════════════════════════════════════════
 describe('T8 AI Control Plane — Navigation Seed', () => {
   it('nav seed file exists', () => {
-    assertFileExists(NAV_SEED);
+    assertFileExists(NAV_DEFAULTS);
   });
 
   it('seed registers the ai-control standalone nav item', () => {
-    const c = read(NAV_SEED);
+    const c = read(NAV_DEFAULTS);
     expect(c).toMatch(/key:\s*['"]ai-control['"]/);
     expect(c).toMatch(/href:\s*['"]\/admin\/ai['"]/);
     expect(c).toMatch(/icon:\s*['"]Brain['"]/);

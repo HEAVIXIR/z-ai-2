@@ -22,7 +22,7 @@
  */
 
 import { storeDb } from '@/lib/store-db';
-import { logAudit } from '@/lib/audit';
+import { enqueueAuditOutbox } from '@/lib/store-audit-outbox';
 
 // ── Service error (maps to HTTP status in route handler) ──
 export class ShipmentsServiceError extends Error {
@@ -65,39 +65,38 @@ export async function createShipment(
   userId?: string | null,
 ): Promise<any> {
   if (!orderId || !carrier) {
-    throw new ShipmentsServiceError(
-      400,
-      'orderId و carrier الزامی هستند',
-    );
+    throw new ShipmentsServiceError(400, 'orderId و carrier الزامی هستند');
   }
-
-  const existing = await storeDb.shipment.findUnique({ where: { orderId } });
-  if (existing) {
-    throw new ShipmentsServiceError(
-      400,
-      'سفارش قبلاً محموله دارد',
-    );
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: { id: true, status: true, paymentStatus: true, shipment: { select: { id: true } } },
+      });
+      if (!order) throw new ShipmentsServiceError(404, 'سفارش یافت نشد');
+      if (order.shipment) throw new ShipmentsServiceError(409, 'سفارش قبلاً محموله دارد');
+      if (!['CONFIRMED', 'PROCESSING'].includes(order.status) || order.paymentStatus !== 'PAID') {
+        throw new ShipmentsServiceError(409, 'ایجاد محموله فقط برای سفارش تأییدشده و تسویه‌شده مجاز است');
+      }
+      const shipment = await tx.shipment.create({
+        data: { orderId, carrier, trackingCode: trackingCode || null, note: note || null },
+      });
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.shipment.create',
+        entityType: 'Shipment',
+        entityId: shipment.id,
+        after: shipment,
+      });
+      return serializeShipment(shipment);
+    }, { isolationLevel: 'Serializable' });
+  } catch (error: any) {
+    if (error?.code === 'P2002' || error?.code === 'P2034') {
+      throw new ShipmentsServiceError(409, 'محموله برای این سفارش هم‌زمان ایجاد شده یا وضعیت سفارش تغییر کرده است');
+    }
+    throw error;
   }
-
-  const shipment = await storeDb.shipment.create({
-    data: {
-      orderId,
-      carrier,
-      trackingCode: trackingCode || null,
-      note: note || null,
-    },
-  });
-
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.shipment.create',
-    entityType: 'Shipment',
-    entityId: shipment.id,
-    after: shipment,
-  });
-
-  return shipment;
 }
 
 // ── updateShipment ───────────────────────────────────────
@@ -117,41 +116,49 @@ export async function updateShipment(
   note?: string | null,
   userId?: string | null,
 ): Promise<any> {
-  const existing = await storeDb.shipment.findUnique({ where: { id } });
-  if (!existing) {
-    throw new ShipmentsServiceError(404, 'یافت نشد');
-  }
-
-  const data: any = {};
-  if (trackingCode !== undefined) data.trackingCode = trackingCode || null;
-  if (carrier !== undefined) data.carrier = carrier;
   if (status !== undefined) {
-    data.status = status;
-    if (status === 'DISPATCHED' && !existing.shippedAt) {
-      data.shippedAt = new Date();
-    }
-    if (status === 'DELIVERED' && !existing.deliveredAt) {
-      data.deliveredAt = new Date();
-    }
+    throw new ShipmentsServiceError(
+      409,
+      'تغییر وضعیت محموله فقط از طریق ثبت رویداد رهگیری مجاز است',
+    );
   }
-  if (note !== undefined) data.note = note || null;
 
-  const shipment = await storeDb.shipment.update({
-    where: { id },
-    data,
-  });
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      const existing = await tx.shipment.findUnique({ where: { id } });
+      if (!existing) throw new ShipmentsServiceError(404, 'یافت نشد');
+      const data: any = {};
+      if (trackingCode !== undefined) data.trackingCode = trackingCode || null;
+      if (carrier !== undefined) data.carrier = carrier;
+      if (note !== undefined) data.note = note || null;
+      if (Object.keys(data).length === 0) return serializeShipment(existing);
 
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.shipment.update',
-    entityType: 'Shipment',
-    entityId: id,
-    before: existing,
-    after: shipment,
-  });
-
-  return shipment;
+      const changed = await tx.shipment.updateMany({
+        where: { id, updatedAt: existing.updatedAt },
+        data,
+      });
+      if (changed.count !== 1) {
+        throw new ShipmentsServiceError(409, 'محموله هم‌زمان تغییر کرده است؛ اطلاعات را تازه‌سازی کنید');
+      }
+      const shipment = await tx.shipment.findUnique({ where: { id } });
+      if (!shipment) throw new ShipmentsServiceError(404, 'یافت نشد');
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.shipment.update',
+        entityType: 'Shipment',
+        entityId: id,
+        before: existing,
+        after: shipment,
+      });
+      return serializeShipment(shipment);
+    }, { isolationLevel: 'Serializable' });
+  } catch (error: any) {
+    if (error?.code === 'P2034') {
+      throw new ShipmentsServiceError(409, 'محموله هم‌زمان تغییر کرده است؛ دوباره تلاش کنید');
+    }
+    throw error;
+  }
 }
 
 // ── listShipments ────────────────────────────────────────
@@ -220,91 +227,120 @@ export async function addTrackingEvent(
   userId?: string | null,
 ): Promise<any> {
   if (!shipmentId || !status) {
-    throw new ShipmentsServiceError(
-      400,
-      'shipmentId و status الزامی هستند',
-    );
+    throw new ShipmentsServiceError(400, 'shipmentId و status الزامی هستند');
   }
-  if (
-    !ALLOWED_TRACKING_STATUSES.includes(
-      status as (typeof ALLOWED_TRACKING_STATUSES)[number],
-    )
-  ) {
-    throw new ShipmentsServiceError(
-      400,
-      'وضعیت ردیابی نامعتبر (DISPATCHED | IN_TRANSIT | OUT_FOR_DELIVERY | DELIVERED | EXCEPTION)',
-    );
+  if (!ALLOWED_TRACKING_STATUSES.includes(status as (typeof ALLOWED_TRACKING_STATUSES)[number])) {
+    throw new ShipmentsServiceError(400, 'وضعیت ردیابی نامعتبر است');
   }
 
-  const existing = await storeDb.shipment.findUnique({
-    where: { id: shipmentId },
-  });
-  if (!existing) {
-    throw new ShipmentsServiceError(404, 'محموله یافت نشد');
-  }
-
-  // 1. Append the tracking row (audit source-of-truth).
-  const event = await storeDb.shipmentTracking.create({
-    data: {
-      shipmentId,
-      status,
-      location: location || null,
-      description: description || null,
-    },
-  });
-
-  // 2. Sync the parent Shipment snapshot fields.
-  const data: any = { status };
-  if (status === 'DISPATCHED' && !existing.shippedAt) {
-    data.shippedAt = new Date();
-  }
-  if (status === 'DELIVERED' && !existing.deliveredAt) {
-    data.deliveredAt = new Date();
-  }
-  const shipment = await storeDb.shipment.update({
-    where: { id: shipmentId },
-    data,
-  });
-
-  // Audit a: the tracking event append (primary audit hook).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.shipment.tracking.add',
-    entityType: 'ShipmentTracking',
-    entityId: event.id,
-    after: {
-      shipmentId,
-      status,
-      location: event.location,
-      description: event.description,
-    },
-  });
-
-  // Audit b: the parent Shipment snapshot update (side-effect, mirrors
-  // the payments/[id] order.update side-effect pattern).
-  await logAudit({
-    actorId: userId ?? null,
-    actorType: 'ADMIN',
-    action: 'store.shipment.update',
-    entityType: 'Shipment',
-    entityId: shipmentId,
-    before: {
-      status: existing.status,
-      shippedAt: existing.shippedAt,
-      deliveredAt: existing.deliveredAt,
-    },
-    after: {
-      status: shipment.status,
-      shippedAt: shipment.shippedAt,
-      deliveredAt: shipment.deliveredAt,
-    },
-  });
-
-  return {
-    event: serializeTracking(event),
-    shipment: serializeShipment(shipment),
+  const transitions: Record<string, string[]> = {
+    PENDING: ['DISPATCHED', 'EXCEPTION'],
+    DISPATCHED: ['IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED', 'EXCEPTION'],
+    IN_TRANSIT: ['OUT_FOR_DELIVERY', 'DELIVERED', 'EXCEPTION'],
+    OUT_FOR_DELIVERY: ['DELIVERED', 'EXCEPTION'],
+    EXCEPTION: ['IN_TRANSIT', 'OUT_FOR_DELIVERY', 'DELIVERED'],
+    DELIVERED: [],
+    FAILED: [],
   };
+
+  try {
+    return await storeDb.$transaction(async (tx) => {
+      const existing = await tx.shipment.findUnique({ where: { id: shipmentId } });
+      if (!existing) throw new ShipmentsServiceError(404, 'محموله یافت نشد');
+      if (!(transitions[existing.status] ?? []).includes(status)) {
+        throw new ShipmentsServiceError(
+          409,
+          `تغییر وضعیت محموله از ${existing.status} به ${status} مجاز نیست`,
+        );
+      }
+
+      const now = new Date();
+      const data: any = { status };
+      if (status === 'DISPATCHED' && !existing.shippedAt) data.shippedAt = now;
+      if (status === 'DELIVERED' && !existing.deliveredAt) data.deliveredAt = now;
+      const changed = await tx.shipment.updateMany({
+        where: { id: shipmentId, status: existing.status, updatedAt: existing.updatedAt },
+        data,
+      });
+      if (changed.count !== 1) {
+        throw new ShipmentsServiceError(409, 'وضعیت محموله هم‌زمان تغییر کرده است');
+      }
+
+      const event = await tx.shipmentTracking.create({
+        data: {
+          shipmentId,
+          status,
+          location: location || null,
+          description: description || null,
+        },
+      });
+
+      // Order fulfillment state is derived from the shipment lifecycle.
+      // Do not let shipment and order snapshots drift apart.
+      if (status === 'DISPATCHED' || status === 'DELIVERED') {
+        const expectedOrderStatuses = status === 'DISPATCHED'
+          ? ['CONFIRMED', 'PROCESSING']
+          : ['SHIPPED', 'CONFIRMED', 'PROCESSING'];
+        const nextOrderStatus = status === 'DISPATCHED' ? 'SHIPPED' : 'DELIVERED';
+        const orderBefore = await tx.order.findUnique({
+          where: { id: existing.orderId },
+          select: { id: true, status: true, updatedAt: true },
+        });
+        if (!orderBefore || !expectedOrderStatuses.includes(orderBefore.status)) {
+          throw new ShipmentsServiceError(
+            409,
+            'وضعیت سفارش با چرخه محموله سازگار نیست؛ ابتدا سفارش را بررسی کنید',
+          );
+        }
+        const orderChanged = await tx.order.updateMany({
+          where: {
+            id: orderBefore.id,
+            status: orderBefore.status,
+            updatedAt: orderBefore.updatedAt,
+          },
+          data: { status: nextOrderStatus },
+        });
+        if (orderChanged.count !== 1) {
+          throw new ShipmentsServiceError(409, 'وضعیت سفارش هم‌زمان تغییر کرده است');
+        }
+        await enqueueAuditOutbox(tx, {
+          actorId: userId ?? null,
+          actorType: 'ADMIN',
+          action: 'store.order.fulfillment.transition',
+          entityType: 'Order',
+          entityId: orderBefore.id,
+          before: { status: orderBefore.status, shipmentStatus: existing.status },
+          after: { status: nextOrderStatus, shipmentStatus: status },
+        });
+      }
+
+      const shipment = await tx.shipment.findUnique({ where: { id: shipmentId } });
+      if (!shipment) throw new ShipmentsServiceError(404, 'محموله پس از ثبت رویداد یافت نشد');
+
+      await enqueueAuditOutbox(tx, {
+        actorId: userId ?? null,
+        actorType: 'ADMIN',
+        action: 'store.shipment.tracking.add',
+        entityType: 'ShipmentTracking',
+        entityId: event.id,
+        before: { shipmentId, status: existing.status },
+        after: {
+          shipmentId,
+          status,
+          location: event.location,
+          description: event.description,
+          shippedAt: shipment.shippedAt,
+          deliveredAt: shipment.deliveredAt,
+        },
+      });
+      return { event: serializeTracking(event), shipment: serializeShipment(shipment) };
+    }, { isolationLevel: 'Serializable' });
+  } catch (error: any) {
+    if (error?.code === 'P2034') {
+      throw new ShipmentsServiceError(409, 'وضعیت محموله هم‌زمان تغییر کرده است؛ تاریخچه را تازه‌سازی کنید');
+    }
+    throw error;
+  }
 }
 
 // ── getTrackingHistory ───────────────────────────────────
