@@ -71,7 +71,7 @@ jobs:
           test "$(jq -r '.status' <<<"$run_json")" = "completed"
           test "$(jq -r '.conclusion' <<<"$run_json")" = "success"
           test "$(jq -r '.head_sha' <<<"$run_json")" = "$GITHUB_SHA"
-          test "$(jq -r '.head_branch' <<<"$run_json")" = "fix/preview-product-model-attributes-first-migration"
+          test "$(jq -r '.head_branch' <<<"$run_json")" = "integration/preview-readiness-workerd-2026-11-15"
           test "$(jq -r '.event' <<<"$run_json")" = "workflow_dispatch"
           case "$(jq -r '.path' <<<"$run_json")" in
             .github/workflows/prisma-preview-backup-to-b2.yml*) ;;
