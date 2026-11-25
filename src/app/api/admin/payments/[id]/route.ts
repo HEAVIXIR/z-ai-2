@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { requirePermission } from "@/lib/authorization";
-import { logAudit } from "@/lib/audit";
 import { trackError } from "@/lib/error-tracking";
 
 export const runtime = "nodejs";
@@ -34,16 +33,46 @@ interface Args {
 
    Audit contract (matches paymentConfig.audit):
      entityType = "Payment"
-     actions    = payment.manage, payment.refund
-   (This route logs payment.update / payment.delete; the `refund` and
-   `verify` actions are handled by the action-engine via the Universal
-   action endpoint, NOT here.)
+     actions    = payment.manage
+   (This route logs payment.update / payment.delete; `verify` is handled by
+   the action engine. Refund is unavailable pending evidence-backed reconciliation.)
    ============================================================ */
 
 function serialize(p: any) {
+  // Payment rows contain provider references and idempotency keys that are
+  // internal reconciliation data. Never spread a database record into an API
+  // response; expose only the fields required by the admin payment views.
   return {
-    ...p,
-    amount: p.amount ? p.amount.toString() : null,
+    id: p.id,
+    amount: p.amount == null ? null : p.amount.toString(),
+    currency: p.currency,
+    type: p.type,
+    status: p.status,
+    gateway: p.gateway,
+    trackingCode: p.trackingCode,
+    paidAt: p.paidAt,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    ...(p.user
+      ? {
+          user: {
+            id: p.user.id,
+            firstName: p.user.firstName,
+            lastName: p.user.lastName,
+            mobile: p.user.mobile,
+            email: p.user.email,
+          },
+        }
+      : {}),
+    ...(p.order
+      ? {
+          order: {
+            id: p.order.id,
+            orderNumber: p.order.orderNumber,
+            status: p.order.status,
+          },
+        }
+      : {}),
   };
 }
 
@@ -53,7 +82,11 @@ export async function GET(_req: Request, { params }: Args) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await requirePermission(user.id, "payment.read");
+  try {
+    await requirePermission(user.id, "payment.read");
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const payment = await db.payment.findUnique({
@@ -80,139 +113,95 @@ export async function GET(_req: Request, { params }: Args) {
   } catch (err: any) {
     trackError(err, { endpoint: "GET /api/admin/payments/[id]" });
     return NextResponse.json(
-      { error: err?.message ?? "Server error" },
+      { error: "Internal server error" },
       { status: 500 },
     );
   }
 }
 
-// ── PATCH: update editable fields ─────────────────────────
-// Allowed fields: trackingCode, gateway, status, type, paidAt.
-// NOT allowed (immutable after creation): userId, amount, currency,
-// idempotencyKey, orderId, subscriptionId, providerReference.
-const ALLOWED_STATUSES = [
-  "PENDING",
-  "AUTHORIZED",
-  "PAID",
-  "FAILED",
-  "CANCELLED",
-  "REFUNDED",
-];
-const ALLOWED_TYPES = [
-  "SUBSCRIPTION",
-  "FEATURED_LISTING",
-  "PROMOTION",
-  "LEAD_FEE",
-  "INSPECTION_FEE",
-  "ORDER_PAYMENT",
-  "COMMISSION",
-  "REFUND",
-];
-const ALLOWED_GATEWAYS = ["ZARINPAL", "PAYIR", "MANUAL"];
-
+// ── PATCH: update non-financial metadata only ─────────────
+// Financial status/type/gateway/paidAt are immutable through generic PATCH.
+// Verification must go through the transactional payment action-engine.
+// Refunds are disabled until an evidence-backed reconciliation workflow exists.
 export async function PATCH(req: Request, { params }: Args) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await requirePermission(user.id, "payment.manage");
+  try {
+    await requirePermission(user.id, "payment.manage");
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   try {
     const { id } = await params;
-    const body = await req.json().catch(() => ({}));
-
-    const existing = await db.payment.findUnique({ where: { id } });
-    if (!existing) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Request body must be an object" }, { status: 400 });
     }
 
-    const data: any = {};
-
-    // status (validated against allowed enum)
-    if ("status" in body) {
-      const status = body.status === null ? null : String(body.status).toUpperCase();
-      if (status !== null && !ALLOWED_STATUSES.includes(status)) {
-        return NextResponse.json(
-          { error: `status must be one of: ${ALLOWED_STATUSES.join(", ")}` },
-          { status: 400 },
-        );
-      }
-      data.status = status ?? existing.status;
+    const forbiddenFields = ["status", "type", "gateway", "paidAt"];
+    const attemptedFinancialMutation = forbiddenFields.find((field) =>
+      Object.prototype.hasOwnProperty.call(body, field),
+    );
+    if (attemptedFinancialMutation) {
+      return NextResponse.json(
+        {
+          error: `Payment ${attemptedFinancialMutation} cannot be changed through PATCH; use the audited verify action where available; refunds are currently disabled`,
+          code: "PAYMENT_STATE_ACTION_REQUIRED",
+        },
+        { status: 409 },
+      );
     }
 
-    // type (validated against allowed enum)
-    if ("type" in body) {
-      const type = body.type === null ? null : String(body.type).toUpperCase();
-      if (type !== null && !ALLOWED_TYPES.includes(type)) {
-        return NextResponse.json(
-          { error: `type must be one of: ${ALLOWED_TYPES.join(", ")}` },
-          { status: 400 },
-        );
-      }
-      data.type = type ?? existing.type;
+    if (!Object.prototype.hasOwnProperty.call(body, "trackingCode")) {
+      return NextResponse.json(
+        { error: "Only trackingCode metadata can be updated through PATCH" },
+        { status: 400 },
+      );
     }
 
-    // gateway (validated against allowed enum)
-    if ("gateway" in body) {
-      const gateway =
-        body.gateway === null ? null : String(body.gateway).toUpperCase();
-      if (gateway !== null && !ALLOWED_GATEWAYS.includes(gateway)) {
-        return NextResponse.json(
-          { error: `gateway must be one of: ${ALLOWED_GATEWAYS.join(", ")}` },
-          { status: 400 },
-        );
-      }
-      data.gateway = gateway;
+    const trackingCode =
+      body.trackingCode === null ? null : String(body.trackingCode).trim();
+    if (trackingCode !== null && trackingCode.length > 100) {
+      return NextResponse.json(
+        { error: "trackingCode must not exceed 100 characters" },
+        { status: 400 },
+      );
     }
 
-    // trackingCode (maxLength 100 per paymentConfig validation contract)
-    if ("trackingCode" in body) {
-      const tc = body.trackingCode === null ? null : String(body.trackingCode);
-      if (tc !== null && tc.length > 100) {
-        return NextResponse.json(
-          { error: "trackingCode must not exceed 100 characters" },
-          { status: 400 },
-        );
-      }
-      data.trackingCode = tc;
-    }
+    const result = await db.$transaction(async (tx) => {
+      const existing = await tx.payment.findUnique({ where: { id } });
+      if (!existing) return null;
 
-    // paidAt (ISO date string or null)
-    if ("paidAt" in body) {
-      data.paidAt = body.paidAt === null ? null : new Date(body.paidAt);
-    }
+      const payment = await tx.payment.update({
+        where: { id },
+        data: { trackingCode },
+      });
 
-    // If status is being set to PAID and paidAt is not explicitly provided,
-    // auto-set paidAt to now (matches POST /api/admin/payments markPaid semantics).
-    if (data.status === "PAID" && !("paidAt" in data) && !existing.paidAt) {
-      data.paidAt = new Date();
-    }
+      // Keep the metadata mutation and its audit evidence atomic too.
+      await tx.auditLog.create({
+        data: {
+          actorId: user.id,
+          actorType: "ADMIN",
+          action: "payment.update",
+          entityType: "Payment",
+          entityId: payment.id,
+          beforeJson: JSON.stringify({ trackingCode: existing.trackingCode }),
+          afterJson: JSON.stringify({ trackingCode: payment.trackingCode }),
+          reason: "trackingCode metadata update via admin API",
+          ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+          userAgent: req.headers.get("user-agent"),
+        },
+      });
 
-    const payment = await db.payment.update({ where: { id }, data });
-
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "payment.update",
-      entityType: "Payment",
-      entityId: payment.id,
-      before: {
-        status: existing.status,
-        type: existing.type,
-        gateway: existing.gateway,
-        trackingCode: existing.trackingCode,
-        paidAt: existing.paidAt?.toISOString() ?? null,
-      },
-      after: {
-        status: payment.status,
-        type: payment.type,
-        gateway: payment.gateway,
-        trackingCode: payment.trackingCode,
-        paidAt: payment.paidAt?.toISOString() ?? null,
-      },
-      reason: "via admin API",
+      return payment;
     });
 
-    return NextResponse.json({ ok: true, payment: serialize(payment) });
+    if (!result) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    return NextResponse.json({ ok: true, payment: serialize(result) });
   } catch (err: any) {
     trackError(err, { endpoint: "PATCH /api/admin/payments/[id]" });
     return NextResponse.json(
@@ -222,45 +211,32 @@ export async function PATCH(req: Request, { params }: Args) {
   }
 }
 
-// ── DELETE: remove a payment ──────────────────────────────
+// ── DELETE: financial ledger rows are immutable ─────────────
+// Payment rows are financial evidence. Deleting even a FAILED or
+// PENDING row would destroy reconciliation history; deleting PAID
+// rows could conceal captured funds. A future refund/reversal must use an
+// evidence-backed immutable record. No role may hard-delete payment rows.
 export async function DELETE(_req: Request, { params }: Args) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  await requirePermission(user.id, "payment.manage");
   try {
-    const { id } = await params;
-    const before = await db.payment.findUnique({ where: { id } });
-    if (!before) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-    await db.payment.delete({ where: { id } });
-
-    await logAudit({
-      actorId: user.id,
-      actorType: "ADMIN",
-      action: "payment.delete",
-      entityType: "Payment",
-      entityId: id,
-      before: {
-        userId: before.userId,
-        amount: before.amount.toString(),
-        currency: before.currency,
-        type: before.type,
-        status: before.status,
-        gateway: before.gateway,
-        trackingCode: before.trackingCode,
-      },
-      reason: "via admin API",
-    });
-
-    return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    trackError(err, { endpoint: "DELETE /api/admin/payments/[id]" });
-    return NextResponse.json(
-      { error: err?.message ?? "Server error" },
-      { status: 500 },
-    );
+    await requirePermission(user.id, "payment.manage");
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+
+  const { id } = await params;
+  if (!id || id.length > 128) {
+    return NextResponse.json({ error: "Invalid payment id" }, { status: 400 });
+  }
+
+  return NextResponse.json(
+    {
+      error: "Payment ledger entries are immutable and cannot be deleted",
+      code: "PAYMENT_LEDGER_IMMUTABLE",
+    },
+    { status: 409 },
+  );
 }

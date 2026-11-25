@@ -78,16 +78,28 @@ describe('Universal Resource Contract — All 18 Resources', () => {
         expect(isNonEmptyString(config.permissions.read)).toBe(true);
       });
 
-      it('should have create permission', () => {
-        expect(isNonEmptyString(config.permissions.create)).toBe(true);
+      it('should declare create permission or explicitly disable generic creation', () => {
+        if (config.key === 'payments') {
+          // Financial ledger rows are created only through the dedicated
+          // audited manual-payment endpoint, never generic CRUD.
+          expect(config.permissions.create).toBeUndefined();
+        } else {
+          expect(isNonEmptyString(config.permissions.create)).toBe(true);
+        }
       });
 
       it('should have update permission', () => {
         expect(isNonEmptyString(config.permissions.update)).toBe(true);
       });
 
-      it('should have delete permission', () => {
-        expect(isNonEmptyString(config.permissions.delete)).toBe(true);
+      it('should declare delete permission or explicitly disable destructive deletion', () => {
+        if (config.key === 'payments') {
+          // Payment records are immutable financial evidence; deletion is
+          // intentionally unavailable in both generic and dedicated APIs.
+          expect(config.permissions.delete).toBeUndefined();
+        } else {
+          expect(isNonEmptyString(config.permissions.delete)).toBe(true);
+        }
       });
 
       // ── 6-7. Columns + Fields ──────────────────────────

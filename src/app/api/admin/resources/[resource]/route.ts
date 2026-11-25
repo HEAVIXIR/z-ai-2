@@ -144,6 +144,19 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: `Unknown resource: "${resourceKey}"` }, { status: 404 });
   }
 
+  // Financial records must be created through the dedicated audited
+  // payment endpoint, which validates same-user subscription linkage
+  // and commits payment + entitlement + audit atomically.
+  if (resourceKey === "payments") {
+    return NextResponse.json(
+      {
+        error: "Use the dedicated manual-payment endpoint; generic resource creation is disabled for financial records",
+        code: "PAYMENT_CREATE_ACTION_REQUIRED",
+      },
+      { status: 409 },
+    );
+  }
+
   // Check create permission
   const createPerm = config.permissions.create;
   if (!createPerm) {
