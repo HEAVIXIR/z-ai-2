@@ -87,6 +87,12 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/heavix-backup-evidence
 
+      - name: Install PostgreSQL client, AWS CLI and age
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client awscli age
+
       - name: Verify encrypted B2 backup objects, checksums, source identity and freshness
         shell: bash
         env:
@@ -134,12 +140,6 @@ jobs:
           (( CREATED_EPOCH <= NOW_EPOCH + 300 ))
           (( NOW_EPOCH - CREATED_EPOCH <= 21600 ))
           echo "PASS: paired encrypted backup is checksum-valid, restored by its source workflow, identity-matched and at most six hours old."
-
-      - name: Install PostgreSQL client, AWS CLI and age
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client awscli age
 
       - name: Verify Preview Worker identity and exact App Preview database identity
         shell: bash
