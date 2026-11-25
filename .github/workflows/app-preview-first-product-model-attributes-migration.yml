@@ -166,6 +166,8 @@ jobs:
           bun-version: 1.4.4
 
       - name: Install frozen dependencies and validate schema
+        env:
+          DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
         run: |
           set -euo pipefail
           test "$(bun --version)" = "1.4.4"
