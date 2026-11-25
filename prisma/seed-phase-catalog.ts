@@ -51,7 +51,7 @@
  */
 import { db } from "../src/lib/db";
 import { assertTestSeedTarget } from "./test-seed-guard";
-import bcrypt from "bcryptjs";
+import { hashPassword } from "../src/lib/password";
 
 // ════════════════════════════════════════════════════════════
 // DETERMINISTIC CONSTANTS
@@ -66,7 +66,7 @@ const SUBMITTED_AT = new Date("2026-01-10T00:00:00.000Z");
 const REVIEWED_AT = new Date("2026-01-12T00:00:00.000Z");
 const REVOKED_AT = new Date("2026-02-01T00:00:00.000Z");
 
-// Stable password hash (deterministic; bcrypt with fixed salt).
+// Fixture password hash uses the shared PBKDF2-HMAC-SHA256 helper.
 // Computed lazily inside main() because top-level await is not supported
 // with the CJS output format used by tsx.
 // Note: the value is not used for real auth — these are test fixtures.
@@ -96,7 +96,7 @@ async function main() {
 
   // Compute the fixture password hash now (top-level await is not supported
   // under the CJS output format used by tsx).
-  FIXTURE_PASSWORD_HASH = await bcrypt.hash("PhaseCatTestFixtures#2026", 10);
+  FIXTURE_PASSWORD_HASH = await hashPassword("PhaseCatTestFixtures#2026");
 
   // ── 0. Reference admin (must already exist from seed-user-roles) ──
   const adminMobile = process.env.ADMIN_USERNAME ?? "ci-admin";

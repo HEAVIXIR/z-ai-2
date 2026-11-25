@@ -37,7 +37,7 @@ Category ≠ Transaction ≠ Service ≠ Industry ≠ Brand ≠ Model ≠ Locati
 Brand و Model مستقل‌اند.
 
 ### اصل ۴ — امنیت بر پایه Zero Trust
-- پسوردها هرگز plaintext ذخیره نشوند (Argon2id/bcrypt).
+- پسوردها هرگز plaintext ذخیره نشوند؛ قالب جدید PBKDF2-HMAC-SHA256 با ۶۰۰٬۰۰۰ تکرار است. هش‌های قدیمی bcrypt فقط در Node/Vercel تأیید و پس از ورود موفق به PBKDF2 مهاجرت می‌شوند.
 - ثبت‌نام عمومی هرگز نقش ADMIN نسازد.
 - Admin session باید cryptographically secure باشد.
 - RBAC + Audit Log الزامی است.
@@ -76,7 +76,7 @@ Migration discipline الزامی (`prisma/migrations`).
 ## ترتیب اجرایی (P0 → P1 → P2)
 
 ### P0 — قبل از ادامه توسعه (Security + DB Contract)
-1. Password hashing (Argon2id/bcrypt)
+1. Password hashing (PBKDF2-HMAC-SHA256; legacy bcrypt migration on Node/Vercel)
 2. حذف امکان ثبت‌نام ADMIN
 3. اصلاح Admin session (cryptographically secure)
 4. PostgreSQL/SQLite decision + migration strategy

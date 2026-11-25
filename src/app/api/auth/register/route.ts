@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
    Body: { firstName, lastName, mobile, email, password, companyName? }
    - Validates required fields
    - Mobile AND email must be unique (enforced by schema @unique)
-   - P0-1: password is hashed with bcrypt (cost 10) BEFORE storage.
+   - Passwords are hashed with the shared Worker-compatible PBKDF2 helper BEFORE storage.
      The plaintext password is never persisted.
    - P0-2: the role is HARDCODED to "BUYER" — the request body has NO
      ability to set the role. Only an admin can elevate a user via the
@@ -97,7 +97,7 @@ export async function POST(req: Request) {
     // 7-day verification deadline
     const verificationDeadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    // P0-1: bcrypt-hash the password (cost factor 10, see src/lib/password.ts).
+    // P0-1: PBKDF2-HMAC-SHA256 hash (see src/lib/password.ts).
     // The plaintext password is discarded after hashing — never persisted.
     const passwordHash = await hashPassword(password);
 
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Create user (PENDING, bcrypt-hashed password, role forced to BUYER).
+    // Create user (PENDING, PBKDF2-hashed password, role forced to BUYER).
     // Hash the short-lived email OTP before any account writes.
     const emailCode = String(randomInt(100000, 1000000));
     const emailCodeHash = await hashPassword(emailCode);
