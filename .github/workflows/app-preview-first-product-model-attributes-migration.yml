@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   migrate-app-preview:
-    if: github.ref == 'refs/heads/fix/preview-product-model-attributes-first-migration'
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
     runs-on: ubuntu-latest
     environment: preview-backup
     timeout-minutes: 30
@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/fix/preview-product-model-attributes-first-migration"
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$DISPATCH_TARGET" = "APP_PREVIEW_ONLY"
           test "$DISPATCH_CONFIRM" = "APPLY_PRODUCT_MODEL_ATTRIBUTES_TO_APP_PREVIEW"
@@ -182,9 +182,9 @@ jobs:
           test "$history" = "$expected" || { echo "FAIL: App Preview migration history is not the exact three-migration baseline; no changes made."; exit 1; }
           unfinished="$(run_sql "SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")"
           test "$unfinished" = "0"
-          schema="$(run_sql "SELECT (to_regclass('public.""ProductModel""') IS NOT NULL)::text || '|' || (to_regclass('public.""Category""') IS NOT NULL)::text || '|' || (to_regclass('public.""AttributeDefinition""') IS NOT NULL)::text || '|' || (to_regclass('public.""ProductModelAttribute""') IS NULL)::text")"
+          schema="$(run_sql "SELECT (to_regclass('public.\"ProductModel\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"Category\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"AttributeDefinition\"') IS NOT NULL)::text || '|' || (to_regclass('public.\"ProductModelAttribute\"') IS NULL)::text")"
           test "$schema" = "true|true|true|true" || { echo "FAIL: schema preconditions do not match; no changes made."; exit 1; }
-          collision="$(run_sql "SELECT (to_regclass('public.""ProductModelAttribute""') IS NOT NULL)::text || '|' || (SELECT count(*) FROM pg_class WHERE relname IN ('ProductModelAttribute_modelId_categoryId_attributeId_key','ProductModelAttribute_modelId_categoryId_idx','ProductModelAttribute_attributeId_idx'))::text")"
+          collision="$(run_sql "SELECT (to_regclass('public.\"ProductModelAttribute\"') IS NOT NULL)::text || '|' || (SELECT count(*) FROM pg_class WHERE relname IN ('ProductModelAttribute_modelId_categoryId_attributeId_key','ProductModelAttribute_modelId_categoryId_idx','ProductModelAttribute_attributeId_idx'))::text")"
           test "$collision" = "false|0"
           echo "PASS: exact three-migration history, no unfinished migration, referenced tables exist and target table/indexes are absent."
 
