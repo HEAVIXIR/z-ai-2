@@ -19,9 +19,11 @@
    Apply after verified backup/DB target and review: bunx tsx prisma/seed-machine-taxonomy.ts --apply
 */
 
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
-const db = new PrismaClient();
+const prisma = new PrismaClient();
+// The active client is switched to the interactive transaction only during apply.
+let db: PrismaClient | Prisma.TransactionClient = prisma;
 
 // ────────────────────────────────────────────────────────────
 // Types
@@ -1460,6 +1462,11 @@ async function main() {
     );
   }
 
+  // All mutations and post-write invariants run in one serializable transaction.
+  // Any thrown error rolls the complete taxonomy rewrite back.
+  await prisma.$transaction(async (tx) => {
+    db = tx;
+    try {
   // 2. Normalize root only after read-only preflight succeeds.
   await db.category.update({
     where: { id: root.id },
@@ -1675,6 +1682,14 @@ async function main() {
   if (missingL1.length > 0) {
     throw new Error(`Missing or misconfigured L1 slugs: ${missingL1.join(", ")}`);
   }
+    } finally {
+      db = prisma;
+    }
+  }, {
+    maxWait: 15_000,
+    timeout: 120_000,
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  });
 }
 
 main()
@@ -1682,4 +1697,4 @@ main()
     console.error("✗ SEED FAILED:", e);
     process.exit(1);
   })
-  .finally(() => db.$disconnect());
+  .finally(() => prisma.$disconnect());
