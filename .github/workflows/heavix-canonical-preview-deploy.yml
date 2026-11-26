@@ -3,11 +3,6 @@ name: HEAVIX Canonical Preview Worker Deploy
 # Re-authorized by owner for the current Integration head; Production and database writes remain prohibited.
 
 on:
-  push:
-    branches:
-      - integration/preview-readiness-workerd-2026-11-15
-    paths:
-      - ".github/workflows/heavix-canonical-preview-deploy.yml"
   workflow_dispatch:
 
 permissions:
