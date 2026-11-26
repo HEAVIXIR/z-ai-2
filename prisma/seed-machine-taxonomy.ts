@@ -1692,9 +1692,19 @@ async function main() {
   });
 }
 
-main()
-  .catch((e) => {
-    console.error("✗ SEED FAILED:", e);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+void (async () => {
+  let exitCode = 0;
+  try {
+    await main();
+  } catch (error) {
+    console.error("✗ SEED FAILED:", error);
+    exitCode = 1;
+  }
+  try {
+    await prisma.$disconnect();
+  } catch (error) {
+    console.error("✗ PRISMA DISCONNECT FAILED:", error);
+    exitCode = 1;
+  }
+  process.exitCode = exitCode;
+})();
