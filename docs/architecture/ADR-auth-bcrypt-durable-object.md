@@ -1,6 +1,6 @@
 # ADR: Offload HEAVIX bcrypt work to a private Durable Object
 
-- Status: Proposed; isolated POC implemented, runtime and account-plan verification pending
+- Status: Proposed; isolated POC and local Workerd RPC proof implemented; account-plan verification and production integration gates remain open
 - Date: 2026-11-26
 - Scope: Integration Preview only; no Production rollout
 
@@ -12,7 +12,7 @@ The password API is shared by login, registration (including email OTP hashing),
 
 ## Decision under evaluation
 
-Prototype a separate, private, SQLite-backed Durable Object class dedicated to bcrypt compute. The current branch implements the isolated class and helper-level unit tests; it does not yet prove RPC invocation, per-instance concurrency behavior, or end-to-end caller integration. The main HEAVIX Worker calls it through Cloudflare's same-account Durable Object RPC binding; it does not call a public HTTP endpoint. Cloudflare documents that Durable Object methods can be invoked by other Workers on the same account through bindings and RPC, and that these are capability-based calls rather than public Internet endpoints.
+Prototype a separate, private, SQLite-backed Durable Object class dedicated to bcrypt compute. The current branch implements the isolated class, helper-level unit tests, and a local Workerd RPC harness. CI run `45894202860` passed the Worker dry-run, real local Workerd RPC proof, typecheck, lint, security/integration tests, production build, TLS proof, and Docker connectivity proof. This is not a Cloudflare deployment, account-plan verification, or end-to-end caller integration. The main HEAVIX Worker calls it through Cloudflare's same-account Durable Object RPC binding; it does not call a public HTTP endpoint. Cloudflare documents that Durable Object methods can be invoked by other Workers on the same account through bindings and RPC, and that these are capability-based calls rather than public Internet endpoints.
 
 The proof of concept must:
 - Preserve `bcryptjs`, bcrypt hash format, and cost factor 10 exactly.
@@ -69,3 +69,30 @@ No database binding, database migration, seed, Production environment, public ro
 ## Account-plan verification gate (2026-11-26)
 
 A read-only Cloudflare API check of the existing `heavix-preview` Worker returned `usage_model: standard`. Cloudflare's current pricing documentation states that the Standard usage model is available to Workers Paid subscribers (minimum USD 5/month). This is a billing-risk signal and must not be treated as proof of Free-plan eligibility. A separate read-only account-subscriptions request was denied because the connected Cloudflare authorization lacks `billing:read`. Therefore the account plan is **not independently verified**, and no deployment or resource creation is authorized until an owner-approved read-only billing check confirms the account is on Free with no active paid Workers subscription. Do not request `billing:write` and do not alter subscriptions as part of this work.
+
+
+## Verified password call-site inventory (2026-11-26)
+
+The Integration baseline was audited before any application binding changes:
+
+- `src/app/api/auth/register/route.ts`: hashes the user password and email OTP. IP-based registration throttling runs before the hashing work; CSRF and input validation are present.
+- `src/app/api/auth/login/route.ts`: verifies the submitted password. The API path has CSRF handling and an IP-based limit (10 attempts per 15 minutes) before verification.
+- `src/app/api/admin/users/route.ts`: hashes an administrator-created user's password after authorization.
+- `src/app/api/admin/users/[id]/route.ts`: hashes a password update after authorization. Before binding integration, its password validation must be checked and aligned with the crypto Worker's 1,024-byte UTF-8 input ceiling; reject oversize input before RPC.
+- `src/app/login/actions.ts`: legacy `loginAction` also calls password verification. The current `LoginForm.tsx` uses `/api/auth/login`, but the legacy server action remains a reachable code path unless proven otherwise. It has no explicit rate limit in the audited baseline and checks `BLOCKED` without enforcing the full `ACTIVE` and `emailVerified` gates used by the API route. It must be removed, disabled, or hardened and rate-limited before crypto binding integration.
+
+The in-memory rate limiter currently used by the app is isolate-local; it is not a globally coordinated brute-force control. Keep rate limiting before RPC, but do not represent this existing mechanism as a global guarantee. A globally coordinated rate limit is a separate design item if the threat model or deployment requires it.
+
+## Durable Object concurrency and sharding requirement
+
+The POC's one-active-operation guard is scoped to a single Durable Object instance. The local harness intentionally uses one deterministic object ID to test that per-instance guard; this is not an endorsement of a single global production instance. A single global ID would serialize all authentication crypto work and create a throughput bottleneck.
+
+Before app integration, design and test a bounded fixed shard pool. Select a shard without sending PII, usernames, emails, IP addresses, or other user identifiers to the crypto object (random selection is the current preferred direction). Each shard retains its own one-operation admission guard. Define bounded retry/backoff or fail-closed busy behavior, fairness expectations, and shard count using measured concurrency and Free-plan request/duration budgets. Do not silently fall back to bcrypt in the main Worker when a shard is busy or unavailable.
+
+## CI evidence and remaining gates
+
+- Exact-head CI run: https://github.com/HEAVIXIR/z-ai-2/actions/runs/45894202860 — all required jobs passed, including the local Workerd RPC proof and Docker build/connectivity proof.
+- The optional legacy archive inventory and Preview read-only paired migration diagnostics were skipped in that run; this CI result does not certify either operation.
+- The Workerd harness proves the DO RPC methods locally, bcrypt cost-10 hash format, correct/wrong password behavior, malformed-hash fail-closed behavior, oversized input rejection, per-instance concurrent-operation rejection, and lock recovery. It does not prove Cloudflare-hosted CPU performance or account eligibility.
+- Do not integrate app call sites until the legacy login action, admin update input bound, shard pool, and measured Free-plan behavior are resolved.
+- Do not deploy or create Cloudflare resources until read-only account-plan verification confirms Free eligibility and no active paid Workers subscription. The `usage_model: standard` signal and missing `billing:read` access described below remain unresolved.
