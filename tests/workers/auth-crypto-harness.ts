@@ -18,7 +18,7 @@ function failure(error: unknown): Response {
   if (error instanceof Error && error.message === "AUTH_CRYPTO_BUSY") {
     return json({ code: "AUTH_CRYPTO_BUSY" }, 429);
   }
-  if (error instanceof TypeError) {
+  if (error instanceof TypeError || error instanceof RangeError) {
     return json({ code: "INVALID_CRYPTO_INPUT" }, 400);
   }
   return json({ code: "AUTH_CRYPTO_TEST_FAILURE" }, 500);
