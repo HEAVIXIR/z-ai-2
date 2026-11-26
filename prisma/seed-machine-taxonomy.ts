@@ -1687,7 +1687,7 @@ async function main() {
     }
   }, {
     maxWait: 15_000,
-    timeout: 120_000,
+    timeout: 300_000,
     isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
   });
 }
