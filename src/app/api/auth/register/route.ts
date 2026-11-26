@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import { db } from "@/lib/db";
 import { toEnDigits } from "@/lib/format";
 import { sendVerificationEmail } from "@/lib/email";
-import { hashPassword } from "@/lib/password";
+import { hashPassword, isPasswordWithinBcryptLimit } from "@/lib/password";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { REGISTER } from "@/lib/rate-limit-presets";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
@@ -79,6 +79,12 @@ export async function POST(req: Request) {
     }
     if (password.length < 8 || password.length > 128) {
       return NextResponse.json({ error: "رمز عبور باید بین ۸ تا ۱۲۸ کاراکتر باشد" }, { status: 400 });
+    }
+    if (!isPasswordWithinBcryptLimit(password)) {
+      return NextResponse.json(
+        { error: "رمز عبور نباید بیش از ۷۲ بایت UTF-8 باشد" },
+        { status: 400 },
+      );
     }
 
     mobile = toEnDigits(mobile);
