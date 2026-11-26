@@ -518,7 +518,7 @@ function UserEditModal({
         emailVerified,
         mobileVerified,
       };
-      if (password.trim()) payload.password = password.trim();
+      if (password.length > 0) payload.password = password;
       const res = await fetch(`/api/admin/users/${user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -695,7 +695,7 @@ function UserCreateModal({
           lastName: lastName.trim(),
           email: email.trim().toLowerCase(),
           mobile: mobile.trim(),
-          password: password.trim(),
+          password,
           userType,
           status,
           companyName: companyName.trim() || null,
