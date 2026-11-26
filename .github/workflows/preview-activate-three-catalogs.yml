@@ -68,6 +68,7 @@ jobs:
           SEED_TRANSACTION_TYPES: ${{ inputs.seed_transaction_types }}
           SEED_TECHNICAL_FORMS: ${{ inputs.seed_technical_forms }}
           SEED_IRAN_LOCATIONS: ${{ inputs.seed_iran_locations }}
+          DRY_RUN_TECHNICAL_FORMS: ${{ inputs.dry_run_technical_forms }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
@@ -75,8 +76,8 @@ jobs:
           test -n "$DATABASE_URL"
           test -n "$HEAVIX_APP_PREVIEW_DATABASE_OID"
           [[ "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          if [[ "$SEED_TRANSACTION_TYPES" != "true" && "$SEED_TECHNICAL_FORMS" != "true" && "$SEED_IRAN_LOCATIONS" != "true" ]]; then
-            echo "Select at least one isolated seed operation."
+          if [[ "$SEED_TRANSACTION_TYPES" != "true" && "$SEED_TECHNICAL_FORMS" != "true" && "$SEED_IRAN_LOCATIONS" != "true" && "$DRY_RUN_TECHNICAL_FORMS" != "true" ]]; then
+            echo "Select at least one isolated seed operation (dry-run counts as an operation)."
             exit 1
           fi
           echo "Preview-only scope confirmed. No Production or Store DB connection is configured."
