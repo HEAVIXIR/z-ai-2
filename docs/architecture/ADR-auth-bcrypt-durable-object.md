@@ -99,3 +99,14 @@ Before app integration, design and test a bounded fixed shard pool. Select a sha
 - Cloudflare evidence discrepancy remains explicitly open: the read-only Worker settings API previously returned `usage_model: standard`, while the connected token cannot read account subscriptions because it lacks `billing:read`. Current official Cloudflare pricing documentation says the Standard Workers usage model is available to Workers Paid subscribers (minimum USD 5/month): https://developers.cloudflare.com/workers/platform/pricing/. This signal does not independently prove that the account has an active paid subscription, but it conflicts with an assumption that this Worker is definitely on Free.
 - Treat the owner statement as authoritative for project intent, but do not silently resolve the technical discrepancy. Before any Cloudflare deployment or creation of billable resources, verify the specific Worker usage model and account subscription using read-only evidence (or confirm in the Cloudflare dashboard). Do not request `billing:write`, change plans, or enable paid services.
 - Continue local CI, code review, design, and Workerd tests while this account-level discrepancy is being clarified.
+
+
+## bcrypt 72-byte input semantics (2026-11-27)
+
+The project pins `bcryptjs` 3.0.3. Its documented behavior is that bcrypt uses at most the first 72 UTF-8 bytes and does not implicitly reject longer input; the library exposes `bcrypt.truncates(password)` for callers that need to detect this. The previous POC's 1,024-byte transport ceiling alone therefore did not prevent distinct long inputs with the same first 72 bytes from producing equivalent bcrypt credentials.
+
+The POC now rejects a new hash request when `bcrypt.truncates(password)` is true. This is a 72-byte UTF-8 limit, not a 72-character limit. Verification deliberately retains the prior bcrypt comparison behavior (within the 1,024-byte transport ceiling) so accounts whose historical passwords exceeded 72 bytes are not abruptly locked out by the POC. This compatibility choice preserves the legacy truncation semantics for verification only; it does not endorse them for new password creation.
+
+Before any application call-site integration, the public registration and administrator password creation/reset validators must be aligned with the 72-byte UTF-8 limit and return a clear validation error before hashing. Do not silently truncate, normalize, or rewrite user passwords. Add explicit tests for multibyte UTF-8 boundaries and for verification compatibility with a legacy hash generated from a 72-byte prefix. The change is covered by unit tests in the POC; exact-head CI must pass before this decision is treated as validated.
+
+Reference: bcryptjs 3.0.3 documents the 72-byte maximum and `truncates()`: https://www.npmjs.com/package/bcryptjs
