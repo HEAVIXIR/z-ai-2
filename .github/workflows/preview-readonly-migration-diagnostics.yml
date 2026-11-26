@@ -1,0 +1,155 @@
+name: HEAVIX Preview read-only paired migration diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - integration/preview-readiness-workerd-2026-11-15
+    paths:
+      - ".github/workflows/preview-readonly-migration-diagnostics.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavix-preview-readonly-migration-diagnostics
+  cancel-in-progress: false
+
+jobs:
+  inspect-preview:
+    name: Inspect App and Store Preview migration history and schema (read-only)
+    if: github.ref == 'refs/heads/integration/preview-readiness-workerd-2026-11-15'
+    runs-on: ubuntu-latest
+    environment: preview-backup
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.MAIN_PREVIEW_DATABASE_URL }}
+      STORE_DATABASE_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
+      HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+      HEAVIX_STORE_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_STORE_PREVIEW_DATABASE_OID }}
+
+    steps:
+      - name: Enforce exact Integration branch and Preview-only read-only scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
+          test -n "$DATABASE_URL"
+          test -n "$STORE_DATABASE_URL"
+          test "$DATABASE_URL" != "$STORE_DATABASE_URL"
+          echo "PASS: exact Integration branch; two distinct Preview database URLs configured."
+
+      - name: Install PostgreSQL client
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Read exact Preview identities, complete migration histories and schema fingerprints
+        shell: bash
+        env:
+          EXPECTED_APP_SYSTEM_IDENTIFIER: "7701427422680793119"
+          EXPECTED_STORE_SYSTEM_IDENTIFIER: "7701425043360235551"
+        run: |
+          set -euo pipefail
+          export PGSSLMODE=verify-full
+
+          verify_identity() {
+            local label="$1" url="$2" expected_oid="$3" expected_system="$4" observed
+            if [[ ! "$expected_oid" =~ ^[1-9][0-9]{0,9}$ ]] || (( expected_oid > 4294967295 )); then
+              echo "FAIL: $label Preview database OID secret is invalid."
+              return 1
+            fi
+            observed="$(psql "$url" -XAtq -v ON_ERROR_STOP=1 -c "SELECT current_database() || '|' || (SELECT oid::text FROM pg_database WHERE datname=current_database()) || '|' || (SELECT system_identifier::text FROM pg_control_system())")"
+            if [[ "$observed" != "postgres|$expected_oid|$expected_system" ]]; then
+              echo "FAIL: $label Preview identity mismatch; observed identity withheld."
+              return 1
+            fi
+            echo "PASS: $label exact Preview database identity and TLS connection."
+          }
+
+          verify_identity App "$DATABASE_URL" "$HEAVIX_APP_PREVIEW_DATABASE_OID" "$EXPECTED_APP_SYSTEM_IDENTIFIER"
+          verify_identity Store "$STORE_DATABASE_URL" "$HEAVIX_STORE_PREVIEW_DATABASE_OID" "$EXPECTED_STORE_SYSTEM_IDENTIFIER"
+
+          inspect_history() {
+            local label="$1" url="$2"
+            echo "### $label Preview migration history"
+            psql "$url" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT migration_name, started_at, finished_at, rolled_back_at, CASE WHEN finished_at IS NOT NULL AND rolled_back_at IS NULL THEN 'successful' WHEN rolled_back_at IS NOT NULL THEN 'rolled_back' ELSE 'unfinished' END AS state FROM public._prisma_migrations ORDER BY started_at, migration_name"
+            echo "### $label Preview migration counts"
+            psql "$url" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) FILTER (WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) AS successful, count(*) FILTER (WHERE finished_at IS NULL AND rolled_back_at IS NULL) AS unfinished, count(*) FILTER (WHERE rolled_back_at IS NOT NULL) AS rolled_back FROM public._prisma_migrations"
+          }
+
+          inspect_history App "$DATABASE_URL"
+          inspect_history Store "$STORE_DATABASE_URL"
+
+          echo "### App Preview global brand registry and transaction inventory (read-only)"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_brands, count(*) FILTER (WHERE active) AS active_flag_true, count(*) FILTER (WHERE NOT active) AS active_flag_false, count(*) FILTER (WHERE active AND status NOT IN ('PENDING_REVIEW','PENDING','DRAFT','INACTIVE','ARCHIVED')) AS selectable_by_current_policy, count(*) FILTER (WHERE \"brandFamilyId\" IS NOT NULL) AS brands_in_family, count(*) FILTER (WHERE \"parentBrandId\" IS NOT NULL) AS brands_with_parent FROM public.\"Brand\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT status, active, count(*) AS brand_count FROM public.\"Brand\" GROUP BY status, active ORDER BY status, active"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_families FROM public.\"BrandFamily\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_aliases, count(DISTINCT \"brandId\") AS brands_with_aliases, (SELECT count(*) FROM (SELECT \"normalizedValue\" FROM public.\"BrandAlias\" GROUP BY \"normalizedValue\" HAVING count(DISTINCT \"brandId\") > 1) collisions) AS cross_brand_alias_collisions FROM public.\"BrandAlias\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS display_rows, count(*) FILTER (WHERE \"showOnHomepage\") AS homepage_enabled, count(*) FILTER (WHERE NOT \"showOnHomepage\") AS homepage_disabled FROM public.\"BrandDisplay\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_transaction_types, count(*) FILTER (WHERE active) AS active_transaction_types, count(*) FILTER (WHERE key = 'SERVICE_OFFER' AND active) AS active_service_offer, string_agg(key, ', ' ORDER BY \"sortOrder\") AS transaction_keys FROM public.\"TransactionType\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(DISTINCT u.id) AS total_users, count(DISTINCT u.id) FILTER (WHERE u.status = 'ACTIVE') AS active_users, count(DISTINCT u.id) FILTER (WHERE r.key = 'ADMIN' AND u.status = 'ACTIVE') AS active_admin_users FROM public.\"User\" u LEFT JOIN public.\"UserRole\" ur ON ur.\"userId\" = u.id LEFT JOIN public.\"Role\" r ON r.id = ur.\"roleId\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_users, count(*) FILTER (WHERE \"passwordHash\" LIKE chr(36) || '2%') AS legacy_bcrypt_hashes, count(*) FILTER (WHERE \"passwordHash\" LIKE 'pbkdf2' || chr(36) || 'sha256' || chr(36) || '%') AS pbkdf2_hashes, count(*) FILTER (WHERE \"passwordHash\" NOT LIKE chr(36) || '2%' AND \"passwordHash\" NOT LIKE 'pbkdf2' || chr(36) || 'sha256' || chr(36) || '%') AS other_hashes FROM public.\"User\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT r.key AS role_key, u.status AS user_status, count(DISTINCT u.id) AS users FROM public.\"UserRole\" ur JOIN public.\"User\" u ON u.id = ur.\"userId\" JOIN public.\"Role\" r ON r.id = ur.\"roleId\" GROUP BY r.key, u.status ORDER BY r.key, u.status"
+          echo "PASS: App Preview brand, family, alias, homepage-curation and transaction counts inspected without returning brand names or mutating data."
+
+          echo "### App Preview ProductModel and ServiceType inventory (read-only)"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_models, count(*) FILTER (WHERE status='ACTIVE') AS active_models, count(*) FILTER (WHERE status<>'ACTIVE') AS non_active_models FROM public.\"ProductModel\""
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_service_types, count(*) FILTER (WHERE active) AS active_service_types, count(*) FILTER (WHERE NOT active) AS inactive_service_types FROM public.\"ServiceType\""
+
+          echo "### App Preview Location catalog inventory (read-only)"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT (SELECT count(*) FROM public.\"Country\") AS total_countries, (SELECT count(*) FROM public.\"Country\" WHERE code='IR') AS iran_country_rows, (SELECT count(*) FROM public.\"Province\" p JOIN public.\"Country\" c ON c.id=p.\"countryId\" WHERE c.code='IR') AS iran_provinces, (SELECT count(*) FROM public.\"City\" ci JOIN public.\"Province\" p ON p.id=ci.\"provinceId\" JOIN public.\"Country\" c ON c.id=p.\"countryId\" WHERE c.code='IR') AS iran_cities"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT code, name, \"sortOrder\" FROM public.\"Country\" ORDER BY \"sortOrder\", name"
+
+          echo "### App Preview CategoryAttribute and dynamic-form coverage (read-only)"
+          category_attribute_active_column="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='CategoryAttribute' AND column_name='active')")"
+          if [[ "$category_attribute_active_column" == "t" ]]; then
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT count(*) AS total_links, count(*) FILTER (WHERE active) AS active_links, count(*) FILTER (WHERE NOT active) AS inactive_links, count(DISTINCT \"attributeId\") AS linked_attributes FROM public.\"CategoryAttribute\""
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT type, count(*) AS attribute_definitions FROM public.\"AttributeDefinition\" GROUP BY type ORDER BY type"
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "WITH RECURSIVE category_tree AS (SELECT id, slug, name, \"parentId\", active, layer, level FROM public.\"Category\" WHERE \"parentId\" IS NULL UNION ALL SELECT child.id, child.slug, child.name, child.\"parentId\", child.active, child.layer, child.level FROM public.\"Category\" child JOIN category_tree parent ON child.\"parentId\"=parent.id), terminal_categories AS (SELECT node.* FROM category_tree node WHERE node.active AND NOT EXISTS (SELECT 1 FROM public.\"Category\" child WHERE child.\"parentId\"=node.id AND child.active)), coverage AS (SELECT t.id, t.slug, t.layer, t.level, count(ca.id) FILTER (WHERE ca.active) AS active_links, count(DISTINCT ca.\"attributeId\") FILTER (WHERE ca.active) AS active_attributes FROM terminal_categories t LEFT JOIN public.\"CategoryAttribute\" ca ON ca.\"categoryId\"=t.id GROUP BY t.id, t.slug, t.layer, t.level) SELECT layer, count(*) AS active_terminal_categories, count(*) FILTER (WHERE active_attributes>0) AS terminal_categories_with_forms, count(*) FILTER (WHERE active_attributes=0) AS terminal_categories_without_forms FROM coverage GROUP BY layer ORDER BY layer"
+            psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT c.slug, c.name, c.active, c.layer, c.level, count(ca.id) FILTER (WHERE ca.active) AS active_attribute_links, count(DISTINCT ca.\"attributeId\") FILTER (WHERE ca.active) AS active_attributes FROM public.\"Category\" c LEFT JOIN public.\"CategoryAttribute\" ca ON ca.\"categoryId\"=c.id WHERE c.slug='excavator' OR c.slug LIKE 'excavator-%' OR c.slug LIKE 'mini-excavator%' GROUP BY c.id, c.slug, c.name, c.active, c.layer, c.level ORDER BY c.level, c.slug"
+          else
+            echo "::warning::CategoryAttribute.active is not present; dynamic-form coverage queries skipped until the Preview migration is applied."
+          fi
+
+
+          echo "### App Preview homepage Listing columns"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name IN ('id','status','featured','verified','showInLatest','publishedAt','createdAt','brandId','categoryId','modelId') ORDER BY ordinal_position"
+          missing_listing_columns="$(psql "$DATABASE_URL" -XAtq -v ON_ERROR_STOP=1 -c "SELECT string_agg(required.column_name, ', ' ORDER BY required.column_name) FROM (VALUES ('id'),('status'),('featured'),('verified'),('showInLatest'),('publishedAt'),('createdAt'),('brandId'),('categoryId'),('modelId')) AS required(column_name) WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns c WHERE c.table_schema='public' AND c.table_name='Listing' AND c.column_name=required.column_name)")"
+          if [[ -n "$missing_listing_columns" ]]; then
+            echo "::error::App Preview Listing schema is missing required homepage columns: $missing_listing_columns"
+            exit 1
+          fi
+          echo "PASS: App Preview Listing columns required by homepage queries exist."
+
+          echo "### App Preview relevant schema objects"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='public' AND ((table_name='HeroConfig' AND column_name IN ('activeTemplate','cinematicConfig')) OR (table_name='Company' AND column_name='businessType') OR (table_name='PurchaseOrder' AND column_name='submittedBy')) ORDER BY table_name, ordinal_position"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT t.relname AS table_name, i.relname AS index_name, ix.indisunique AS is_unique, pg_get_indexdef(i.oid) AS definition FROM pg_class t JOIN pg_namespace n ON n.oid=t.relnamespace JOIN pg_index ix ON ix.indrelid=t.oid JOIN pg_class i ON i.oid=ix.indexrelid WHERE n.nspname='public' AND t.relname IN ('ProductModelAttribute','UserCommercialPersona','CompanyMembership','CompanyInvitation') ORDER BY t.relname, i.relname"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('ProductModelAttribute','UserCommercialPersona','CompanyMembership','CompanyInvitation') ORDER BY table_name"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT t.relname AS table_name, c.conname, c.contype, pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname='public' AND t.relname IN ('ProductModelAttribute','UserCommercialPersona','CompanyMembership','CompanyInvitation') ORDER BY t.relname, c.conname"
+
+          echo "### App Preview AuditLog idempotency key schema (read-only)"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='AuditLog' AND column_name='idempotencyKey' ORDER BY ordinal_position"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname='public' AND tablename='AuditLog' AND indexname='AuditLog_idempotencyKey_key'"
+
+          echo "### Store Preview relevant schema objects"
+          psql "$STORE_DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT table_name, column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='PurchaseOrder' AND column_name='submittedBy' ORDER BY ordinal_position"
+
+          echo "### App Preview migration targets for the #350–#359 roll-up (read-only)"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT migration_name, finished_at IS NOT NULL AND rolled_back_at IS NULL AS successfully_applied, finished_at, rolled_back_at FROM public._prisma_migrations WHERE migration_name IN ('20261119160000_wanted_structural_storage','20261119190000_first_party_geospatial_foundation','20261120113000_location_source_codes','20261120130000_category_attribute_active_policy','20261120150000_buy_request_images') ORDER BY migration_name"
+          echo "### App Preview WANTED/geospatial schema markers"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT marker, present FROM (VALUES ('BuyRequest.quantity', EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='quantity')), ('BuyRequest.countryId', EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='BuyRequest' AND column_name='countryId')), ('Listing.locationLatitude', EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Listing' AND column_name='locationLatitude')), ('Province.sourceCode', EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Province' AND column_name='sourceCode')), ('City.sourceCode', EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='City' AND column_name='sourceCode')), ('CategoryAttribute.active', EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='CategoryAttribute' AND column_name='active')), ('GeoZone table', to_regclass('public.\"GeoZone\"') IS NOT NULL), ('BuyRequestImage table', to_regclass('public.\"BuyRequestImage\"') IS NOT NULL), ('BuyRequestAttributeValue table', to_regclass('public.\"BuyRequestAttributeValue\"') IS NOT NULL), ('BuyRequestAttributeOption table', to_regclass('public.\"BuyRequestAttributeOption\"') IS NOT NULL)) AS markers(marker,present) ORDER BY marker"
+
+          echo "### App Preview exact BrandAlias cross-brand collision details (read-only)"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT ba.\"normalizedValue\" AS normalized_value, count(DISTINCT ba.\"brandId\") AS distinct_brands, string_agg(DISTINCT b.slug, ', ' ORDER BY b.slug) AS brand_slugs, string_agg(DISTINCT ba.value, ' | ' ORDER BY ba.value) AS alias_values FROM public.\"BrandAlias\" ba JOIN public.\"Brand\" b ON b.id=ba.\"brandId\" GROUP BY ba.\"normalizedValue\" HAVING count(DISTINCT ba.\"brandId\") > 1 ORDER BY ba.\"normalizedValue\""
+          echo "### App Preview catalog seed dependency counts (read-only)"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT (SELECT count(*) FROM public.\"Category\") AS categories, (SELECT count(*) FROM public.\"Category\" WHERE active) AS active_categories, (SELECT count(*) FROM public.\"AttributeDefinition\") AS attribute_definitions, (SELECT count(*) FROM public.\"AttributeOption\") AS attribute_options, (SELECT count(*) FROM public.\"CategoryAttribute\") AS category_attribute_links, (SELECT count(*) FROM public.\"ProductModel\") AS product_models, (SELECT count(*) FROM public.\"ModelCategory\") AS model_category_links"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT b.slug AS brand_slug, count(pm.id) AS product_models, count(pm.id) FILTER (WHERE pm.status='ACTIVE') AS active_models FROM public.\"Brand\" b LEFT JOIN public.\"ProductModel\" pm ON pm.\"brandId\"=b.id WHERE b.slug IN ('komatsu','caterpillar','hitachi','volvo-ce','liebherr','doosan','hyundai','jcb') GROUP BY b.slug ORDER BY b.slug"
+          echo "### App Preview category form coverage by layer (read-only)"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT c.layer, count(*) FILTER (WHERE c.active) AS active_categories, count(*) FILTER (WHERE c.active AND EXISTS (SELECT 1 FROM public.\"CategoryAttribute\" ca WHERE ca.\"categoryId\"=c.id AND ca.active)) AS categories_with_active_forms, count(*) FILTER (WHERE c.active AND NOT EXISTS (SELECT 1 FROM public.\"CategoryAttribute\" ca WHERE ca.\"categoryId\"=c.id AND ca.active)) AS categories_without_active_forms FROM public.\"Category\" c GROUP BY c.layer ORDER BY c.layer"
+          echo "### App Preview location source-code coverage (read-only)"
+          psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT (SELECT count(*) FROM public.\"Country\") AS countries, (SELECT count(*) FROM public.\"Country\" WHERE code='IR') AS iran_countries, (SELECT count(*) FROM public.\"Province\") AS provinces, (SELECT count(*) FROM public.\"Province\" WHERE \"sourceCode\" IS NOT NULL) AS provinces_with_source_code, (SELECT count(*) FROM public.\"City\") AS cities, (SELECT count(*) FROM public.\"City\" WHERE \"sourceCode\" IS NOT NULL) AS cities_with_source_code"
+          
+          echo "### Repository-independent diagnostic complete"
+          echo "PASS: read-only diagnostics completed. No DDL, DML, Prisma migration, deployment, or Production connection was invoked."
