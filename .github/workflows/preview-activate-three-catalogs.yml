@@ -36,6 +36,16 @@ on:
         required: true
         default: false
         type: boolean
+      apply_machine_taxonomy:
+        description: "Apply definitive machine taxonomy to isolated Preview (database write; requires second confirmation)"
+        required: true
+        default: false
+        type: boolean
+      confirm_machine_taxonomy_apply:
+        description: "Second explicit confirmation: authorize machine taxonomy writes to isolated Preview"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -63,6 +73,7 @@ jobs:
       HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED: ${{ inputs.seed_technical_forms && 'YES' || 'NO' }}
       HEAVIX_ALLOW_PREVIEW_LOCATION_SEED: ${{ inputs.seed_iran_locations && '1' || '0' }}
       HEAVIX_PREVIEW_LOCATION_SEED_APPROVED: ${{ inputs.seed_iran_locations && 'YES' || 'NO' }}
+      HEAVIX_PREVIEW_MACHINE_TAXONOMY_SEED_APPROVED: ${{ inputs.apply_machine_taxonomy && inputs.confirm_machine_taxonomy_apply && 'YES' || 'NO' }}
       BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
 
     steps:
@@ -75,6 +86,8 @@ jobs:
           SEED_IRAN_LOCATIONS: ${{ inputs.seed_iran_locations }}
           DRY_RUN_TECHNICAL_FORMS: ${{ inputs.dry_run_technical_forms }}
           DRY_RUN_MACHINE_TAXONOMY: ${{ inputs.dry_run_machine_taxonomy }}
+          APPLY_MACHINE_TAXONOMY: ${{ inputs.apply_machine_taxonomy }}
+          CONFIRM_MACHINE_TAXONOMY_APPLY: ${{ inputs.confirm_machine_taxonomy_apply }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/integration/preview-readiness-workerd-2026-11-15"
@@ -82,9 +95,19 @@ jobs:
           test -n "$DATABASE_URL"
           test -n "$HEAVIX_APP_PREVIEW_DATABASE_OID"
           [[ "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          if [[ "$SEED_TRANSACTION_TYPES" != "true" && "$SEED_TECHNICAL_FORMS" != "true" && "$SEED_IRAN_LOCATIONS" != "true" && "$DRY_RUN_TECHNICAL_FORMS" != "true" && "$DRY_RUN_MACHINE_TAXONOMY" != "true" ]]; then
+          if [[ "$SEED_TRANSACTION_TYPES" != "true" && "$SEED_TECHNICAL_FORMS" != "true" && "$SEED_IRAN_LOCATIONS" != "true" && "$DRY_RUN_TECHNICAL_FORMS" != "true" && "$DRY_RUN_MACHINE_TAXONOMY" != "true" && "$APPLY_MACHINE_TAXONOMY" != "true" ]]; then
             echo "Select at least one isolated seed operation (dry-run counts as an operation)."
             exit 1
+          fi
+          if [[ "$APPLY_MACHINE_TAXONOMY" == "true" || "$CONFIRM_MACHINE_TAXONOMY_APPLY" == "true" ]]; then
+            if [[ "$APPLY_MACHINE_TAXONOMY" != "true" || "$CONFIRM_MACHINE_TAXONOMY_APPLY" != "true" ]]; then
+              echo "Machine taxonomy Apply requires BOTH the Apply input and its separate confirmation."
+              exit 1
+            fi
+            if [[ "$SEED_TRANSACTION_TYPES" == "true" || "$SEED_TECHNICAL_FORMS" == "true" || "$SEED_IRAN_LOCATIONS" == "true" || "$DRY_RUN_TECHNICAL_FORMS" == "true" || "$DRY_RUN_MACHINE_TAXONOMY" == "true" ]]; then
+              echo "Machine taxonomy Apply must be the only selected catalog operation in this run."
+              exit 1
+            fi
           fi
           if [[ "$DRY_RUN_MACHINE_TAXONOMY" == "true" ]] && [[ "$SEED_TRANSACTION_TYPES" == "true" || "$SEED_TECHNICAL_FORMS" == "true" || "$SEED_IRAN_LOCATIONS" == "true" || "$DRY_RUN_TECHNICAL_FORMS" == "true" ]]; then
             echo "Machine taxonomy dry-run must be the only selected catalog operation in this run."
@@ -190,6 +213,10 @@ jobs:
         if: inputs.dry_run_machine_taxonomy == true
         run: bunx tsx prisma/seed-machine-taxonomy.ts
 
+      - name: Apply definitive machine taxonomy (explicit double confirmation; atomic)
+        if: inputs.apply_machine_taxonomy == true && inputs.confirm_machine_taxonomy_apply == true
+        run: bunx tsx prisma/seed-machine-taxonomy.ts --apply
+
       - name: Seed Iran country, provinces and cities (rights-approved only)
         if: inputs.seed_iran_locations == true
         run: bunx tsx scripts/geospatial/seed-iran-location-catalog.ts --apply --confirm-preview-location-seed
@@ -201,6 +228,7 @@ jobs:
           SEED_TECHNICAL_FORMS: ${{ inputs.seed_technical_forms }}
           SEED_IRAN_LOCATIONS: ${{ inputs.seed_iran_locations }}
           DRY_RUN_MACHINE_TAXONOMY: ${{ inputs.dry_run_machine_taxonomy }}
+          APPLY_MACHINE_TAXONOMY: ${{ inputs.apply_machine_taxonomy }}
           VERIFIED_BACKUP_SHA: ${{ steps.verify-backup.outputs.backup_sha }}
         run: |
           {
@@ -212,6 +240,7 @@ jobs:
             echo "- Category technical forms seed: $SEED_TECHNICAL_FORMS"
             echo "- Iran location seed: $SEED_IRAN_LOCATIONS"
             echo "- Machine taxonomy dry-run: $DRY_RUN_MACHINE_TAXONOMY (read-only)"
+            echo "- Machine taxonomy Apply: $APPLY_MACHINE_TAXONOMY (double-confirmed; atomic transaction)"
             echo "- Production and Store DB: untouched"
             echo "- Iran location dataset: owner-authorized for HEAVIX use; upstream GPL-3.0 source metadata is preserved."
           } >> "$GITHUB_STEP_SUMMARY"
