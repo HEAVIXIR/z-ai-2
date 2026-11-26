@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { checkCsrf } from "@/lib/csrf";
 import { hasPermission } from "@/lib/rbac";
-import { hashPassword } from "@/lib/password";
+import { hashPassword, isPasswordWithinBcryptLimit } from "@/lib/password";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -209,8 +209,15 @@ export async function PATCH(req: Request, { params }: Args) {
     }
 
     // Optional password reset (P0-1: bcrypt-hash the new password).
-    if (body.password && String(body.password).length >= 6) {
-      data.passwordHash = await hashPassword(String(body.password));
+    if (body.password !== undefined && body.password !== null && String(body.password).length >= 6) {
+      const newPassword = String(body.password);
+      if (!isPasswordWithinBcryptLimit(newPassword)) {
+        return NextResponse.json(
+          { error: "رمز عبور نباید بیش از ۷۲ بایت UTF-8 باشد" },
+          { status: 400 },
+        );
+      }
+      data.passwordHash = await hashPassword(newPassword);
     }
 
     // Update lastLoginAt if requested (e.g. admin marking last known login)

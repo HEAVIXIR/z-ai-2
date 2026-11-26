@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { hashPassword } from "@/lib/password";
+import { hashPassword, isPasswordWithinBcryptLimit } from "@/lib/password";
 import { checkCsrf } from "@/lib/csrf";
 
 export const runtime = "nodejs";
@@ -220,6 +220,12 @@ export async function POST(req: Request) {
     if (password.length < 6) {
       return NextResponse.json(
         { error: "رمز عبور باید حداقل ۶ نویسه باشد" },
+        { status: 400 },
+      );
+    }
+    if (!isPasswordWithinBcryptLimit(password)) {
+      return NextResponse.json(
+        { error: "رمز عبور نباید بیش از ۷۲ بایت UTF-8 باشد" },
         { status: 400 },
       );
     }

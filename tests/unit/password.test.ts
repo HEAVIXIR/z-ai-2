@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hashPassword, verifyPassword } from "@/lib/password";
+import { hashPassword, verifyPassword, isPasswordWithinBcryptLimit } from "@/lib/password";
 
 /* ============================================================
    Unit tests for src/lib/password.ts (P0-1, P1-20)
@@ -61,5 +61,32 @@ describe("password hash/verify cycle (integration of the two)", () => {
     const hash = await hashPassword(pw);
     expect(await verifyPassword(pw, hash)).toBe(true);
     expect(await verifyPassword("هویکس-۱۴۰۴/P@s", hash)).toBe(false);
+  });
+});
+
+
+describe("password bcrypt UTF-8 boundary", () => {
+  it("accepts exactly 72 UTF-8 bytes and rejects 73", async () => {
+    expect(isPasswordWithinBcryptLimit("x".repeat(72))).toBe(true);
+    expect(isPasswordWithinBcryptLimit("x".repeat(73))).toBe(false);
+    await expect(hashPassword("x".repeat(72))).resolves.toMatch(/^\$2[aby]\$10\$/);
+    await expect(hashPassword("x".repeat(73))).rejects.toThrow(RangeError);
+  });
+
+  it("counts UTF-8 bytes rather than JavaScript characters", async () => {
+    expect(isPasswordWithinBcryptLimit("😀".repeat(18))).toBe(true); // 72 bytes
+    expect(isPasswordWithinBcryptLimit("😀".repeat(19))).toBe(false); // 76 bytes
+    await expect(hashPassword("😀".repeat(18))).resolves.toMatch(/^\$2[aby]\$10\$/);
+    await expect(hashPassword("😀".repeat(19))).rejects.toThrow(RangeError);
+  });
+
+  it("preserves verification compatibility for a legacy long password", async () => {
+    const legacyPrefix = "x".repeat(72);
+    const legacyHash = await hashPassword(legacyPrefix);
+    await expect(verifyPassword(legacyPrefix + "-legacy-suffix", legacyHash)).resolves.toBe(true);
+  });
+
+  it("rejects empty input before hashing", async () => {
+    await expect(hashPassword("")).rejects.toThrow(RangeError);
   });
 });
