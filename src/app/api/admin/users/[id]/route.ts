@@ -209,8 +209,14 @@ export async function PATCH(req: Request, { params }: Args) {
     }
 
     // Optional password reset (P0-1: bcrypt-hash the new password).
-    if (body.password !== undefined && body.password !== null && String(body.password).length >= 6) {
+    if (body.password !== undefined && body.password !== null) {
       const newPassword = String(body.password);
+      if (newPassword.length < 6) {
+        return NextResponse.json(
+          { error: "رمز عبور باید حداقل ۶ نویسه باشد" },
+          { status: 400 },
+        );
+      }
       if (!isPasswordWithinBcryptLimit(newPassword)) {
         return NextResponse.json(
           { error: "رمز عبور نباید بیش از ۷۲ بایت UTF-8 باشد" },
