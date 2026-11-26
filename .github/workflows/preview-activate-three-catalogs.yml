@@ -86,8 +86,8 @@ jobs:
             echo "Select at least one isolated seed operation (dry-run counts as an operation)."
             exit 1
           fi
-          if [[ "$DRY_RUN_MACHINE_TAXONOMY" == "true" ]] && [[ "$SEED_TRANSACTION_TYPES" == "true" || "$SEED_TECHNICAL_FORMS" == "true" || "$SEED_IRAN_LOCATIONS" == "true" ]]; then
-            echo "Machine taxonomy dry-run must not be combined with any write-enabled seed operation."
+          if [[ "$DRY_RUN_MACHINE_TAXONOMY" == "true" ]] && [[ "$SEED_TRANSACTION_TYPES" == "true" || "$SEED_TECHNICAL_FORMS" == "true" || "$SEED_IRAN_LOCATIONS" == "true" || "$DRY_RUN_TECHNICAL_FORMS" == "true" ]]; then
+            echo "Machine taxonomy dry-run must be the only selected catalog operation in this run."
             exit 1
           fi
           echo "Preview-only scope confirmed. No Production or Store DB connection is configured."
