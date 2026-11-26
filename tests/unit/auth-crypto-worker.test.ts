@@ -8,7 +8,7 @@ import {
 describe("isolated HEAVIX auth crypto worker", () => {
   it("preserves bcrypt cost 10 and emits a standard 60-character hash", async () => {
     const hash = await hashPasswordWithBcrypt("HEAVIX-test-password");
-    expect(hash).toMatch(/^\$2[aby]\$10\$/);
+    expect(hash).toMatch(/^\\$2[aby]\\$10\\$/);
     expect(hash).toHaveLength(60);
     expect(BCRYPT_COST).toBe(10);
   });
@@ -27,6 +27,18 @@ describe("isolated HEAVIX auth crypto worker", () => {
     await expect(verifyPasswordWithBcrypt("same-password", second)).resolves.toBe(true);
   });
 
+  it("rejects new hashes that bcrypt would silently truncate after 72 UTF-8 bytes", async () => {
+    await expect(hashPasswordWithBcrypt("x".repeat(73))).rejects.toThrow(RangeError);
+    await expect(hashPasswordWithBcrypt("😀".repeat(19))).rejects.toThrow(RangeError);
+    await expect(hashPasswordWithBcrypt("😀".repeat(18))).resolves.toMatch(/^\\$2[aby]\\$10\\$/);
+  });
+
+  it("preserves legacy verification semantics for passwords longer than 72 bytes", async () => {
+    const legacyPrefix = "x".repeat(72);
+    const legacyHash = await hashPasswordWithBcrypt(legacyPrefix);
+    await expect(verifyPasswordWithBcrypt(legacyPrefix + "-legacy-suffix", legacyHash)).resolves.toBe(true);
+  });
+
   it("fails closed for malformed, wrong-cost, and unsupported hashes", async () => {
     await expect(verifyPasswordWithBcrypt("anything", "not-a-bcrypt-hash")).resolves.toBe(false);
     await expect(
@@ -34,7 +46,7 @@ describe("isolated HEAVIX auth crypto worker", () => {
     ).resolves.toBe(false);
   });
 
-  it("rejects empty or oversized hash inputs", async () => {
+  it("rejects empty or oversized transport inputs", async () => {
     await expect(hashPasswordWithBcrypt("")).rejects.toThrow(TypeError);
     await expect(hashPasswordWithBcrypt("x".repeat(1025))).rejects.toThrow(TypeError);
     await expect(verifyPasswordWithBcrypt("", "$2b$10$.....................................................")).resolves.toBe(false);
