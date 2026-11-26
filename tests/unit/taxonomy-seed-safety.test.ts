@@ -21,7 +21,10 @@ describe("Preview taxonomy seed safety contracts", () => {
     expect(mainStart).toBeGreaterThanOrEqual(0);
     const main = source.slice(mainStart, mainStart + 700);
     expect(main).toContain('process.argv.includes("--apply")');
-    expect(main).toContain("DRY RUN");
+    // DRY RUN string may appear later in main() when the dry-run block
+    // runs preflight checks before printing the summary — search the
+    // full source, not just the first 700 chars.
+    expect(source.slice(mainStart)).toContain("DRY RUN");
     expect(main).toContain('process.env.HEAVIX_ENV');
   });
 
