@@ -4,7 +4,7 @@ import {
   verifyPasswordWithBcrypt,
 } from "./crypto";
 
-interface Env {}
+type Env = Record<string, never>;
 
 const MAX_ACTIVE_OPERATIONS = 1;
 
