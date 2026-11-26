@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 1,
+  "status": "REVIEW_ONLY_NOT_A_SEED_INPUT",
+  "policy": {
+    "noCompatibilityWriteWithoutEvidence": true,
+    "requiredEvidence": [
+      "OEM/source document URI or controlled document identifier",
+      "document revision/date",
+      "manufacturer and exact model/serial applicability",
+      "part number or attachment specification where applicable",
+      "human reviewer identity and review timestamp"
+    ],
+    "sourceLabelAloneIsNotEvidence": true,
+    "verifiedMustRemainFalseUntilHumanReview": true
+  },
+  "source": {
+    "path": "prisma/seed-catalog.ts",
+    "declaredEdgeClaims": 20
+  },
+  "claims": [
+    {
+      "claimId": "legacy-edge-001",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"320D\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"caterpillar\", name: \"320F\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.95, source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-002",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"320F\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"caterpillar\", name: \"320G\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.9,  source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-003",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"320D\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"caterpillar\", name: \"330D\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.7,  source: \"MANUAL\" },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-004",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"330D\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"caterpillar\", name: \"336F\" }, relationType: \"UPGRADES\",         confidence: 0.85, source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-005",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"966H\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"caterpillar\", name: \"966M\" }, relationType: \"UPGRADES\",         confidence: 0.9,  source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-006",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"D6R\"  }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"caterpillar\", name: \"D6T\"  }, relationType: \"UPGRADES\",         confidence: 0.9,  source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-007",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"140K\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"caterpillar\", name: \"140M\" }, relationType: \"UPGRADES\",         confidence: 0.9,  source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-008",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"komatsu\", name: \"PC210-8\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"komatsu\", name: \"PC220-8\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.9,  source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-009",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"komatsu\", name: \"PC220-8\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"komatsu\", name: \"PC300-8\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.7,  source: \"MANUAL\" },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-010",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"komatsu\", name: \"WA380-6\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"komatsu\", name: \"WA470-5\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.7,  source: \"MANUAL\" },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-011",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"volvo\", name: \"EC220D\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"volvo\", name: \"EC380D\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.7, source: \"MANUAL\" },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-012",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"hitachi\", name: \"ZX210LC\" }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"hitachi\", name: \"ZX350LC\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.7, source: \"MANUAL\" },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-013",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"jcb\",     name: \"JS220\"   }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"caterpillar\", name: \"320D\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.6, source: \"MANUAL\" },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-014",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"doosan\",  name: \"DX255\"   }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"hitachi\", name: \"ZX210LC\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.6, source: \"MANUAL\" },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-015",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"sany\",    name: \"SY215C\"  }, targetType: \"Model\", targetKey: { kind: \"model\", brand: \"komatsu\", name: \"PC210-8\" }, relationType: \"COMPATIBLE_WITH\", confidence: 0.55, source: \"AI_SUGGESTED\" },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-016",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"320D\" }, targetType: \"Product\", targetKey: { kind: \"product\", canonicalName: \"Caterpillar General Purpose Bucket 1.19m³\" }, relationType: \"FITS\", confidence: 0.95, source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-017",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"320F\" }, targetType: \"Product\", targetKey: { kind: \"product\", canonicalName: \"Caterpillar General Purpose Bucket 1.19m³\" }, relationType: \"FITS\", confidence: 0.9,  source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-018",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"320G\" }, targetType: \"Product\", targetKey: { kind: \"product\", canonicalName: \"Caterpillar General Purpose Bucket 1.19m³\" }, relationType: \"FITS\", confidence: 0.85, source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-019",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"caterpillar\", name: \"320D\" }, targetType: \"Product\", targetKey: { kind: \"product\", canonicalName: \"Caterpillar Hydraulic Thumb\" }, relationType: \"FITS\", confidence: 0.9, source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    },
+    {
+      "claimId": "legacy-edge-020",
+      "originalSeedClaim": "{ sourceType: \"Model\", sourceKey: { kind: \"model\", brand: \"komatsu\", name: \"PC210-8\" }, targetType: \"Product\", targetKey: { kind: \"product\", canonicalName: \"Komatsu PC210-8 Filter Kit\" }, relationType: \"REQUIRES\", confidence: 1.0, source: \"OEM_DOCUMENT\", verified: true },",
+      "evidenceReference": null,
+      "evidenceRevision": null,
+      "applicability": null,
+      "reviewer": null,
+      "reviewedAt": null,
+      "disposition": "UNVERIFIED_REVIEW_REQUIRED",
+      "executable": false
+    }
+  ]
+}
