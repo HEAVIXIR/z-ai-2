@@ -66,3 +66,6 @@ No database binding, database migration, seed, Production environment, public ro
 - Cloudflare Durable Object class exports and SQLite requirement: https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/
 - Cloudflare Durable Objects Free pricing and limits: https://developers.cloudflare.com/durable-objects/platform/pricing/
 - Cloudflare storage behavior for empty objects: https://developers.cloudflare.com/durable-objects/best-practices/access-durable-objects-storage/
+## Account-plan verification gate (2026-11-26)
+
+A read-only Cloudflare API check of the existing `heavix-preview` Worker returned `usage_model: standard`. Cloudflare's current pricing documentation states that the Standard usage model is available to Workers Paid subscribers (minimum USD 5/month). This is a billing-risk signal and must not be treated as proof of Free-plan eligibility. A separate read-only account-subscriptions request was denied because the connected Cloudflare authorization lacks `billing:read`. Therefore the account plan is **not independently verified**, and no deployment or resource creation is authorized until an owner-approved read-only billing check confirms the account is on Free with no active paid Workers subscription. Do not request `billing:write` and do not alter subscriptions as part of this work.
