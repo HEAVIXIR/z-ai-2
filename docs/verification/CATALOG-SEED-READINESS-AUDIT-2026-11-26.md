@@ -15,15 +15,19 @@ No database writes, migrations, deploys, or seed executions were performed as pa
 
 ## Findings
 
-### F1 — Seed scripts exist; Preview data is absent (high confidence)
+### F1 — Preview seed coverage is not the same as CI fixture seeding (high confidence)
 
-The repo has several candidate seed programs, but the CI seed stage only invokes:
+The CI verify job uses disposable PostgreSQL databases. Its bootstrap invokes:
+- `seed-rbac`
 - `seed-brands-a.ts`
 - `seed-brands-b.ts`
 - `seed-user-roles`
 - `seed-test-fixtures`
+- `seed-phase-catalog` (Phase C fixture seed)
 
-It does not invoke the canonical taxonomy, dynamic attribute, catalog-model, product, or location seeds. This explains why the Preview database may have a healthy schema but empty Catalog entities. CI's seed target is the disposable `heavix_test` database and is not evidence that Preview has been seeded.
+The Phase C fixture seed is explicitly guarded by `assertTestSeedTarget`, uses `phase-cat-` identifiers, and exists to populate test contract fixtures. It is not a Preview Catalog import.
+
+CI does **not** invoke the canonical Preview catalog-data seeds reviewed here (`seed-taxonomy-v11`, dynamic attribute catalog, model/product catalog seeds, or the guarded full location import). CI's success therefore proves test behavior, not that App Preview Catalog data has been populated. The exact current Preview diagnostics corroborate this distinction.
 
 ### F2 — Multiple overlapping ProductModel/Product seed implementations (high risk)
 
@@ -56,7 +60,7 @@ Canonical dataset is 1 country, 31 provinces, 1,479 distinct cities. Prefer this
 
 ### F7 — Phase C fixture seed is test-only (positive finding)
 
-`prisma/seed-phase-catalog.ts` calls `assertTestSeedTarget` before writes and uses deterministic `phase-cat-` fixture keys. It is intended to repair phase contract-test fixtures, not seed the Preview Catalog.
+`prisma/seed-phase-catalog.ts` calls `assertTestSeedTarget` before writes and uses deterministic `phase-cat-` fixture keys. CI invokes it in the test job; it is intended to repair phase contract-test fixtures, not seed the Preview Catalog.
 
 ## Recommended parallel workstreams (audit-first; no DB writes)
 
