@@ -3,15 +3,17 @@
  * Phase 3: Canonical Catalog Seed.
  * Per HEAVIX COMPLETION MASTER SPEC V1.0 §11-19.
  *
- * Seeds: Products, Machines, Parts, Attachments, CompatibilityEdges,
- * and canonical Locations (Country → Province → City).
+ * Legacy Preview seed for sample Products and Locations only.
+ * Compatibility and RBAC mutations are deliberately excluded.
  *
  * This bridges the gap from SCHEMA_ONLY to IMPLEMENTED by populating
  * the canonical catalog entities with real data.
  */
 import { db } from "../src/lib/db";
+import { assertPreviewSeedTarget } from "./seed-preview-guard";
 
 async function main() {
+  if (!(await assertPreviewSeedTarget(db, "HEAVIX_PREVIEW_LEGACY_PHASE3_SEED_APPROVED"))) return;
   console.log("=== PHASE 3: CANONICAL CATALOG SEED ===\n");
 
   // ── 1. Canonical Locations (Country → Province → City) ──
@@ -136,67 +138,9 @@ async function main() {
   // brandId, categoryId, priceUsd, etc. The HEAVIX main DB Part model is a
   // simple compatibility placeholder. Full parts catalog is in the store.
 
-  // ── 4. CompatibilityEdges ──
-  console.log("\n4. Seeding CompatibilityEdges...");
-  const allProducts = await db.product.findMany({ take: 10 });
-  const allParts = await db.part.findMany({ take: 10 });
-  let edgeCount = 0;
-  
-  // Link parts to products they fit
-  for (const part of allParts) {
-    for (const product of allProducts) {
-      // Check if part brand matches product brand
-      if (part.brandId === product.brandId) {
-        const existing = await db.compatibilityEdge.findFirst({
-          where: {
-            sourceEntityType: "PART",
-            sourceEntityId: part.id,
-            targetEntityType: "PRODUCT",
-            targetEntityId: product.id,
-          },
-        });
-        if (!existing) {
-          await db.compatibilityEdge.create({
-            data: {
-              sourceEntityType: "PART",
-              sourceEntityId: part.id,
-              targetEntityType: "PRODUCT",
-              targetEntityId: product.id,
-              relationType: "FITS",
-              confidence: 0.9,
-              source: "SEED",
-              verified: true,
-            },
-          });
-          edgeCount++;
-        }
-      }
-    }
-  }
-  console.log(`  ✓ ${edgeCount} compatibility edges created`);
+  // Compatibility edges and RBAC mutations are intentionally excluded.
+  // FITS claims require reviewed OEM/part-number evidence; role assignment belongs to RBAC provisioning.
 
-  // ── 5. UserRoles (fix RBAC — assign ADMIN role to admin user) ──
-  console.log("\n5. Seeding UserRoles...");
-  const adminRole = await db.role.findFirst({ where: { key: "ADMIN" } });
-  // Find admin user (the one created by admin auth system)
-  const adminUser = await db.user.findFirst();
-  if (adminRole && adminUser) {
-    const existing = await db.userRole.findFirst({
-      where: { userId: adminUser.id, roleId: adminRole.id },
-    });
-    if (!existing) {
-      await db.userRole.create({
-        data: { userId: adminUser.id, roleId: adminRole.id },
-      });
-      console.log(`  ✓ Admin role assigned to user ${adminUser.id}`);
-    } else {
-      console.log("  ✓ Admin user role already exists");
-    }
-  } else {
-    console.log("  ⚠ Admin role or user not found");
-  }
-
-  console.log("\n=== PHASE 3 SEED COMPLETE ===");
 }
 
 main().catch((e) => {
