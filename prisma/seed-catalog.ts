@@ -20,6 +20,7 @@
    or:   bun run db:seed-catalog
 */
 import { PrismaClient } from "@prisma/client";
+import { assertPreviewSeedTarget } from "./seed-preview-guard";
 
 const db = new PrismaClient();
 
@@ -206,63 +207,14 @@ const PARTS: PartSeed[] = [
 // ────────────────────────────────────────────────────────────
 // 5) COMPATIBILITY EDGES — at least 10
 // ────────────────────────────────────────────────────────────
-type EntityType = "Product" | "Model" | "Attachment" | "Part";
-type RelationType = "COMPATIBLE_WITH" | "FITS" | "REPLACES" | "UPGRADES" | "REQUIRES";
+// Compatibility edges are maintained only after source-document evidence review.
 
-type EdgeSeed = {
-  sourceType: EntityType;
-  sourceKey: { kind: "model"; brand: BrandKey; name: string } | { kind: "product"; canonicalName: string };
-  targetType: EntityType;
-  targetKey: { kind: "model"; brand: BrandKey; name: string } | { kind: "product"; canonicalName: string };
-  relationType: RelationType;
-  confidence?: number;
-  source?: string; // MANUAL | AI_SUGGESTED | OEM_DOCUMENT
-  verified?: boolean;
-};
-
-const EDGES: EdgeSeed[] = [
-  // — Same-family COMPATIBLE_WITH (Model ↔ Model) — Caterpillar excavators
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "320D" }, targetType: "Model", targetKey: { kind: "model", brand: "caterpillar", name: "320F" }, relationType: "COMPATIBLE_WITH", confidence: 0.95, source: "OEM_DOCUMENT", verified: true },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "320F" }, targetType: "Model", targetKey: { kind: "model", brand: "caterpillar", name: "320G" }, relationType: "COMPATIBLE_WITH", confidence: 0.9,  source: "OEM_DOCUMENT", verified: true },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "320D" }, targetType: "Model", targetKey: { kind: "model", brand: "caterpillar", name: "330D" }, relationType: "COMPATIBLE_WITH", confidence: 0.7,  source: "MANUAL" },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "330D" }, targetType: "Model", targetKey: { kind: "model", brand: "caterpillar", name: "336F" }, relationType: "UPGRADES",         confidence: 0.85, source: "OEM_DOCUMENT", verified: true },
-  // — Caterpillar loaders + dozers + graders
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "966H" }, targetType: "Model", targetKey: { kind: "model", brand: "caterpillar", name: "966M" }, relationType: "UPGRADES",         confidence: 0.9,  source: "OEM_DOCUMENT", verified: true },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "D6R"  }, targetType: "Model", targetKey: { kind: "model", brand: "caterpillar", name: "D6T"  }, relationType: "UPGRADES",         confidence: 0.9,  source: "OEM_DOCUMENT", verified: true },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "140K" }, targetType: "Model", targetKey: { kind: "model", brand: "caterpillar", name: "140M" }, relationType: "UPGRADES",         confidence: 0.9,  source: "OEM_DOCUMENT", verified: true },
-  // — Komatsu excavator family
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "komatsu", name: "PC210-8" }, targetType: "Model", targetKey: { kind: "model", brand: "komatsu", name: "PC220-8" }, relationType: "COMPATIBLE_WITH", confidence: 0.9,  source: "OEM_DOCUMENT", verified: true },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "komatsu", name: "PC220-8" }, targetType: "Model", targetKey: { kind: "model", brand: "komatsu", name: "PC300-8" }, relationType: "COMPATIBLE_WITH", confidence: 0.7,  source: "MANUAL" },
-  // — Komatsu loaders
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "komatsu", name: "WA380-6" }, targetType: "Model", targetKey: { kind: "model", brand: "komatsu", name: "WA470-5" }, relationType: "COMPATIBLE_WITH", confidence: 0.7,  source: "MANUAL" },
-  // — Volvo excavator family
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "volvo", name: "EC220D" }, targetType: "Model", targetKey: { kind: "model", brand: "volvo", name: "EC380D" }, relationType: "COMPATIBLE_WITH", confidence: 0.7, source: "MANUAL" },
-  // — Hitachi excavator family
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "hitachi", name: "ZX210LC" }, targetType: "Model", targetKey: { kind: "model", brand: "hitachi", name: "ZX350LC" }, relationType: "COMPATIBLE_WITH", confidence: 0.7, source: "MANUAL" },
-  // — Cross-brand same-weight-class COMPATIBLE_WITH
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "jcb",     name: "JS220"   }, targetType: "Model", targetKey: { kind: "model", brand: "caterpillar", name: "320D" }, relationType: "COMPATIBLE_WITH", confidence: 0.6, source: "MANUAL" },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "doosan",  name: "DX255"   }, targetType: "Model", targetKey: { kind: "model", brand: "hitachi", name: "ZX210LC" }, relationType: "COMPATIBLE_WITH", confidence: 0.6, source: "MANUAL" },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "sany",    name: "SY215C"  }, targetType: "Model", targetKey: { kind: "model", brand: "komatsu", name: "PC210-8" }, relationType: "COMPATIBLE_WITH", confidence: 0.55, source: "AI_SUGGESTED" },
-  // — Model FITS Attachment (bucket) — uses Product+Attachment for the bucket
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "320D" }, targetType: "Product", targetKey: { kind: "product", canonicalName: "Caterpillar General Purpose Bucket 1.19m³" }, relationType: "FITS", confidence: 0.95, source: "OEM_DOCUMENT", verified: true },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "320F" }, targetType: "Product", targetKey: { kind: "product", canonicalName: "Caterpillar General Purpose Bucket 1.19m³" }, relationType: "FITS", confidence: 0.9,  source: "OEM_DOCUMENT", verified: true },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "320G" }, targetType: "Product", targetKey: { kind: "product", canonicalName: "Caterpillar General Purpose Bucket 1.19m³" }, relationType: "FITS", confidence: 0.85, source: "OEM_DOCUMENT", verified: true },
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "caterpillar", name: "320D" }, targetType: "Product", targetKey: { kind: "product", canonicalName: "Caterpillar Hydraulic Thumb" }, relationType: "FITS", confidence: 0.9, source: "OEM_DOCUMENT", verified: true },
-  // — Model REQUIRES Part (filter kit)
-  { sourceType: "Model", sourceKey: { kind: "model", brand: "komatsu", name: "PC210-8" }, targetType: "Product", targetKey: { kind: "product", canonicalName: "Komatsu PC210-8 Filter Kit" }, relationType: "REQUIRES", confidence: 1.0, source: "OEM_DOCUMENT", verified: true },
-];
 
 // ────────────────────────────────────────────────────────────
 // Seed runner
 // ────────────────────────────────────────────────────────────
 async function main() {
-  if (!process.argv.includes("--apply")) {
-    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
-    return;
-  }
-  if (process.env.HEAVIX_ENV !== "preview") {
-    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
-  }
+  if (!(await assertPreviewSeedTarget(db, "HEAVIX_PREVIEW_CANONICAL_CATALOG_SEED_APPROVED"))) return;
 
   console.log("▸ P0-CATALOG-SEED — starting…");
 
@@ -418,49 +370,8 @@ async function main() {
   }
   console.log(`    ✓ ${PARTS.length} Parts upserted.`);
 
-  // ── 5) CompatibilityEdges ─────────────────────────────────
-  console.log(`  ▸ Seeding ${EDGES.length} CompatibilityEdges…`);
-  const resolveEntity = (key: EdgeSeed["sourceKey"] | EdgeSeed["targetKey"]): { id: string; type: EntityType } => {
-    if (key.kind === "model") {
-      const id = modelKeyToId.get(`${key.brand}:${key.name}`);
-      if (!id) throw new Error(`Model not found for ${key.brand}:${key.name}`);
-      return { id, type: "Model" };
-    }
-    const id = productKeyToId.get(key.canonicalName);
-    if (!id) throw new Error(`Product not found for ${key.canonicalName}`);
-    return { id, type: "Product" };
-  };
-
-  let edgeCount = 0;
-  for (const e of EDGES) {
-    const src = resolveEntity(e.sourceKey);
-    const tgt = resolveEntity(e.targetKey);
-    await db.compatibilityEdge.upsert({
-      where: {
-        sourceEntityType_sourceEntityId_targetEntityType_targetEntityId_relationType: {
-          sourceEntityType: e.sourceType,
-          sourceEntityId: src.id,
-          targetEntityType: e.targetType,
-          targetEntityId: tgt.id,
-          relationType: e.relationType,
-        },
-      },
-      // Preserve reviewed/administrator-managed edge evidence on reruns.
-      update: {},
-      create: {
-        sourceEntityType: e.sourceType,
-        sourceEntityId: src.id,
-        targetEntityType: e.targetType,
-        targetEntityId: tgt.id,
-        relationType: e.relationType,
-        confidence: e.confidence ?? null,
-        source: e.source ?? null,
-        verified: e.verified ?? false,
-      },
-    });
-    edgeCount++;
-  }
-  console.log(`    ✓ ${edgeCount} CompatibilityEdges upserted.`);
+  // Compatibility edges intentionally remain unseeded until each claim has
+  // a reviewable OEM/source document reference and a human verification record.
 
   // ── Summary ───────────────────────────────────────────────
   const [models, products, edges, attachments, parts, machines] = await Promise.all([
