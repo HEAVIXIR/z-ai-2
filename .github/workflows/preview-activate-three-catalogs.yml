@@ -26,6 +26,11 @@ on:
         required: true
         default: false
         type: boolean
+      dry_run_technical_forms:
+        description: "Run technical forms seed in DRY-RUN mode (preflight + counts, zero writes)"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -165,6 +170,10 @@ jobs:
       - name: Seed category-specific technical forms
         if: inputs.seed_technical_forms == true
         run: bunx tsx prisma/seed-category-specific-attributes.ts --apply
+
+      - name: Dry-run technical forms (preflight + counts, zero writes)
+        if: inputs.dry_run_technical_forms == true
+        run: bunx tsx prisma/seed-category-specific-attributes.ts
 
       - name: Seed Iran country, provinces and cities (rights-approved only)
         if: inputs.seed_iran_locations == true
