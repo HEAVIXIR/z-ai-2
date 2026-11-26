@@ -110,3 +110,8 @@ The POC now rejects a new hash request when `bcrypt.truncates(password)` is true
 Before any application call-site integration, the public registration and administrator password creation/reset validators must be aligned with the 72-byte UTF-8 limit and return a clear validation error before hashing. Do not silently truncate, normalize, or rewrite user passwords. Add explicit tests for multibyte UTF-8 boundaries and for verification compatibility with a legacy hash generated from a 72-byte prefix. The change is covered by unit tests in the POC; exact-head CI must pass before this decision is treated as validated.
 
 Reference: bcryptjs 3.0.3 documents the 72-byte maximum and `truncates()`: https://www.npmjs.com/package/bcryptjs
+
+
+## Owner account cardinality (2026-11-27)
+
+The owner confirms that HEAVIX currently has exactly one real user account, belonging to the owner; all other user/account records used so far have been test data. Therefore this work does not need to design a bulk legacy-account migration or multi-user credential migration for the present system. The one owner account is treated as production-critical regardless of the project's otherwise test-only history: never reset, delete, rewrite, or migrate its password hash or sessions as part of this POC. Preserve its existing bcrypt verification behavior, including historical bcrypt 72-byte truncation semantics, until a separately approved credential-change procedure exists. Test accounts may be disposable only in isolated test databases; this statement does not authorize deleting any records from Preview or Production.
