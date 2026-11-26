@@ -7,6 +7,7 @@ on:
       - integration/preview-readiness-workerd-2026-11-15
     paths:
       - ".github/workflows/preview-readonly-migration-diagnostics.yml"
+      - "prisma/seed-machine-taxonomy.ts"
 
 permissions:
   contents: read
@@ -27,6 +28,10 @@ jobs:
       STORE_DATABASE_URL: ${{ secrets.STORE_PREVIEW_DATABASE_URL }}
       HEAVIX_APP_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
       HEAVIX_STORE_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_STORE_PREVIEW_DATABASE_OID }}
+      HEAVIX_ENV: preview
+      HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER: "7701427422680793119"
+      HEAVIX_EXPECTED_PREVIEW_DATABASE_OID: ${{ secrets.HEAVIX_APP_PREVIEW_DATABASE_OID }}
+      HEAVIX_PREVIEW_MACHINE_TAXONOMY_SEED_APPROVED: "NO"
 
     steps:
       - name: Enforce exact Integration branch and Preview-only read-only scope
@@ -44,6 +49,30 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
+
+      - name: Set up Bun for read-only taxonomy rollback verification
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install locked dependencies and generate App Prisma client
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          bunx prisma generate --schema=prisma/schema.prisma
+
+      - name: Verify failed machine taxonomy Apply fully rolled back (read-only dry-run)
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORT="$RUNNER_TEMP/machine-taxonomy-rollback-dry-run.log"
+          # Deliberately omit --apply. The seed's default path returns before its first write.
+          bunx tsx prisma/seed-machine-taxonomy.ts 2>&1 | tee "$REPORT"
+          grep -Fq "Missing target categories to create: 201" "$REPORT"
+          grep -Fq "Existing target categories with field differences: 87" "$REPORT"
+          grep -Fq "Existing target categories requiring re-parenting: 26" "$REPORT"
+          grep -Fq "DRY RUN ONLY" "$REPORT"
+          echo "PASS: App Preview matches the exact pre-Apply taxonomy baseline; no partial taxonomy changes remain."
 
       - name: Read exact Preview identities, complete migration histories and schema fingerprints
         shell: bash
