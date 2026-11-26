@@ -25,3 +25,23 @@ export async function assertPreviewSeedTarget(db: PrismaClient, approvalVariable
   console.log("PASS: exact App Preview database identity and explicit approval verified.");
   return true;
 }
+
+/** Read-only identity gate for catalog audit tools; never authorizes writes. */
+export async function assertPreviewReadOnlyTarget(db: PrismaClient): Promise<void> {
+  if (!process.argv.includes("--confirm-preview-readonly")) {
+    throw new Error("Read-only audit requires --confirm-preview-readonly; no database query performed.");
+  }
+  if (process.env.HEAVIX_ENV !== "preview") {
+    throw new Error('Refusing audit: HEAVIX_ENV must be exactly "preview".');
+  }
+  const expectedSystem = process.env.HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER;
+  const expectedOid = process.env.HEAVIX_EXPECTED_PREVIEW_DATABASE_OID;
+  if (!expectedSystem || !expectedOid || !/^[1-9][0-9]{0,9}$/.test(expectedOid)) {
+    throw new Error("Exact Preview database identity secrets are required.");
+  }
+  const identity = await db.$queryRaw<Array<{ database_name: string; database_oid: string; system_identifier: string }>>`SELECT current_database() AS database_name, (SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid, (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
+  const actual = identity[0];
+  if (!actual || actual.database_name !== "postgres" || actual.database_oid !== expectedOid || actual.system_identifier !== expectedSystem) {
+    throw new Error("Exact App Preview database identity mismatch; audit aborted.");
+  }
+}
