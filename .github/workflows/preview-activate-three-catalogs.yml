@@ -95,7 +95,7 @@ jobs:
           test -n "$DATABASE_URL"
           test -n "$HEAVIX_APP_PREVIEW_DATABASE_OID"
           [[ "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          if [[ "$SEED_TRANSACTION_TYPES" != "true" && "$SEED_TECHNICAL_FORMS" != "true" && "$SEED_IRAN_LOCATIONS" != "true" && "$DRY_RUN_TECHNICAL_FORMS" != "true" && "$DRY_RUN_MACHINE_TAXONOMY" != "true" ]]; then
+          if [[ "$SEED_TRANSACTION_TYPES" != "true" && "$SEED_TECHNICAL_FORMS" != "true" && "$SEED_IRAN_LOCATIONS" != "true" && "$DRY_RUN_TECHNICAL_FORMS" != "true" && "$DRY_RUN_MACHINE_TAXONOMY" != "true" && "$APPLY_MACHINE_TAXONOMY" != "true" ]]; then
             echo "Select at least one isolated seed operation (dry-run counts as an operation)."
             exit 1
           fi
