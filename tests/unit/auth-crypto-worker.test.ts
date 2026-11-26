@@ -8,7 +8,7 @@ import {
 describe("isolated HEAVIX auth crypto worker", () => {
   it("preserves bcrypt cost 10 and emits a standard 60-character hash", async () => {
     const hash = await hashPasswordWithBcrypt("HEAVIX-test-password");
-    expect(hash).toMatch(/^\\$2[aby]\\$10\\$/);
+    expect(hash).toMatch(/^\$2[aby]\$10\$/);
     expect(hash).toHaveLength(60);
     expect(BCRYPT_COST).toBe(10);
   });
@@ -30,7 +30,7 @@ describe("isolated HEAVIX auth crypto worker", () => {
   it("rejects new hashes that bcrypt would silently truncate after 72 UTF-8 bytes", async () => {
     await expect(hashPasswordWithBcrypt("x".repeat(73))).rejects.toThrow(RangeError);
     await expect(hashPasswordWithBcrypt("😀".repeat(19))).rejects.toThrow(RangeError);
-    await expect(hashPasswordWithBcrypt("😀".repeat(18))).resolves.toMatch(/^\\$2[aby]\\$10\\$/);
+    await expect(hashPasswordWithBcrypt("😀".repeat(18))).resolves.toMatch(/^\$2[aby]\$10\$/);
   });
 
   it("preserves legacy verification semantics for passwords longer than 72 bytes", async () => {
