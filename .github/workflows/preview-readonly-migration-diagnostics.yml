@@ -64,19 +64,49 @@ jobs:
           bunx prisma generate --schema=prisma/schema.prisma
 
       - name: Verify failed machine taxonomy Apply fully rolled back (read-only dry-run)
+        id: seed_dryrun
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           REPORT="$RUNNER_TEMP/machine-taxonomy-rollback-dry-run.log"
           # Deliberately omit --apply. The seed's default path returns before its first write.
-          bunx tsx prisma/seed-machine-taxonomy.ts 2>&1 | tee "$REPORT"
-          grep -Fq "Missing target categories to create: 201" "$REPORT"
-          grep -Fq "Existing target categories with field differences: 87" "$REPORT"
-          grep -Fq "Existing target categories requiring re-parenting: 26" "$REPORT"
-          grep -Fq "DRY RUN ONLY" "$REPORT"
-          echo "PASS: App Preview matches the exact pre-Apply taxonomy baseline; no partial taxonomy changes remain."
+          # Capture the seed exit code independently so diagnosis is transparent
+          # even if the seed exits non-zero (e.g. disconnect failure). `set -e` is
+          # NOT used here so the baseline greps and SQL diagnostics always run.
+          set +e
+          bunx tsx prisma/seed-machine-taxonomy.ts > "$REPORT" 2>&1
+          SEED_EXIT=$?
+          set -e
+          cat "$REPORT"
+          echo "seed_exit=$SEED_EXIT" >> "$GITHUB_OUTPUT"
+          echo "::notice::Seed dry-run exit code: $SEED_EXIT"
+
+          GREP_MISSING=0; grep -Fq "Missing target categories to create: 201" "$REPORT" || GREP_MISSING=$?
+          GREP_DIFF=0; grep -Fq "Existing target categories with field differences: 87" "$REPORT" || GREP_DIFF=$?
+          GREP_REPARENT=0; grep -Fq "Existing target categories requiring re-parenting: 26" "$REPORT" || GREP_REPARENT=$?
+          GREP_DRYRUN=0; grep -Fq "DRY RUN ONLY" "$REPORT" || GREP_DRYRUN=$?
+
+          {
+            echo "## Seed dry-run baseline grep results"
+            echo ""
+            echo "| Check | Expected | Result |"
+            echo "| --- | --- | --- |"
+            echo "| Missing target categories | 201 | $([ $GREP_MISSING -eq 0 ] && echo PASS || echo FAIL) |"
+            echo "| Field differences | 87 | $([ $GREP_DIFF -eq 0 ] && echo PASS || echo FAIL) |"
+            echo "| Re-parenting | 26 | $([ $GREP_REPARENT -eq 0 ] && echo PASS || echo FAIL) |"
+            echo "| DRY RUN ONLY marker | present | $([ $GREP_DRYRUN -eq 0 ] && echo PASS || echo FAIL) |"
+            echo ""
+            echo "Seed exit code: $SEED_EXIT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "grep_missing=$GREP_MISSING" >> "$GITHUB_OUTPUT"
+          echo "grep_diff=$GREP_DIFF" >> "$GITHUB_OUTPUT"
+          echo "grep_reparent=$GREP_REPARENT" >> "$GITHUB_OUTPUT"
+          echo "grep_dryrun=$GREP_DRYRUN" >> "$GITHUB_OUTPUT"
 
       - name: Read exact Preview identities, complete migration histories and schema fingerprints
+        if: always()
+        id: sql_diagnostics
         shell: bash
         env:
           EXPECTED_APP_SYSTEM_IDENTIFIER: "7701427422680793119"
@@ -184,3 +214,60 @@ jobs:
           
           echo "### Repository-independent diagnostic complete"
           echo "PASS: read-only diagnostics completed. No DDL, DML, Prisma migration, deployment, or Production connection was invoked."
+
+      - name: Final diagnostics gate
+        if: always()
+        shell: bash
+        env:
+          SEED_EXIT: ${{ steps.seed_dryrun.outputs.seed_exit }}
+          GREP_MISSING: ${{ steps.seed_dryrun.outputs.grep_missing }}
+          GREP_DIFF: ${{ steps.seed_dryrun.outputs.grep_diff }}
+          GREP_REPARENT: ${{ steps.seed_dryrun.outputs.grep_reparent }}
+          GREP_DRYRUN: ${{ steps.seed_dryrun.outputs.grep_dryrun }}
+          SQL_CONCLUSION: ${{ steps.sql_diagnostics.conclusion }}
+        run: |
+          set -euo pipefail
+          GATE=0
+          if [ "$SEED_EXIT" != "0" ]; then
+            echo "::error::Seed dry-run exited with code $SEED_EXIT (expected 0). This indicates a seed-side failure (possibly disconnect) that must be diagnosed before Apply can proceed."
+            GATE=1
+          fi
+          if [ "$GREP_MISSING" != "0" ]; then
+            echo "::error::Baseline grep 'Missing target categories to create: 201' failed — taxonomy baseline has drifted."
+            GATE=1
+          fi
+          if [ "$GREP_DIFF" != "0" ]; then
+            echo "::error::Baseline grep 'Existing target categories with field differences: 87' failed — taxonomy baseline has drifted."
+            GATE=1
+          fi
+          if [ "$GREP_REPARENT" != "0" ]; then
+            echo "::error::Baseline grep 'Existing target categories requiring re-parenting: 26' failed — taxonomy baseline has drifted."
+            GATE=1
+          fi
+          if [ "$GREP_DRYRUN" != "0" ]; then
+            echo "::error::Baseline grep 'DRY RUN ONLY' failed — seed did not reach dry-run return."
+            GATE=1
+          fi
+          if [ "$SQL_CONCLUSION" != "success" ]; then
+            echo "::error::SQL read-only diagnostics step conclusion was '$SQL_CONCLUSION' (expected success). Migration history and schema inspection did not complete."
+            GATE=1
+          fi
+          {
+            echo "## Final diagnostics gate"
+            echo ""
+            echo "- Seed exit code: $SEED_EXIT"
+            echo "- Grep missing=201: $([ "$GREP_MISSING" = "0" ] && echo PASS || echo FAIL)"
+            echo "- Grep diff=87: $([ "$GREP_DIFF" = "0" ] && echo PASS || echo FAIL)"
+            echo "- Grep reparent=26: $([ "$GREP_REPARENT" = "0" ] && echo PASS || echo FAIL)"
+            echo "- Grep DRY RUN ONLY: $([ "$GREP_DRYRUN" = "0" ] && echo PASS || echo FAIL)"
+            echo "- SQL diagnostics conclusion: $SQL_CONCLUSION"
+            echo ""
+            if [ "$GATE" = "0" ]; then
+              echo "Gate: **PASS** — App Preview matches the exact pre-Apply taxonomy baseline; no partial taxonomy changes remain."
+            else
+              echo "Gate: **FAIL** — one or more checks failed. See errors above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$GATE" != "0" ]; then
+            exit 1
+          fi
