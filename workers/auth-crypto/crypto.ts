@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 export const BCRYPT_COST = 10;
 const MAX_PASSWORD_BYTES = 1024;
 const BCRYPT_MAX_EFFECTIVE_BYTES = 72;
-const BCRYPT_HASH_PATTERN = /^\\$2[aby]\\$10\\$[./A-Za-z0-9]{53}$/;
+const BCRYPT_HASH_PATTERN = /^\$2[aby]\$10\$[./A-Za-z0-9]{53}$/;
 
 function isBoundedPassword(value: unknown): value is string {
   if (typeof value !== "string" || value.length === 0) return false;
