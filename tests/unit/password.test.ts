@@ -69,14 +69,14 @@ describe("password bcrypt UTF-8 boundary", () => {
   it("accepts exactly 72 UTF-8 bytes and rejects 73", async () => {
     expect(isPasswordWithinBcryptLimit("x".repeat(72))).toBe(true);
     expect(isPasswordWithinBcryptLimit("x".repeat(73))).toBe(false);
-    await expect(hashPassword("x".repeat(72))).resolves.toMatch(/^\\$2[aby]\\$10\\$/);
+    await expect(hashPassword("x".repeat(72))).resolves.toMatch(/^\$2[aby]\$10\$/);
     await expect(hashPassword("x".repeat(73))).rejects.toThrow(RangeError);
   });
 
   it("counts UTF-8 bytes rather than JavaScript characters", async () => {
     expect(isPasswordWithinBcryptLimit("😀".repeat(18))).toBe(true); // 72 bytes
     expect(isPasswordWithinBcryptLimit("😀".repeat(19))).toBe(false); // 76 bytes
-    await expect(hashPassword("😀".repeat(18))).resolves.toMatch(/^\\$2[aby]\\$10\\$/);
+    await expect(hashPassword("😀".repeat(18))).resolves.toMatch(/^\$2[aby]\$10\$/);
     await expect(hashPassword("😀".repeat(19))).rejects.toThrow(RangeError);
   });
 
