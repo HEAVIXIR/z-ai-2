@@ -1276,6 +1276,28 @@ async function main() {
   if (apply && process.env.HEAVIX_ENV !== "preview") {
     throw new Error("Refusing legacy taxonomy rewrite: HEAVIX_ENV must be exactly preview.");
   }
+  if (apply && process.env.HEAVIX_PREVIEW_MACHINE_TAXONOMY_SEED_APPROVED !== "YES") {
+    throw new Error("Refusing machine taxonomy writes: explicit HEAVIX_PREVIEW_MACHINE_TAXONOMY_SEED_APPROVED=YES is required.");
+  }
+
+  // Verify the exact dedicated App Preview database in BOTH dry-run and apply
+  // modes. Never infer the target from HEAVIX_ENV or a connection name alone.
+  const expectedSystem = process.env.HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER;
+  const expectedOid = process.env.HEAVIX_EXPECTED_PREVIEW_DATABASE_OID;
+  if (!expectedSystem || !expectedOid || !/^[1-9][0-9]{0,9}$/.test(expectedOid)) {
+    throw new Error("Preview database identity secrets are required; no taxonomy operation performed.");
+  }
+  const identity = await db.$queryRaw<Array<{
+    database_name: string; database_oid: string; system_identifier: string;
+  }>>`SELECT current_database() AS database_name,
+           (SELECT oid::text FROM pg_database WHERE datname=current_database()) AS database_oid,
+           (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier`;
+  const actual = identity[0];
+  if (!actual || actual.database_name !== "postgres" ||
+      actual.database_oid !== expectedOid || actual.system_identifier !== expectedSystem) {
+    throw new Error("Exact Preview database identity mismatch; no taxonomy operation performed.");
+  }
+  console.log("PASS: exact App Preview database identity verified.");
 
   // 1. Locate machinery root (must already exist)
   const root = await db.category.findUnique({ where: { slug: "machinery" } });
@@ -1287,15 +1309,70 @@ async function main() {
 
   // Build the complete target slug set before touching any row.
   const treeSlugs = new Set<string>();
+  const targetNodes: Array<{
+    name: string;
+    slug: string;
+    parentSlug: string;
+    level: number;
+    taxPath: string;
+    sortOrder: number;
+  }> = [];
   for (const l1 of TREE) {
     treeSlugs.add(l1.slug);
-    for (const l2 of l1.l2) {
+    targetNodes.push({
+      name: l1.name, slug: l1.slug, parentSlug: "machinery", level: 1,
+      taxPath: `machinery.${l1.slug}`, sortOrder: l1.sortOrder,
+    });
+    for (let i = 0; i < l1.l2.length; i++) {
+      const l2 = l1.l2[i];
       treeSlugs.add(l2.slug);
-      if (l2.l3) for (const l3 of l2.l3) treeSlugs.add(l3.slug);
+      targetNodes.push({
+        name: l2.name, slug: l2.slug, parentSlug: l1.slug, level: 2,
+        taxPath: `machinery.${l1.slug}.${l2.slug}`, sortOrder: i + 1,
+      });
+      if (l2.l3) {
+        for (let j = 0; j < l2.l3.length; j++) {
+          const l3 = l2.l3[j];
+          treeSlugs.add(l3.slug);
+          targetNodes.push({
+            name: l3.name, slug: l3.slug, parentSlug: l2.slug, level: 3,
+            taxPath: `machinery.${l1.slug}.${l2.slug}.${l3.slug}`, sortOrder: j + 1,
+          });
+        }
+      }
     }
   }
 
   const beforeCategoryIds = [root.id, ...(await collectDescendantCategoryIds(root.id))];
+  const targetCategoryRows = await db.category.findMany({
+    where: { slug: { in: [...treeSlugs] } },
+    select: {
+      id: true, slug: true, name: true, parentId: true,
+      parent: { select: { slug: true } },
+      level: true, taxPath: true, sortOrder: true, layer: true, domain: true, active: true,
+    },
+  });
+  const targetCategoryBySlug = new Map(targetCategoryRows.map((category) => [category.slug, category]));
+  const missingTargetNodes = targetNodes.filter((node) => !targetCategoryBySlug.has(node.slug));
+  const changedTargetNodes = targetNodes.flatMap((node) => {
+    const current = targetCategoryBySlug.get(node.slug);
+    if (!current) return [];
+    const changes: string[] = [];
+    if (current.name !== node.name) changes.push("name");
+    if ((current.parent?.slug ?? null) !== node.parentSlug) changes.push(`parent:${current.parent?.slug ?? "root"}→${node.parentSlug}`);
+    if (current.level !== node.level) changes.push("level");
+    if ((current.taxPath ?? null) !== node.taxPath) changes.push("taxPath");
+    if (current.sortOrder !== node.sortOrder) changes.push("sortOrder");
+    if (current.layer !== "CATALOG") changes.push("layer");
+    if ((current.domain ?? null) !== "MACHINE") changes.push("domain");
+    if (!current.active) changes.push("active");
+    return changes.length ? [{ slug: node.slug, changes }] : [];
+  });
+  const targetParentChanges = changedTargetNodes.filter((node) =>
+    node.changes.some((change) => change.startsWith("parent:")),
+  );
+
+
   // A matching slug outside the machinery subtree belongs to another one of
   // the 14 canonical business parents (for example industrial equipment or
   // transport/logistics). Upserting it here would silently steal that
@@ -1348,7 +1425,22 @@ async function main() {
 
   console.log(`📋 Listings attached anywhere under machinery (BEFORE): ${listingsBefore.length}`);
   console.log(`📦 Current machinery descendant categories: ${beforeCategoryIds.length}`);
-  console.log(`🧭 Target definitive tree slugs: ${treeSlugs.size}`);
+  console.log(`🧭 Target definitive tree: ${targetNodes.length} categories (L1=${TREE.length}, L2=${TREE.reduce((n, item) => n + item.l2.length, 0)}, L3=${TREE.reduce((n, item) => n + item.l2.reduce((m, family) => m + (family.l3?.length ?? 0), 0), 0)})`);
+  console.log(`➕ Missing target categories to create: ${missingTargetNodes.length}`);
+  console.log(`🛠 Existing target categories with field differences: ${changedTargetNodes.length}`);
+  console.log(`↪ Existing target categories requiring re-parenting: ${targetParentChanges.length}`);
+  if (missingTargetNodes.length) {
+    console.log(`   Missing slugs: ${missingTargetNodes.map((node) => node.slug).join(", ")}`);
+  }
+  if (changedTargetNodes.length) {
+    console.log("   Planned existing-row changes (first 100):");
+    for (const item of changedTargetNodes.slice(0, 100)) {
+      console.log(`   - ${item.slug}: ${item.changes.join(", ")}`);
+    }
+    if (changedTargetNodes.length > 100) {
+      console.log(`   ... ${changedTargetNodes.length - 100} additional changed rows omitted from console detail.`);
+    }
+  }
   console.log(`⚠ Legacy L1 branches with unmappable listings: ${unsafeOldL1.map((x) => `${x.slug}(direct=${x.directCount}, unmapped=${x.unmappedCategorySlugs.join("|") || "none"})`).join(", ") || "none"}`);
   console.log(`⚠ Target slugs already owned outside machinery: ${externalSlugCollisions.map((x) => `${x.slug}(parentId=${x.parentId ?? "root"}, layer=${x.layer}, domain=${x.domain ?? "null"})`).join(", ") || "none"}`);
 
