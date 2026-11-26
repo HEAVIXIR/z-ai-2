@@ -1,6 +1,6 @@
 # ADR: Offload HEAVIX bcrypt work to a private Durable Object
 
-- Status: Proposed; isolated proof-of-concept required
+- Status: Proposed; isolated POC implemented, runtime and account-plan verification pending
 - Date: 2026-11-26
 - Scope: Integration Preview only; no Production rollout
 
@@ -12,14 +12,14 @@ The password API is shared by login, registration (including email OTP hashing),
 
 ## Decision under evaluation
 
-Prototype a separate, private, SQLite-backed Durable Object class dedicated to bcrypt compute. The main HEAVIX Worker calls it through Cloudflare's same-account Durable Object RPC binding; it does not call a public HTTP endpoint. Cloudflare documents that Durable Object methods can be invoked by other Workers on the same account through bindings and RPC, and that these are capability-based calls rather than public Internet endpoints.
+Prototype a separate, private, SQLite-backed Durable Object class dedicated to bcrypt compute. The current branch implements the isolated class and helper-level unit tests; it does not yet prove RPC invocation, per-instance concurrency behavior, or end-to-end caller integration. The main HEAVIX Worker calls it through Cloudflare's same-account Durable Object RPC binding; it does not call a public HTTP endpoint. Cloudflare documents that Durable Object methods can be invoked by other Workers on the same account through bindings and RPC, and that these are capability-based calls rather than public Internet endpoints.
 
 The proof of concept must:
 - Preserve `bcryptjs`, bcrypt hash format, and cost factor 10 exactly.
 - Expose only two narrow RPC methods: `hashPassword(plaintext)` and `verifyPassword(plaintext, encodedHash)`.
 - Keep database access, user lookup, rate limiting, CSRF, authorization, sessions, audit events, and email delivery in the existing HEAVIX application.
 - Never persist plaintext passwords, password hashes, OTPs, request bodies, or user identifiers in the Durable Object.
-- Never log credentials or hash values; log only operation category, outcome, and timing metadata.
+- Emit no application logs from the crypto object. In particular, never log credentials, hashes, OTPs, user identifiers, request bodies, or per-operation metadata.
 - Validate input size and bcrypt hash format before expensive work; reject malformed/oversized inputs.
 - Keep existing IP-based rate limiting before invoking the crypto binding. Add bounded concurrency and a fail-closed response if the binding is unavailable; never fall back to bcrypt on the main Worker.
 - Cover every production call site of `hashPassword` and `verifyPassword`, including server actions and admin endpoints, before any integration.
