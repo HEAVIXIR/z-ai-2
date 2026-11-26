@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { hashPassword, verifyPassword } from "@/lib/password";
+import { hashPassword, verifyPassword, isPasswordWithinBcryptLimit } from "@/lib/password";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
 import { checkCsrf } from "@/lib/csrf";
@@ -35,8 +35,8 @@ export async function POST(req: Request) {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !/^\d{6}$/.test(code)) {
     return NextResponse.json({ error: "ایمیل یا کد بازیابی معتبر نیست." }, { status: 400 });
   }
-  if (password.length < 8 || password.length > 128) {
-    return NextResponse.json({ error: "رمز عبور باید حداقل ۸ کاراکتر باشد." }, { status: 400 });
+  if (password.length < 8 || password.length > 128 || !isPasswordWithinBcryptLimit(password)) {
+    return NextResponse.json({ error: "رمز عبور باید ۸ تا ۱۲۸ کاراکتر و حداکثر ۷۲ بایت UTF-8 باشد." }, { status: 400 });
   }
 
   try {
