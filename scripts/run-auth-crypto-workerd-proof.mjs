@@ -104,6 +104,23 @@ try {
   });
   assert.equal(oversized.status, 400, "Oversized password input was not rejected before bcrypt.");
 
+  const bcryptBoundary = await requestJson(baseUrl, "/rpc/hash", {
+    password: "x".repeat(73),
+  });
+  assert.equal(bcryptBoundary.status, 400, "New bcrypt hashes must reject inputs over 72 UTF-8 bytes.");
+
+  const legacyPrefix = "x".repeat(72);
+  const legacyHashResponse = await requestJson(baseUrl, "/rpc/hash", {
+    password: legacyPrefix,
+  });
+  assert.equal(legacyHashResponse.status, 200, "A 72-byte bcrypt boundary password should hash.");
+  const legacyVerify = await requestJson(baseUrl, "/rpc/verify", {
+    password: legacyPrefix + "-legacy-suffix",
+    hash: legacyHashResponse.payload.hash,
+  });
+  assert.equal(legacyVerify.status, 200, "Legacy long-password verification RPC failed.");
+  assert.equal(legacyVerify.payload?.valid, true, "Legacy bcrypt verification semantics were not preserved.");
+
   const concurrency = await requestJson(baseUrl, "/rpc/concurrency", {});
   assert.equal(concurrency.status, 200, "Durable Object concurrency proof failed.");
   assert.equal(concurrency.payload?.fulfilled, 1, "Exactly one concurrent operation must be admitted.");
@@ -118,7 +135,7 @@ try {
       "same-worker Durable Object RPC verify",
       "incorrect password rejected",
       "malformed hash fails closed",
-      "oversized input rejected before bcrypt",
+      "oversized input rejected before bcrypt",\n      "new bcrypt hash rejects inputs over 72 UTF-8 bytes",\n      "legacy long-password verification semantics preserved",
       "single-operation concurrency guard",
       "operation lock recovers after completion",
     ],
