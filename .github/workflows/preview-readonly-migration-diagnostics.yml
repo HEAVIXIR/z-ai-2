@@ -34,6 +34,8 @@ jobs:
       HEAVIX_PREVIEW_MACHINE_TAXONOMY_SEED_APPROVED: "NO"
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Enforce exact Integration branch and Preview-only read-only scope
         shell: bash
         run: |
