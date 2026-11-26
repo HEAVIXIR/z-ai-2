@@ -6,11 +6,10 @@
   // from Worker bindings for the Prisma 6 PPG adapter path.
   "compatibility_date": "2026-10-28",
   "compatibility_flags": ["nodejs_compat", "nodejs_compat_populate_process_env"],
-  // This Worker is the Integration Preview runtime. The observed 10 ms CPU
-  // ceiling terminated bcrypt verification before the login handler could
-  // respond. Keep a bounded 500 ms ceiling; this does not change paid-plan
-  // selection and prevents an unbounded runaway invocation.
-  "limits": { "cpu_ms": 500 },
+  // Keep the Integration Preview compatible with the zero-cost Cloudflare plan.
+  // Do not set a custom CPU limit here. This does not prove that bcrypt login
+  // fits the platform runtime budget; authentication compatibility is tested
+  // separately and must not be weakened to make deployment pass.
   // Homepage rendering performs multiple PostgreSQL round trips. Smart
   // Placement optimizes fetch execution near the observed backend; static
   // assets remain served from the nearest edge location.

@@ -5,9 +5,11 @@ import path from "node:path";
 const read = (file: string) => readFileSync(path.join(process.cwd(), file), "utf8");
 
 describe("Cloudflare Integration Preview login resilience", () => {
-  it("sets a bounded CPU budget for the preview Worker", () => {
+  it("keeps the Preview Worker compatible with the zero-cost CPU configuration", () => {
     const config = read("wrangler.jsonc");
-    expect(config).toContain('"limits": { "cpu_ms": 500 }');
+    expect(config).toContain("Keep the Integration Preview compatible with the zero-cost Cloudflare plan.");
+    expect(config).toContain("Do not set a custom CPU limit here.");
+    expect(config).not.toMatch(/"limits"\s*:/);
     expect(config).toContain('"HEAVIX_PREVIEW_ORIGIN": "https://integration-preview-readiness-workerd-2026-11-15-heavix-preview.heavixir.workers.dev"');
   });
 
