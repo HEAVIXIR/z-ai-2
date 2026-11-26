@@ -3647,19 +3647,23 @@ async function upsertField(field: Field): Promise<string> {
 }
 
 async function main() {
-  if (!process.argv.includes("--apply")) {
-    console.log("DRY RUN: no database writes performed. Verify the Preview database and backup, then rerun with --apply.");
-    return;
-  }
-  if (process.env.HEAVIX_ENV !== "preview") {
-    throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
-  }
-  if (process.env.HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED !== "YES") {
-    throw new Error(
-      "Refusing technical-form seed: explicit HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED=YES is required.",
-    );
+  const isApply = process.argv.includes("--apply");
+  const isDryRun = !isApply;
+
+  // For --apply mode, require explicit environment and approval.
+  // Dry-run mode does NOT require approval — it performs zero writes.
+  if (isApply) {
+    if (process.env.HEAVIX_ENV !== "preview") {
+      throw new Error("Refusing to seed: HEAVIX_ENV must be exactly \"preview\". No writes performed.");
+    }
+    if (process.env.HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED !== "YES") {
+      throw new Error(
+        "Refusing technical-form seed: explicit HEAVIX_PREVIEW_TECHNICAL_FORMS_SEED_APPROVED=YES is required.",
+      );
+    }
   }
 
+  // Database identity verification — runs in BOTH dry-run and --apply modes.
   // Fail closed unless the exact dedicated App Preview database is proven.
   const expectedSystem = process.env.HEAVIX_EXPECTED_PREVIEW_SYSTEM_IDENTIFIER;
   const expectedOid = process.env.HEAVIX_EXPECTED_PREVIEW_DATABASE_OID;
@@ -3763,6 +3767,103 @@ async function main() {
 
   const activeTemplates = templates.filter((template) => categoryBySlug.has(template.slug));
   const fieldKeyPlan = await buildResolvedFieldKeyMap();
+
+  // ── DRY RUN: run all preflight checks, count what would change, then stop ──
+  if (isDryRun) {
+    // Count existing attributes and links to determine what would be new.
+    const allFieldKeys = [...new Set(
+      activeTemplates.flatMap((template) =>
+        template.fields.map((field) =>
+          fieldKeyPlan.byTemplateAndKey.get(`${template.slug}:${field.key}`) ?? field.key,
+        ),
+      ),
+    )];
+    const existingAttrs = await db.attributeDefinition.findMany({
+      where: { key: { in: allFieldKeys } },
+      select: { id: true, key: true },
+    });
+    const existingAttrKeys = new Set(existingAttrs.map((attr) => attr.key));
+
+    const allCategoryAttrPairs = activeTemplates.flatMap((template) => {
+      const category = categoryBySlug.get(template.slug)!;
+      return template.fields.map((field) => ({
+        categoryId: category.id,
+        key: fieldKeyPlan.byTemplateAndKey.get(`${template.slug}:${field.key}`) ?? field.key,
+      }));
+    });
+
+    // Count SELECT-type fields that would need new options
+    const selectFieldsNeedingOptions = activeTemplates.flatMap((template) =>
+      template.fields
+        .filter((field) => field.type === "SELECT" && field.options && field.options.length > 0)
+        .map((field) => ({
+          slug: template.slug,
+          key: fieldKeyPlan.byTemplateAndKey.get(`${template.slug}:${field.key}`) ?? field.key,
+          options: field.options!,
+        })),
+    );
+
+    let newAttrCount = 0;
+    let existingAttrCount = 0;
+    for (const key of allFieldKeys) {
+      if (existingAttrKeys.has(key)) existingAttrCount++;
+      else newAttrCount++;
+    }
+
+    // Count existing CategoryAttribute links
+    const existingLinks = await db.categoryAttribute.findMany({
+      where: {
+        categoryId: { in: [...new Set(activeTemplates.map((t) => categoryBySlug.get(t.slug)!.id))] },
+      },
+      select: { categoryId: true, attributeId: true },
+    });
+    const existingLinkSet = new Set(
+      existingLinks.map((link) => `${link.categoryId}:${link.attributeId}`),
+    );
+
+    let newLinkCount = 0;
+    let existingLinkCount = 0;
+    for (const pair of allCategoryAttrPairs) {
+      const attr = existingAttrs.find((a) => a.key === pair.key);
+      if (!attr) {
+        newLinkCount++; // attribute doesn't exist yet, so link is new
+        continue;
+      }
+      if (existingLinkSet.has(`${pair.categoryId}:${attr.id}`)) existingLinkCount++;
+      else newLinkCount++;
+    }
+
+    console.log(JSON.stringify({
+      mode: "DRY RUN — no database writes performed",
+      templatesDefined: templates.length,
+      activeTemplates: activeTemplates.length,
+      coverageRootsAudited: coverageRoots.map((root) => root.slug),
+      equipmentCategoriesAudited: equipmentCategories.length,
+      terminalCategoriesAudited: terminalCategories.length,
+      terminalFormsCovered: terminalCategories.length - missingTerminalForms.length,
+      conflictingGlobalFieldKeyCount: fieldKeyPlan.conflictingKeyCount,
+      namespacedFieldDefinitionCount: fieldKeyPlan.namespacedFieldCount,
+      missingCategorySlugs: missing,
+      missingTerminalForms,
+      fieldSummary: {
+        totalFieldDefinitions: allFieldKeys.length,
+        newAttributes: newAttrCount,
+        existingAttributes: existingAttrCount,
+      },
+      linkSummary: {
+        totalCategoryAttributeLinks: allCategoryAttrPairs.length,
+        newLinks: newLinkCount,
+        existingLinks: existingLinkCount,
+      },
+      selectOptionSummary: {
+        selectFieldsWithOptions: selectFieldsNeedingOptions.length,
+        totalOptions: selectFieldsNeedingOptions.reduce((sum, f) => sum + f.options.length, 0),
+      },
+    }, null, 2));
+    console.log("\nDRY RUN COMPLETE: Review the counts above. Re-run with --apply to write to the database.");
+    return;
+  }
+
   const applied: { slug: string; fields: number }[] = [];
 
   for (const template of activeTemplates) {
