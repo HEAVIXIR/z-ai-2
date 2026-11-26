@@ -78,6 +78,8 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Build isolated Auth Crypto Worker (dry run; no deployment)
         run: bunx wrangler deploy --dry-run --config workers/auth-crypto/wrangler.jsonc
+      - name: Exercise Auth Crypto Durable Object RPC in local Workerd (no deploy, no database)
+        run: bun scripts/run-auth-crypto-workerd-proof.mjs
       - name: Validate and exercise the Preview SQLite schema (disposable file only)
         env:
           PREVIEW_DATABASE_URL: "file:/tmp/heavix-preview-schema-validation.db"
