@@ -209,7 +209,7 @@ export async function POST(req: Request) {
     const lastName = String(body.lastName ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
     const mobile = String(body.mobile ?? "").trim();
-    const password = String(body.password ?? "").trim();
+    const password = String(body.password ?? "");
 
     if (!firstName || !lastName || !email || !mobile || firstName.length > 100 || lastName.length > 100 || email.length > 254 || mobile.length > 32 || password.length > 128) {
       return NextResponse.json(
