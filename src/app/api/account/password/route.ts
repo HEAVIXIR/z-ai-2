@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser, createUserSession } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { hashPassword, verifyPassword } from "@/lib/password";
+import { hashPassword, verifyPassword, isPasswordWithinBcryptLimit } from "@/lib/password";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
 import { checkCsrf } from "@/lib/csrf";
@@ -33,8 +33,8 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const currentPassword = String(body.currentPassword ?? "");
   const newPassword = String(body.newPassword ?? "");
-  if (!currentPassword || newPassword.length < 8 || newPassword.length > 128) {
-    return NextResponse.json({ error: "رمز فعلی و رمز جدید ۸ تا ۱۲۸ کاراکتری الزامی است." }, { status: 400 });
+  if (!currentPassword || newPassword.length < 8 || newPassword.length > 128 || !isPasswordWithinBcryptLimit(newPassword)) {
+    return NextResponse.json({ error: "رمز فعلی و رمز جدید ۸ تا ۱۲۸ کاراکتری (حداکثر ۷۲ بایت UTF-8) الزامی است." }, { status: 400 });
   }
 
   if (!(await verifyPassword(currentPassword, user.passwordHash))) {
