@@ -213,9 +213,13 @@ export default function NewListingPage() {
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
   const [serviceRoots, setServiceRoots] = useState<TaxRoot[]>([]);
   const [transactionTypes, setTransactionTypes] = useState<TransactionTypeOption[]>([]);
+  const [transactionTypesLoading, setTransactionTypesLoading] = useState(true);
+  const [transactionTypesError, setTransactionTypesError] = useState(false);
+  const [transactionTypesRetryKey, setTransactionTypesRetryKey] = useState(0);
   const [taxonomyLoading, setTaxonomyLoading] = useState(true);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
   const [taxonomyRetryKey, setTaxonomyRetryKey] = useState(0);
+  const [taxonomyLoaded, setTaxonomyLoaded] = useState(false);
   const [childCats, setChildCats] = useState<TaxChild[]>([]);
   const [grandchildCats, setGrandchildCats] = useState<TaxChild[]>([]);
   const [categoryPath, setCategoryPath] = useState<CategoryPathItem[]>([]);
@@ -232,8 +236,31 @@ export default function NewListingPage() {
   const brandWrapRef = useRef<HTMLDivElement>(null);
 
 
-  // ── Fetch V1.1 catalog roots ──
+  // ── Load the small Step 1 transaction list first. ──
   useEffect(() => {
+    let alive = true;
+    setTransactionTypesLoading(true);
+    setTransactionTypesError(false);
+    (async () => {
+      try {
+        const res = await fetch("/api/transaction-types", { cache: "no-store" });
+        if (!res.ok) throw new Error("transaction types unavailable");
+        const data = (await res.json()) as { types?: TransactionTypeOption[] };
+        if (alive) setTransactionTypes(data.types ?? []);
+      } catch {
+        if (alive) setTransactionTypesError(true);
+      } finally {
+        if (alive) setTransactionTypesLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [transactionTypesRetryKey]);
+
+  // ── Defer the larger taxonomy payload until the user reaches Step 2. ──
+  useEffect(() => {
+    if (step < 2 || taxonomyLoaded) return;
     let alive = true;
     setTaxonomyLoading(true);
     setTaxonomyError(null);
@@ -244,14 +271,13 @@ export default function NewListingPage() {
         const data = (await res.json()) as {
           catalogRoots?: TaxRoot[];
           serviceRoots?: TaxRoot[];
-          transactionTypes?: TransactionTypeOption[];
           serviceTypes?: ServiceTypeOption[];
         };
         if (alive) {
           setCatalogRoots(data.catalogRoots ?? []);
           setServiceRoots(data.serviceRoots ?? []);
-          setTransactionTypes(data.transactionTypes ?? []);
           setServiceTypes(data.serviceTypes ?? []);
+          setTaxonomyLoaded(true);
         }
       } catch {
         if (alive) setTaxonomyError("دریافت داده‌های اولیه ثبت آگهی ناموفق بود. اتصال را بررسی کنید و دوباره تلاش کنید.");
@@ -262,7 +288,7 @@ export default function NewListingPage() {
     return () => {
       alive = false;
     };
-  }, [taxonomyRetryKey]);
+  }, [step, taxonomyRetryKey, taxonomyLoaded]);
 
   // ── Debounced alias-aware brand search with visible retry state ──
   useEffect(() => {
@@ -933,9 +959,9 @@ export default function NewListingPage() {
                         value={transactionType}
                         onChange={handleTransactionTypeChange}
                         types={transactionTypes}
-                        loading={taxonomyLoading}
-                        error={Boolean(taxonomyError)}
-                        onRetry={() => setTaxonomyRetryKey((current) => current + 1)}
+                        loading={transactionTypesLoading}
+                        error={transactionTypesError}
+                        onRetry={() => setTransactionTypesRetryKey((current) => current + 1)}
                       />
                     </div>
 
