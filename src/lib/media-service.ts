@@ -98,7 +98,7 @@ function sidecarPathFor(assetRelativePathWithExt: string): string {
  * Resolve an asset path strictly beneath UPLOAD_ROOT.
  * Sidecar metadata is local state, not a trusted path authority.
  */
-function resolveUploadPath(relativePath: string): string | null {
+async function resolveUploadPath(relativePath: string): Promise<string | null> {
   if (
     typeof relativePath !== "string" ||
     relativePath.length === 0 ||
@@ -109,9 +109,9 @@ function resolveUploadPath(relativePath: string): string | null {
     return null;
   }
 
-  const root = path.resolve(UPLOAD_ROOT);
-  const resolved = path.resolve(root, relativePath);
-  const relative = path.relative(root, resolved);
+  const lexicalRoot = path.resolve(UPLOAD_ROOT);
+  const resolved = path.resolve(lexicalRoot, relativePath);
+  const relative = path.relative(lexicalRoot, resolved);
 
   if (
     relative.length === 0 ||
@@ -119,6 +119,32 @@ function resolveUploadPath(relativePath: string): string | null {
     relative.startsWith(`..${path.sep}`) ||
     path.isAbsolute(relative)
   ) {
+    return null;
+  }
+
+  // Lexical containment is insufficient when an upload directory or file is
+  // a symlink. Resolve the real parent and reject symlinked asset/sidecar files.
+  try {
+    const realRoot = await fs.realpath(UPLOAD_ROOT);
+    const realParent = await fs.realpath(path.dirname(resolved));
+    const realParentRelative = path.relative(realRoot, realParent);
+    if (
+      realParentRelative === ".." ||
+      realParentRelative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(realParentRelative)
+    ) {
+      return null;
+    }
+
+    for (const candidate of [resolved, `${resolved}.meta.json`]) {
+      try {
+        const stat = await fs.lstat(candidate);
+        if (stat.isSymbolicLink()) return null;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") return null;
+      }
+    }
+  } catch {
     return null;
   }
 
@@ -369,7 +395,7 @@ export async function deleteAsset(
   if (!asset) {
     return { ok: false, error: "رسانه یافت نشد." };
   }
-  const binaryPath = resolveUploadPath(asset.relativePath);
+  const binaryPath = await resolveUploadPath(asset.relativePath);
   if (!binaryPath) {
     return { ok: false, error: "مسیر فایل رسانه نامعتبر است." };
   }
@@ -427,7 +453,10 @@ export async function attachAsset(
     return { ok: false, error: "رسانه یافت نشد." };
   }
 
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
+  const binaryPath = await resolveUploadPath(asset.relativePath);
+  if (!binaryPath) {
+    return { ok: false, error: "مسیر فایل رسانه نامعتبر است." };
+  }
   const sidecarPath = `${binaryPath}.meta.json`;
   const before = { entityType: asset.entityType, entityId: asset.entityId };
   const updated: AssetSidecar = {
