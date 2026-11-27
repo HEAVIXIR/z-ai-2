@@ -10,7 +10,7 @@ describe("login server action account-state contract", () => {
 
   it("rejects accounts unless ACTIVE and email-verified before creating a session", () => {
     const guard = source.indexOf('user.status !== "ACTIVE" || !user.emailVerified');
-    const session = source.indexOf("createUserSession(user.id)");
+    const session = source.indexOf("await createUserSession(user.id)");
     expect(guard).toBeGreaterThan(-1);
     expect(session).toBeGreaterThan(guard);
   });
