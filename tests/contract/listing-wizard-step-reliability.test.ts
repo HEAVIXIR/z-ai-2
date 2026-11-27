@@ -33,10 +33,18 @@ describe("Listing wizard seven-step source contract", () => {
     expect(wizard).not.toContain("ثبت آگهی ماشین‌آلات");
   });
 
-  it("loads transaction types from the canonical endpoint and requires explicit selection", () => {
-    expect(transactionPicker).toContain('fetch("/api/transaction-types", { cache: "no-store" })');
+  it("loads Step 1 transaction types independently and defers taxonomy until Step 2", () => {
+    expect(wizard).toContain('fetch("/api/transaction-types", { cache: "no-store" })');
+    expect(wizard).toContain("setTransactionTypes(data.types ?? [])");
+    expect(wizard).toContain("loading={transactionTypesLoading}");
+    expect(wizard).toContain("error={transactionTypesError}");
+    expect(wizard).toContain("onRetry={() => setTransactionTypesRetryKey((current) => current + 1)}");
+    expect(wizard).toContain("if (step < 2 || taxonomyLoaded) return;");
+    expect(wizard).toContain('fetch("/api/taxonomy", { cache: "no-store" })');
+    expect(wizard).toContain("setTaxonomyLoaded(true)");
+    expect(transactionPicker).not.toContain("/api/transaction-types");
+    expect(transactionPicker).toContain("types: TransactionTypeOption[]");
     expect(transactionPicker).toContain('onClick={() => onChange(t.key)}');
-    expect(transactionPicker).toContain("setRetryKey((current) => current + 1)");
     expect(transactionPicker).not.toMatch(/if\s*\(!value\s*&&[\s\S]*?onChange\(sale\.key\)/);
   });
 

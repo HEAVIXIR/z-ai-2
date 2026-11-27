@@ -6,7 +6,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ListingImageUploader from "@/components/listings/ListingImageUploader";
 import CascadingCategoryPicker, { type CategoryPathItem } from "@/components/listings/CascadingCategoryPicker";
-import TransactionTypePicker from "@/components/listings/TransactionTypePicker";
+import TransactionTypePicker, { type TransactionTypeOption } from "@/components/listings/TransactionTypePicker";
 import LocationPicker, { type LocationValue } from "@/components/listings/LocationPicker";
 import AttributeFields, {
   type AttributeValue,
@@ -212,9 +212,14 @@ export default function NewListingPage() {
   // Catalog root/child/grandchild state
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
   const [serviceRoots, setServiceRoots] = useState<TaxRoot[]>([]);
+  const [transactionTypes, setTransactionTypes] = useState<TransactionTypeOption[]>([]);
+  const [transactionTypesLoading, setTransactionTypesLoading] = useState(true);
+  const [transactionTypesError, setTransactionTypesError] = useState(false);
+  const [transactionTypesRetryKey, setTransactionTypesRetryKey] = useState(0);
   const [taxonomyLoading, setTaxonomyLoading] = useState(true);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
   const [taxonomyRetryKey, setTaxonomyRetryKey] = useState(0);
+  const [taxonomyLoaded, setTaxonomyLoaded] = useState(false);
   const [childCats, setChildCats] = useState<TaxChild[]>([]);
   const [grandchildCats, setGrandchildCats] = useState<TaxChild[]>([]);
   const [categoryPath, setCategoryPath] = useState<CategoryPathItem[]>([]);
@@ -231,8 +236,31 @@ export default function NewListingPage() {
   const brandWrapRef = useRef<HTMLDivElement>(null);
 
 
-  // ── Fetch V1.1 catalog roots ──
+  // ── Load the small Step 1 transaction list first. ──
   useEffect(() => {
+    let alive = true;
+    setTransactionTypesLoading(true);
+    setTransactionTypesError(false);
+    (async () => {
+      try {
+        const res = await fetch("/api/transaction-types", { cache: "no-store" });
+        if (!res.ok) throw new Error("transaction types unavailable");
+        const data = (await res.json()) as { types?: TransactionTypeOption[] };
+        if (alive) setTransactionTypes(data.types ?? []);
+      } catch {
+        if (alive) setTransactionTypesError(true);
+      } finally {
+        if (alive) setTransactionTypesLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [transactionTypesRetryKey]);
+
+  // ── Defer the larger taxonomy payload until the user reaches Step 2. ──
+  useEffect(() => {
+    if (step < 2 || taxonomyLoaded) return;
     let alive = true;
     setTaxonomyLoading(true);
     setTaxonomyError(null);
@@ -249,9 +277,10 @@ export default function NewListingPage() {
           setCatalogRoots(data.catalogRoots ?? []);
           setServiceRoots(data.serviceRoots ?? []);
           setServiceTypes(data.serviceTypes ?? []);
+          setTaxonomyLoaded(true);
         }
       } catch {
-        if (alive) setTaxonomyError("دریافت دسته‌بندی‌ها ناموفق بود. اتصال را بررسی کنید و دوباره تلاش کنید.");
+        if (alive) setTaxonomyError("دریافت داده‌های اولیه ثبت آگهی ناموفق بود. اتصال را بررسی کنید و دوباره تلاش کنید.");
       } finally {
         if (alive) setTaxonomyLoading(false);
       }
@@ -259,7 +288,7 @@ export default function NewListingPage() {
     return () => {
       alive = false;
     };
-  }, [taxonomyRetryKey]);
+  }, [step, taxonomyRetryKey, taxonomyLoaded]);
 
   // ── Debounced alias-aware brand search with visible retry state ──
   useEffect(() => {
@@ -926,7 +955,14 @@ export default function NewListingPage() {
                       subtitle="نوع معامله‌ای که می‌خواهید ثبت کنید را انتخاب کنید"
                     />
                     <div className="mt-6">
-                      <TransactionTypePicker value={transactionType} onChange={handleTransactionTypeChange} />
+                      <TransactionTypePicker
+                        value={transactionType}
+                        onChange={handleTransactionTypeChange}
+                        types={transactionTypes}
+                        loading={transactionTypesLoading}
+                        error={transactionTypesError}
+                        onRetry={() => setTransactionTypesRetryKey((current) => current + 1)}
+                      />
                     </div>
 
                     {/* P0-A: WANTED intent selector MOVED to Step 1 — BEFORE category selection.

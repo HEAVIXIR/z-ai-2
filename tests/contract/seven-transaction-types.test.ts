@@ -36,8 +36,11 @@ describe("HEAVIX seven transaction types and service intent separation", () => {
 
   it("renders seven transaction choices with a readable responsive layout", () => {
     const picker = read("src/components/listings/TransactionTypePicker.tsx");
-    expect(picker).toContain('"SERVICE_OFFER":"ارائه خدمت"');
+    expect(picker).toContain('SERVICE_OFFER: "ارائه خدمت"');
     expect(picker).toContain("xl:grid-cols-7");
-    expect(picker).toContain('fetch("/api/transaction-types", { cache: "no-store" })');
+    expect(picker).toContain("CANONICAL_ICONS");
+    const wizard = read("src/app/listings/new/page.tsx");
+    expect(wizard).toContain('fetch("/api/transaction-types", { cache: "no-store" })');
+    expect(picker).not.toContain("/api/transaction-types");
   });
 });

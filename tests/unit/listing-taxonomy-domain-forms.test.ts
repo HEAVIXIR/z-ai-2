@@ -126,10 +126,14 @@ describe("HEAVIX listing taxonomy and domain-form contracts", () => {
     expect(route).toContain('return NextResponse.json({ types });');
     expect(route).toContain('export const dynamic = "force-dynamic"');
     const picker = read("src/components/listings/TransactionTypePicker.tsx");
-    expect(picker).toContain('fetch("/api/transaction-types", { cache: "no-store" })');
-    expect(picker).toContain("setLoading(true);");
-    expect(picker).toContain("setTypes([]);");
-    expect(picker).toContain("setRetryKey((current) => current + 1)");
+    const wizard = read("src/app/listings/new/page.tsx");
+    expect(wizard).toContain('fetch("/api/transaction-types", { cache: "no-store" })');
+    expect(wizard).toContain("setTransactionTypes(data.types ?? [])");
+    expect(wizard).toContain("setTransactionTypesRetryKey((current) => current + 1)");
+    expect(wizard).toContain("[transactionTypesRetryKey]");
+    expect(picker).not.toContain("/api/transaction-types");
+    expect(picker).toContain("types: TransactionTypeOption[]");
+    expect(picker).toContain("onClick={onRetry}");
   });
 
 });
