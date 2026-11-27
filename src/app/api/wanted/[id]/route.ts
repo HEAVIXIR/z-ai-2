@@ -118,7 +118,9 @@ export async function PATCH(
         { status: 404 },
       );
     }
-    if (existing.userId && existing.userId !== userId) {
+    // Legacy requests with a null owner are not public write targets.
+    // Only the exact authenticated owner may close through this endpoint.
+    if (existing.userId !== userId) {
       return NextResponse.json(
         { error: "Forbidden" },
         { status: 403 },
