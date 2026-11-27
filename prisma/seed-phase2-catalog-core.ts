@@ -3,18 +3,19 @@
  * Per HEAVIX Operational Execution Plan V2.0 §2.1-2.3.
  *
  * Creates the Brand → ProductModel → Product chain for the top brands.
- * Links existing Listings to Products where possible.
+ * Does not link Listings: brand-only matching is insufficient evidence.
  *
  * This is NOT new feature development — it fills the gaps identified
  * in the Phase 2 audit:
  *   - ProductModel: 0 → seed with real models
  *   - Product: 9 → expand to 30+
  *   - Brand → ProductModel relations: 0 → create
- *   - Listing → Product relations: 0 → link
  */
 import { db } from "../src/lib/db";
+import { assertPreviewSeedTarget } from "./seed-preview-guard";
 
 async function main() {
+  if (!(await assertPreviewSeedTarget(db, "HEAVIX_PREVIEW_CATALOG_CORE_SEED_APPROVED"))) return;
   console.log("=== PHASE 2: CATALOG CORE SEED ===\n");
 
   // Get key brands
@@ -113,8 +114,6 @@ async function main() {
           status: "ACTIVE",
           source: "SEED",
           description: `${model.brand?.name} ${model.name} — محصول کاتالوگ`,
-          verifiedAt: new Date(),
-          verifiedBy: "admin",
         },
       });
       productCount++;
@@ -122,25 +121,7 @@ async function main() {
   }
   console.log(`  ✓ ${productCount} products created/linked`);
 
-  // ── 3. Link existing Listings to Products ──
-  console.log("\n3. Linking Listings to Products...");
-  
-  const listings = await db.listing.findMany({ where: { productId: null }, select: { id: true, title: true, brandId: true } });
-  const products = await db.product.findMany({ select: { id: true, canonicalName: true, brandId: true } });
-  
-  let linkedCount = 0;
-  for (const listing of listings) {
-    // Try to find a matching product by brand
-    const matchingProduct = products.find(p => p.brandId === listing.brandId);
-    if (matchingProduct) {
-      await db.listing.update({
-        where: { id: listing.id },
-        data: { productId: matchingProduct.id },
-      });
-      linkedCount++;
-    }
-  }
-  console.log(`  ✓ ${linkedCount} listings linked to products`);
+  // Listing-to-Product links are intentionally excluded: brand equality is not model identity evidence.
 
   // ── 4. Verify chain ──
   console.log("\n4. Verification:");
