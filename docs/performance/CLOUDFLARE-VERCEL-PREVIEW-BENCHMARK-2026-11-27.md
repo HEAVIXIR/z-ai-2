@@ -103,7 +103,7 @@ Cloudflare Workers Observability for service heavix-preview recorded 10 requests
 ### Immediate engineering order
 
 1. Restore a deployable Free-plan Preview configuration only together with the compatible authentication remediation. PR #376 contains the proposed paired change, but it has diverged from current Integration (48 commits ahead on Integration; 33 commits ahead on the PR branch) and must be rebased/reviewed as a coherent change set. Do not copy only the CPU-limit deletion while leaving bcrypt verification on the Worker.
-2. Consolidate the listing wizard's initial reference-data load so TransactionTypePicker consumes transactionTypes from the existing /api/taxonomy response instead of issuing a second request. Keep a dedicated API endpoint if other consumers need it.
+2. Keep Step 1 lean: load only /api/transaction-types on first render, then defer the larger /api/taxonomy payload (four reference queries plus category trees) until the user advances to Step 2. This avoids competing initial Worker requests and prevents Step 1 from waiting for category data it does not yet need.
 3. Instrument the Worker route and Prisma adapter to separate request wall time, identity-check time, transaction-type query time, and response serialization. Do not weaken the database identity guard without an explicit threat-model review.
 4. After an approved Preview deployment of one exact SHA, deploy that same SHA to Vercel Preview and Cloudflare Preview, then run at least 30 interleaved samples in Chromium, Firefox and WebKit. Until then, no claim of provider parity is justified.
 
