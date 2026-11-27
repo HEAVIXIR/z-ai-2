@@ -249,6 +249,8 @@ describe("Phase P7 — Wanted Marketplace + RFQ + Matching engine", () => {
       expect(c).toContain("getWanted");
       // The PATCH handler must delegate to wanted-service.closeWanted.
       expect(c).toContain("closeWanted");
+      // Legacy ownerless rows must not be closable by arbitrary authenticated users.
+      expect(c).toContain("if (existing.userId !== userId)");
     });
 
     it("should expose GET /api/wanted/[id]/matches", () => {
