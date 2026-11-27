@@ -13,7 +13,15 @@ describe("trusted client IP extraction", () => {
     expect(getClientIp(request)).toBe("203.0.113.10");
   });
 
-  it("uses the right-most proxy-appended X-Forwarded-For hop", () => {
+  it("uses Caddy's single trusted X-Forwarded-For peer when Cloudflare's header is absent", () => {
+    // Production Caddyfile explicitly overwrites X-Forwarded-For with {remote_host}.
+    const request = new Request("https://example.test", {
+      headers: { "x-forwarded-for": "203.0.113.20" },
+    });
+    expect(getClientIp(request)).toBe("203.0.113.20");
+  });
+
+  it("uses the right-most hop for a multi-proxy fallback chain", () => {
     const request = new Request("https://example.test", {
       headers: { "x-forwarded-for": "198.51.100.99, 203.0.113.20" },
     });
