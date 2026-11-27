@@ -22,6 +22,13 @@ describe("media sidecar path containment contract", () => {
     expect(source).toContain("relative.startsWith(`..${path.sep}`)");
   });
 
+  it("checks real parent paths and rejects symlinked binary or sidecar files", () => {
+    expect(source).toContain("await fs.realpath(UPLOAD_ROOT)");
+    expect(source).toContain("await fs.realpath(path.dirname(resolved))");
+    expect(source).toContain("await fs.lstat(candidate)");
+    expect(source).toContain("stat.isSymbolicLink()");
+  });
+
   it("requires both delete and attach to use the guarded resolver", () => {
     expect(source.match(/resolveUploadPath\(asset\.relativePath\)/g)).toHaveLength(2);
     expect(source).toContain("مسیر فایل رسانه نامعتبر است");
