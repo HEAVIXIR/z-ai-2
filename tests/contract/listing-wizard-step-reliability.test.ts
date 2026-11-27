@@ -33,10 +33,19 @@ describe("Listing wizard seven-step source contract", () => {
     expect(wizard).not.toContain("ثبت آگهی ماشین‌آلات");
   });
 
-  it("loads transaction types from the canonical endpoint and requires explicit selection", () => {
-    expect(transactionPicker).toContain('fetch("/api/transaction-types", { cache: "no-store" })');
+  it("loads transaction types from the shared taxonomy request without a duplicate API call", () => {
+    const taxonomyApi = read("src/app/api/taxonomy/route.ts");
+    expect(wizard).toContain('fetch("/api/taxonomy", { cache: "no-store" })');
+    expect(wizard).toContain("transactionTypes?: TransactionTypeOption[]");
+    expect(wizard).toContain("setTransactionTypes(data.transactionTypes ?? [])");
+    expect(wizard).toContain("types={transactionTypes}");
+    expect(wizard).toContain("loading={taxonomyLoading}");
+    expect(wizard).toContain("error={Boolean(taxonomyError)}");
+    expect(wizard).toContain("onRetry={() => setTaxonomyRetryKey((current) => current + 1)}");
+    expect(taxonomyApi).toContain("transactionTypes: transactionTypes.map");
+    expect(transactionPicker).not.toContain("/api/transaction-types");
+    expect(transactionPicker).toContain("types: TransactionTypeOption[]");
     expect(transactionPicker).toContain('onClick={() => onChange(t.key)}');
-    expect(transactionPicker).toContain("setRetryKey((current) => current + 1)");
     expect(transactionPicker).not.toMatch(/if\s*\(!value\s*&&[\s\S]*?onChange\(sale\.key\)/);
   });
 
