@@ -98,7 +98,10 @@ function sidecarPathFor(assetRelativePathWithExt: string): string {
  * Resolve an asset path strictly beneath UPLOAD_ROOT.
  * Sidecar metadata is local state, not a trusted path authority.
  */
-async function resolveUploadPath(relativePath: string): Promise<string | null> {
+export async function resolveUploadPath(
+  relativePath: string,
+  uploadRoot: string = UPLOAD_ROOT,
+): Promise<string | null> {
   if (
     typeof relativePath !== "string" ||
     relativePath.length === 0 ||
@@ -109,7 +112,7 @@ async function resolveUploadPath(relativePath: string): Promise<string | null> {
     return null;
   }
 
-  const lexicalRoot = path.resolve(UPLOAD_ROOT);
+  const lexicalRoot = path.resolve(uploadRoot);
   const resolved = path.resolve(lexicalRoot, relativePath);
   const relative = path.relative(lexicalRoot, resolved);
 
@@ -125,7 +128,7 @@ async function resolveUploadPath(relativePath: string): Promise<string | null> {
   // Lexical containment is insufficient when an upload directory or file is
   // a symlink. Resolve the real parent and reject symlinked asset/sidecar files.
   try {
-    const realRoot = await fs.realpath(UPLOAD_ROOT);
+    const realRoot = await fs.realpath(uploadRoot);
     const realParent = await fs.realpath(path.dirname(resolved));
     const realParentRelative = path.relative(realRoot, realParent);
     if (
