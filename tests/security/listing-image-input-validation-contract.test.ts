@@ -15,7 +15,7 @@ describe("listing image mutation request validation contract", () => {
     expect(imageBlock).toMatch(/where:\s*\{\s*listingId:\s*id,\s*id:\s*\{\s*in:\s*requestedIds\s*\}\s*\}/);
     expect(imageBlock.indexOf("if (requestedIds.length)")).toBeLessThan(imageBlock.indexOf("if (addImages.length)"));
   });
-  it("scopes image deletes, primary selection and reordering by listingId", () {
+  it("scopes image deletes, primary selection and reordering by listingId", () => {
     expect(imageBlock).toMatch(/deleteMany\(\{\s*where:\s*\{\s*listingId:\s*id,\s*id:\s*\{\s*in:\s*removeImages\s*\}\s*\}\s*\}\)/);
     expect(imageBlock).toMatch(/where:\s*\{\s*id:\s*String\(body\.setPrimaryImage\),\s*listingId:\s*id\s*\}/);
     expect(imageBlock).toMatch(/where:\s*\{\s*id:\s*imgId,\s*listingId:\s*id\s*\}/);
