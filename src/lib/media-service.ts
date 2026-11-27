@@ -94,6 +94,66 @@ function sidecarPathFor(assetRelativePathWithExt: string): string {
   return `${assetRelativePathWithExt}.meta.json`;
 }
 
+/**
+ * Resolve an asset path strictly beneath UPLOAD_ROOT.
+ * Sidecar metadata is local state, not a trusted path authority.
+ */
+export async function resolveUploadPath(
+  relativePath: string,
+  uploadRoot: string = UPLOAD_ROOT,
+): Promise<string | null> {
+  if (
+    typeof relativePath !== "string" ||
+    relativePath.length === 0 ||
+    path.isAbsolute(relativePath) ||
+    relativePath.includes("\\") ||
+    relativePath.includes("\0")
+  ) {
+    return null;
+  }
+
+  const lexicalRoot = path.resolve(uploadRoot);
+  const resolved = path.resolve(lexicalRoot, relativePath);
+  const relative = path.relative(lexicalRoot, resolved);
+
+  if (
+    relative.length === 0 ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    return null;
+  }
+
+  // Lexical containment is insufficient when an upload directory or file is
+  // a symlink. Resolve the real parent and reject symlinked asset/sidecar files.
+  try {
+    const realRoot = await fs.realpath(uploadRoot);
+    const realParent = await fs.realpath(path.dirname(resolved));
+    const realParentRelative = path.relative(realRoot, realParent);
+    if (
+      realParentRelative === ".." ||
+      realParentRelative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(realParentRelative)
+    ) {
+      return null;
+    }
+
+    for (const candidate of [resolved, `${resolved}.meta.json`]) {
+      try {
+        const stat = await fs.lstat(candidate);
+        if (stat.isSymbolicLink()) return null;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") return null;
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return resolved;
+}
+
 /** Walk a directory recursively, returning every regular file. */
 async function walkFiles(
   dir: string,
@@ -230,7 +290,7 @@ export async function uploadAsset(
 
   // 3. Write binary file (guard against accidental overwrite)
   try {
-    await fs.writeFile(fullDiskPath, storedBuffer);
+    await fs.writeFile(fullDiskPath, storedBuffer, { flag: "wx" });
   } catch (err) {
     return {
       ok: false,
@@ -260,7 +320,7 @@ export async function uploadAsset(
   // 5. Persist sidecar
   const sidecarDiskPath = path.join(targetDir, sidecarPathFor(safeName));
   try {
-    await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), "utf8");
+    await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), { encoding: "utf8", flag: "wx" });
   } catch (err) {
     // Best-effort cleanup of orphaned binary if sidecar write failed
     await fs.unlink(fullDiskPath).catch(() => {});
@@ -338,7 +398,10 @@ export async function deleteAsset(
   if (!asset) {
     return { ok: false, error: "رسانه یافت نشد." };
   }
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
+  const binaryPath = await resolveUploadPath(asset.relativePath);
+  if (!binaryPath) {
+    return { ok: false, error: "مسیر فایل رسانه نامعتبر است." };
+  }
   const sidecarPath = `${binaryPath}.meta.json`;
 
   // Remove binary file
@@ -393,7 +456,10 @@ export async function attachAsset(
     return { ok: false, error: "رسانه یافت نشد." };
   }
 
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
+  const binaryPath = await resolveUploadPath(asset.relativePath);
+  if (!binaryPath) {
+    return { ok: false, error: "مسیر فایل رسانه نامعتبر است." };
+  }
   const sidecarPath = `${binaryPath}.meta.json`;
   const before = { entityType: asset.entityType, entityId: asset.entityId };
   const updated: AssetSidecar = {
