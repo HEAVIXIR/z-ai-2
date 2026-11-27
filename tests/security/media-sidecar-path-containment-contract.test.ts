@@ -17,8 +17,8 @@ describe("media sidecar path containment contract", () => {
   });
 
   it("rejects paths that resolve outside the upload root", () => {
-    expect(source).toContain("const root = path.resolve(UPLOAD_ROOT)");
-    expect(source).toContain("const resolved = path.resolve(root, relativePath)");
+    expect(source).toContain("const lexicalRoot = path.resolve(UPLOAD_ROOT)");
+    expect(source).toContain("const resolved = path.resolve(lexicalRoot, relativePath)");
     expect(source).toContain("relative.startsWith(`..${path.sep}`)");
   });
 
