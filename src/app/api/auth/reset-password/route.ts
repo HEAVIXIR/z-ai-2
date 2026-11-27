@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { hashPassword, verifyPassword } from "@/lib/password";
+import { hashPassword } from "@/lib/password";
+import { verifyPasswordResetCode } from "@/lib/password-reset-code";
 import { rateLimit, retryAfterSeconds } from "@/lib/rate-limit";
 import { getClientIp, rateLimitKey } from "@/lib/request-context";
 import { checkCsrf } from "@/lib/csrf";
@@ -58,9 +58,7 @@ export async function POST(req: Request) {
     if (!record) {
       return NextResponse.json({ error: "کد بازیابی معتبر یا قابل استفاده نیست." }, { status: 400 });
     }
-    const codeMatches = record.code.startsWith("$2")
-      ? await verifyPassword(code, record.code)
-      : record.code === code || record.code === createHash("sha256").update(code).digest("hex");
+    const codeMatches = await verifyPasswordResetCode(code, record.code);
     if (!codeMatches) {
       return NextResponse.json({ error: "کد بازیابی معتبر یا قابل استفاده نیست." }, { status: 400 });
     }

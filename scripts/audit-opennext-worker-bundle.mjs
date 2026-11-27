@@ -286,15 +286,24 @@ for (const rootPath of wasmSearchRoots) {
   }
 }
 const wasmReferences = [];
+const buildToolingWasmReferences = [];
 for (const file of files) {
   const content = await readFile(file, "utf8").catch(() => "");
   const matches = [...content.matchAll(/(?:static\/wasm\/|query_compiler_bg\.wasm|loadWasmChunk)[^"'\s]*/g)]
     .map((match) => match[0]);
   if (matches.length) {
-    wasmReferences.push({
+    const reference = {
       file: relative(root, file),
       matches: [...new Set(matches)].slice(0, 20),
-    });
+    };
+    // Next's webpack-config.js is bundled as build tooling and contains the
+    // literal output template "static/wasm/[modulehash].wasm". It is not a
+    // runtime asset request, so keep it visible but out of runtime resolution.
+    if (reference.file.includes("/next/dist/build/webpack-config.js")) {
+      buildToolingWasmReferences.push(reference);
+    } else {
+      wasmReferences.push(reference);
+    }
   }
 }
 const webpackWasmPrefix = ".next/server/chunks/static/wasm/";
@@ -322,6 +331,7 @@ const wasmSummary = {
   fileCount: wasmCandidates.size,
   files: [...wasmCandidates.values()].sort((a, b) => a.file.localeCompare(b.file)),
   references: wasmReferences,
+  buildToolingReferences: buildToolingWasmReferences,
   missingExpectedQueryCompilerFiles: [
     "src/lib/generated/worker-client/internal/query_compiler_bg.wasm",
     "src/lib/generated/store-worker-client/internal/query_compiler_bg.wasm",
