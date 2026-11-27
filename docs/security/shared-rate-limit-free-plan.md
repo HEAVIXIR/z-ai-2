@@ -1,66 +1,43 @@
-# Shared Rate Limiting — Free Plan Design Review
+# Shared Rate Limiting — Zero-Cost Compatibility Review
 
-**Status:** Proposed; not implemented  
-**Scope:** Authentication and security-sensitive rate-limit buckets  
-**Cost constraint:** Workers Free only. No paid plan, paid add-on, automatic upgrade, or billing change.
+**Status:** Research only; no runtime change authorized or implemented  
+**Scope:** Existing HEAVIX rate-limit behavior and Cloudflare Workers Free compatibility  
+**Hard constraint:** Zero-Cost. No Paid plan, paid add-on, automatic upgrade, or billing mutation.
 
-## Problem
+## Current HEAVIX implementation (verified on this branch)
 
-The current `src/lib/rate-limit.ts` limiter stores fixed-window counters in a process/isolate-local `Map`. Requests routed to different Worker instances can therefore receive independent buckets, weakening limits across instances. This limiter is best-effort and is not a globally shared counter.
+- `src/lib/rate-limit.ts` uses a module-level `Map<string, Bucket>`, fixed windows, and a 60-second in-process sweeper. Each isolate/process has its own counters; this is not a shared/global limiter.
+- The public result contract is `{ ok, remaining, resetAt }`; every call increments, including denied requests. `retryAfterSeconds(resetAt)` supplies the current 429 response's Retry-After value.
+- `src/lib/rate-limit-check.ts` builds keys from identity plus preset label and preserves a standard 429 response.
+- `src/lib/rate-limit-presets.ts` includes both 15-minute and one-hour windows, as well as one-minute windows. Examples: LOGIN is 10/15 min/IP; REGISTER is 5/hour/IP; VERIFY is 10/hour/IP; RESEND is 3/hour/IP; UPLOAD and AI are 20/hour/user and 30/hour/user respectively.
 
-## Free-tier facts checked against Cloudflare's documentation
+## Cloudflare Free and Wrangler facts
 
-- Workers Free includes 100,000 incoming requests/day and 10 ms CPU per invocation.
-- Cloudflare's current Workers pricing page describes Durable Objects as part of Workers Paid (minimum $5/month); it does not establish Durable Objects as a Workers Free entitlement. Therefore Durable Objects are excluded from the Zero-Cost design unless official account/plan evidence changes.
-- Workers Free has a 100,000 incoming-request/day allowance and 10 ms CPU per invocation. Exceeding Free allowances causes operations to fail rather than silently converting to Paid usage.
+- The repository pins Wrangler `4.156.0` in `package.json`. Cloudflare's Rate Limiting binding documentation requires Wrangler 4.36.0 or later, so the pinned version satisfies that documented minimum.
+- Workers Free includes 100,000 requests/day and 10 ms CPU per invocation.
+- Cloudflare's current Workers pricing page lists Durable Objects under Workers Paid (minimum $5/month). Durable Objects are therefore excluded from this Zero-Cost design.
+- Do not infer that an unlisted feature is free merely because no separate price was found. The Rate Limiting binding's precise account entitlement/cost still needs confirmation against the actual account plan before configuration or deployment.
 
 Sources:
 - https://developers.cloudflare.com/workers/platform/pricing/
-- https://developers.cloudflare.com/durable-objects/platform/pricing/
-- https://developers.cloudflare.com/durable-objects/platform/limits/
+- https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
 
-## Zero-Cost candidate: Workers Rate Limiting binding
+## Native Workers Rate Limiting binding: compatibility result
 
-Cloudflare provides a native Rate Limiting binding for Workers. It is the first candidate to evaluate before any Durable Object design because it avoids introducing a separately billed storage service. The official documentation describes it as approximate, eventually consistent, and local to each Cloudflare location; same-namespace bindings share counters across Workers within a location, but updates propagate in the background. It supports only 10-second or 60-second periods. Requests can exceed the configured threshold before counters synchronize. This is not a globally strict security limiter.
+Cloudflare's native binding is approximate and eventually consistent, with counters scoped to a Cloudflare location. Same-namespace bindings can share counters across Workers within a location, but updates propagate in the background; traffic can exceed the configured threshold before counters synchronize. It is not a strict global counter.
 
-For HEAVIX, the native binding may be suitable as a low-cost edge-abuse layer, but it cannot be represented as a drop-in replacement for the current fixed-window limiter: existing presets include longer windows (for example 15 minutes and one hour), and the binding does not provide a strict global counter or exact Retry-After/resetAt semantics. Keep the existing in-process limiter as an additional defense until a route-by-route design proves compatibility. Do not configure the binding or deploy it in this documentation change.
+The binding supports only 10-second and 60-second periods. That does not represent HEAVIX's existing 15-minute and one-hour windows. Its decision API also does not reproduce the current `resetAt`/exact `Retry-After` contract. Therefore it is **not a drop-in replacement** for the current limiter and cannot preserve current policy semantics on its own.
 
-Source: https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/
-
-## Strict shared-counter alternative (not approved under Zero-Cost)
-
-A SQLite-backed Durable Object could provide a serialized/atomic counter, but the current Workers pricing documentation includes Durable Objects under Workers Paid (minimum $5/month). It therefore fails the strict Zero-Cost constraint and is not an implementation candidate for this project under the current requirement.
-
-## Proposed architecture (bounded, not dynamically provisioned; research only)
-
-1. Keep the existing limiter interface/presets and fixed-window semantics initially.
-2. Use one SQLite-backed Durable Object class with a **fixed, code-defined shard set** (initial proposal: 8 shards; validate load and contention before finalizing). Never create unbounded objects based on IP/user input.
-3. Compute a stable shard from a privacy-preserving keyed digest of the limiter key. Store only the digest, never raw IP/email/user ID.
-4. A single RPC performs the complete atomic check-and-increment and returns `ok`, `remaining`, and `resetAt`; no read-then-write split RPC.
-5. SQL transaction/upsert semantics must enforce the limit atomically under concurrent requests. Expired buckets are reclaimed by bounded cleanup; cleanup must not scan or delete unbounded rows in one request.
-6. Security endpoints (login, registration, verification, password reset) fail closed if the shared limiter is unavailable or throws. This trades availability for abuse protection and must be explicitly tested.
-7. Keep current thresholds unchanged in the first migration. IP parsing/trust is a separate issue and must not be silently coupled to this change.
-8. Add deterministic tests for concurrency, fixed-window reset, increment-on-deny, Retry-After, shard determinism, failure behavior, key privacy, and compatibility with existing presets.
-9. Roll out in an isolated Preview only after review and environment protection are verified. Do not perform production writes, account changes, migrations, seeds, or deploys during implementation/CI.
-
-## Risks and open engineering checks
-
-- **Hot shard:** eight shards are only a starting point; measure contention in tests. Increasing shards reduces contention but must remain a fixed, reviewed number.
-- **Quota coupling:** each limiter call consumes a DO request and SQLite write. Free daily quotas are finite; auth traffic and abuse traffic can exhaust them. Monitor usage and fail-closed behavior without relying on paid overages.
-- **DoS via shared quota:** an attacker can consume the Free allowance and temporarily cause security endpoints to reject requests. The current per-isolate limiter is not globally atomic; migration must not make failure mode worse without tests and documented trade-offs.
-- **Storage:** expired rows need bounded reclamation and a strict TTL; enforce maximum rows/key length.
-- **Privacy:** keys must be keyed hashes (not plain hashes of low-entropy identifiers), and no raw identities may be logged.
-- **Free-plan guard:** verify Wrangler binding, SQLite backend, and account plan read-only before any Preview deployment; no billing API writes.
-
-## Acceptance gates
-
-- No Paid-plan configuration or billing mutation.
-- Fixed bounded shard IDs, no user-controlled object creation.
-- Atomic check/increment in one RPC.
-- Existing limiter presets and responses preserved.
-- Unit + Workerd tests and exact-head CI pass.
-- Preview environment reviewer protection verified before any deploy; this ADR does not authorize deployment.
+Potential future use is limited to a separate, coarse edge-abuse layer with explicitly different semantics. That would require a security review of key choice, identity/IP trust, endpoint coverage, false positives, and the binding's approximate behavior. It must not silently replace existing presets or be described as strict enforcement.
 
 ## Decision
 
-Keep this PR as a research record. First prototype the native Rate Limiting binding in an isolated branch and verify Free-plan entitlement, supported Wrangler version, actual presets/windows, failure behavior, and exact-head CI. Do not deploy. Durable Objects remain excluded unless the Zero-Cost constraint is explicitly changed.
+1. Keep the existing in-process limiter and all thresholds/responses unchanged for now.
+2. Do not implement a Durable Object: it is outside the stated Zero-Cost constraint.
+3. Do not add a Rate Limiting binding yet: its documented periods and semantics do not preserve the existing HEAVIX contract, and the actual account entitlement/cost has not been confirmed.
+4. Treat the current limiter's per-isolate weakness as a documented residual risk, not as a solved problem.
+5. Revisit only if Cloudflare adds compatible free-tier primitives, the account's entitlement is verified read-only, or the owner explicitly changes the Zero-Cost constraint.
+
+## Safety boundary
+
+This review makes no Worker configuration change, binding creation, deploy, billing change, database write, migration, seed, account/session mutation, or production change. Any future implementation must remain a separate Draft PR, preserve the current security contract unless explicitly reviewed, and pass exact-head CI before any separately authorized Preview action.
