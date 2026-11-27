@@ -175,10 +175,9 @@ function parseDeadlineToExpiresAt(
 
 // ── createWanted ────────────────────────────────────────────
 /**
- * Create a new wanted request (BuyRequest) and publish it to the
- * public marketplace feed immediately (status=ACTIVE in the
- * schema, recorded as PUBLISHED in the audit so the intent is
- * preserved). Returns the new record id + status.
+ * Create a new wanted request (BuyRequest) in moderation-pending state
+ * (status=PENDING, publishedAt=null). It becomes public only after the
+ * authorized publishWanted transition. Returns the new record id + status.
  *
  * Field mapping:
  *   - title/description/budget/location → canonical BuyRequest scalar fields
