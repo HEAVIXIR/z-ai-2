@@ -45,7 +45,7 @@ describe("Listing wizard seven-step source contract", () => {
     expect(transactionPicker).not.toContain("/api/transaction-types");
     expect(transactionPicker).toContain("types: TransactionTypeOption[]");
     expect(transactionPicker).toContain('onClick={() => onChange(t.key)}');
-    expect(transactionPicker).not.toMatch(/if\\s*\\(!value\\s*&&[\\s\\S]*?onChange\\(sale\\.key\\)/);
+    expect(transactionPicker).not.toMatch(/if\s*\(!value\s*&&[\s\S]*?onChange\(sale\.key\)/);
   });
 
   it("surfaces taxonomy loading failures instead of leaving a permanent loading placeholder", () => {
