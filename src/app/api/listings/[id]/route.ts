@@ -208,22 +208,6 @@ export async function PATCH(req: Request, { params }: Args) {
       // Seller extend: keep current status (PUBLISHED stays PUBLISHED).
     }
 
-    await db.listing.update({ where: { id }, data }).catch(async (updateErr: any) => {
-      // Stale PrismaClient may reject the new P1-5/6 scalar fields. Strip them and retry.
-      const msg = String(updateErr?.message ?? "");
-      if (msg.includes("Unknown argument") || msg.includes("Unknown field")) {
-        const legacyData = { ...data };
-        delete legacyData.transactionTypeId;
-        delete legacyData.countryId;
-        delete legacyData.provinceId;
-        delete legacyData.cityId;
-        delete legacyData.productId;
-        await db.listing.update({ where: { id }, data: legacyData });
-      } else {
-        throw updateErr;
-      }
-    });
-
     // Image management: validate the whole image mutation request before applying it.
     const imageUrlIsAllowed = (raw: unknown): boolean => {
       const value = String(raw ?? "").trim();
@@ -270,6 +254,23 @@ export async function PATCH(req: Request, { params }: Args) {
         return NextResponse.json({ error: "یک یا چند تصویر متعلق به این آگهی نیست." }, { status: 404 });
       }
     }
+
+
+    await db.listing.update({ where: { id }, data }).catch(async (updateErr: any) => {
+      // Stale PrismaClient may reject the new P1-5/6 scalar fields. Strip them and retry.
+      const msg = String(updateErr?.message ?? "");
+      if (msg.includes("Unknown argument") || msg.includes("Unknown field")) {
+        const legacyData = { ...data };
+        delete legacyData.transactionTypeId;
+        delete legacyData.countryId;
+        delete legacyData.provinceId;
+        delete legacyData.cityId;
+        delete legacyData.productId;
+        await db.listing.update({ where: { id }, data: legacyData });
+      } else {
+        throw updateErr;
+      }
+    });
 
     if (addImages.length) {
       const existingCount = currentImageCount;
