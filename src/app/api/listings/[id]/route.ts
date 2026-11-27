@@ -238,24 +238,44 @@ export async function PATCH(req: Request, { params }: Args) {
       });
     }
     if (body.removeImages && Array.isArray(body.removeImages)) {
+      // Scope every image mutation to the already-authorized listing.
+      // An image ID supplied by the client must never cross listing boundaries.
       await db.listingImage.deleteMany({
-        where: { id: { in: body.removeImages.map(String) } },
+        where: {
+          listingId: id,
+          id: { in: body.removeImages.map(String) },
+        },
       });
     }
     if (body.setPrimaryImage) {
+      // Validate the target image before clearing the current primary image.
+      // Invalid/cross-listing IDs must not change this listing's image state.
+      const targetImage = await db.listingImage.findFirst({
+        where: { id: String(body.setPrimaryImage), listingId: id },
+        select: { id: true },
+      });
+      if (!targetImage) {
+        return NextResponse.json(
+          { error: "تصویر متعلق به این آگهی نیست." },
+          { status: 404 },
+        );
+      }
       await db.listingImage.updateMany({
         where: { listingId: id },
         data: { isPrimary: false },
       });
-      await db.listingImage.update({
-        where: { id: String(body.setPrimaryImage) },
+      await db.listingImage.updateMany({
+        where: { id: targetImage.id, listingId: id },
         data: { isPrimary: true },
       });
     }
     if (body.reorderImages && Array.isArray(body.reorderImages)) {
       await Promise.all(
         body.reorderImages.map((imgId: string, idx: number) =>
-          db.listingImage.update({ where: { id: String(imgId) }, data: { sortOrder: idx } }),
+          db.listingImage.updateMany({
+            where: { id: String(imgId), listingId: id },
+            data: { sortOrder: idx },
+          }),
         ),
       );
     }
