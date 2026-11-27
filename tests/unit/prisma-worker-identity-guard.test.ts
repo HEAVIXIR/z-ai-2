@@ -291,4 +291,134 @@ describe("Prisma Worker database identity guard", () => {
     expect(transactionQueryExecutions).toBe(0);
   });
 
+  it("reuses a successful identity proof across request-scoped clients in one Worker isolate", async () => {
+    const cacheKey = "test://app-preview/same-target";
+    const firstClient = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-app-id", database_oid: "101" },
+      ]),
+      user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["first"])) },
+    };
+    const secondClient = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-app-id", database_oid: "101" },
+      ]),
+      user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["second"])) },
+    };
+
+    const first = withIdentityGuard(firstClient, "preview-app-id", "101", "App", cacheKey);
+    const second = withIdentityGuard(secondClient, "preview-app-id", "101", "App", cacheKey);
+    await expect(first.user.findMany()).resolves.toEqual(["first"]);
+    await expect(second.user.findMany()).resolves.toEqual(["second"]);
+
+    expect(firstClient.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(secondClient.$queryRaw).not.toHaveBeenCalled();
+    expect(firstClient.user.findMany).toHaveBeenCalledTimes(1);
+    expect(secondClient.user.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reuse identity proof across different expected database identities", async () => {
+    const cacheKey = "test://app-preview/same-connection";
+    const firstClient = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-app-id", database_oid: "101" },
+      ]),
+      user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["first"])) },
+    };
+    const secondClient = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-app-id", database_oid: "202" },
+      ]),
+      user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["second"])) },
+    };
+
+    const first = withIdentityGuard(firstClient, "preview-app-id", "101", "App", cacheKey);
+    const second = withIdentityGuard(secondClient, "preview-app-id", "202", "App", cacheKey);
+    await expect(first.user.findMany()).resolves.toEqual(["first"]);
+    await expect(second.user.findMany()).resolves.toEqual(["second"]);
+
+    expect(firstClient.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(secondClient.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cache a failed identity query for later requests", async () => {
+    const cacheKey = "test://app-preview/retry-after-error";
+    const failedClient = {
+      $queryRaw: vi.fn(async () => { throw new Error("temporary identity query failure"); }),
+      user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["must-not-run"])) },
+    };
+    const recoveredClient = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-app-id", database_oid: "101" },
+      ]),
+      user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["recovered"])) },
+    };
+
+    const failed = withIdentityGuard(failedClient, "preview-app-id", "101", "App", cacheKey);
+    await expect(failed.user.findMany()).rejects.toThrow("temporary identity query failure");
+    const recovered = withIdentityGuard(recoveredClient, "preview-app-id", "101", "App", cacheKey);
+    await expect(recovered.user.findMany()).resolves.toEqual(["recovered"]);
+
+    expect(failedClient.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(recoveredClient.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("revalidates a successful identity proof after the isolate cache TTL", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-27T00:00:00.000Z"));
+    try {
+      const cacheKey = "test://app-preview/ttl-expiry";
+      const firstClient = {
+        $queryRaw: vi.fn(async () => [
+          { system_identifier: "preview-app-id", database_oid: "101" },
+        ]),
+        user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["first"])) },
+      };
+      const secondClient = {
+        $queryRaw: vi.fn(async () => [
+          { system_identifier: "preview-app-id", database_oid: "101" },
+        ]),
+        user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["second"])) },
+      };
+
+      await expect(
+        withIdentityGuard(firstClient, "preview-app-id", "101", "App", cacheKey).user.findMany(),
+      ).resolves.toEqual(["first"]);
+      vi.setSystemTime(new Date("2026-11-27T00:01:01.000Z"));
+      await expect(
+        withIdentityGuard(secondClient, "preview-app-id", "101", "App", cacheKey).user.findMany(),
+      ).resolves.toEqual(["second"]);
+
+      expect(firstClient.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(secondClient.$queryRaw).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps identity checks request-local when no isolate cache key is supplied", async () => {
+    const firstClient = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-app-id", database_oid: "101" },
+      ]),
+      user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["first"])) },
+    };
+    const secondClient = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-app-id", database_oid: "101" },
+      ]),
+      user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["second"])) },
+    };
+
+    await expect(
+      withIdentityGuard(firstClient, "preview-app-id", "101", "App").user.findMany(),
+    ).resolves.toEqual(["first"]);
+    await expect(
+      withIdentityGuard(secondClient, "preview-app-id", "101", "App").user.findMany(),
+    ).resolves.toEqual(["second"]);
+
+    expect(firstClient.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(secondClient.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
 });
