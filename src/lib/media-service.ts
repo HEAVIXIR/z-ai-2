@@ -94,6 +94,37 @@ function sidecarPathFor(assetRelativePathWithExt: string): string {
   return `${assetRelativePathWithExt}.meta.json`;
 }
 
+/**
+ * Resolve an asset path strictly beneath UPLOAD_ROOT.
+ * Sidecar metadata is local state, not a trusted path authority.
+ */
+function resolveUploadPath(relativePath: string): string | null {
+  if (
+    typeof relativePath !== "string" ||
+    relativePath.length === 0 ||
+    path.isAbsolute(relativePath) ||
+    relativePath.includes("\\") ||
+    relativePath.includes("\0")
+  ) {
+    return null;
+  }
+
+  const root = path.resolve(UPLOAD_ROOT);
+  const resolved = path.resolve(root, relativePath);
+  const relative = path.relative(root, resolved);
+
+  if (
+    relative.length === 0 ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    return null;
+  }
+
+  return resolved;
+}
+
 /** Walk a directory recursively, returning every regular file. */
 async function walkFiles(
   dir: string,
@@ -338,7 +369,10 @@ export async function deleteAsset(
   if (!asset) {
     return { ok: false, error: "رسانه یافت نشد." };
   }
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
+  const binaryPath = resolveUploadPath(asset.relativePath);
+  if (!binaryPath) {
+    return { ok: false, error: "مسیر فایل رسانه نامعتبر است." };
+  }
   const sidecarPath = `${binaryPath}.meta.json`;
 
   // Remove binary file
