@@ -92,11 +92,11 @@ Read-only fetches to the current branch-specific Cloudflare Preview origin retur
 
 Cloudflare Workers Observability for service heavix-preview recorded 10 requests matching /api/transaction-types in the preceding hour: average span duration 3,374.7 ms and p95 6,527 ms. This is a small preliminary sample, not a 30-run browser benchmark; it includes only the Cloudflare Worker service and does not provide a Vercel comparison or a DB/CPU breakdown.
 
-### Listing wizard request duplication
+### Listing wizard request waterfall
 
-- The listing page fetches /api/taxonomy on mount with cache: no-store.
-- The TransactionTypePicker independently fetches /api/transaction-types with cache: no-store.
-- The /api/taxonomy response already includes transactionTypes. Therefore the first step currently triggers a redundant transaction-type request and waits on a separate endpoint even though the same data is already being loaded for the rest of the wizard.
+- Baseline Integration code starts both /api/taxonomy and /api/transaction-types on initial render. The former performs four database reads and returns the larger category tree; the latter is the only data Step 1 needs.
+- Although /api/taxonomy also contains transactionTypes, making Step 1 wait for that larger response would be the wrong optimization. Draft PR #431 instead keeps Step 1 on the dedicated /api/transaction-types endpoint and defers /api/taxonomy until the user advances to Step 2.
+- PR #431 is a waterfall/competition reduction only. It does not solve the measured 3.37 s average / 6.53 s p95 Worker duration for /api/transaction-types.
 - The Cloudflare API route uses a Worker-specific Prisma client. The Worker resolver creates a request-scoped client; the identity guard runs a database identity SQL query before the first model query. That adds a database round trip to each request. This is a source-confirmed contributor candidate, not yet a proven share of the measured wall time.
 - No user/session response should be publicly cached. Any reference-data caching must be restricted to public, non-personalized catalog data and must have explicit freshness/invalidation semantics.
 
