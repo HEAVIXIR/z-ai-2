@@ -235,9 +235,6 @@ export async function PATCH(req: Request, { params }: Args) {
     const removeImages = Array.isArray(body.removeImages) ? body.removeImages.map(String) : [];
     const reorderImages = Array.isArray(body.reorderImages) ? body.reorderImages.map(String) : [];
     const currentImageCount = await db.listingImage.count({ where: { listingId: id } });
-    if (currentImageCount + addImages.length > 10) {
-      return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
-    }
     if (addImages.some((img: any) => !imageUrlIsAllowed(img?.url ?? img))) {
       return NextResponse.json({ error: "URL یکی از تصاویر معتبر نیست." }, { status: 400 });
     }
@@ -255,6 +252,14 @@ export async function PATCH(req: Request, { params }: Args) {
       }
     }
 
+    // Account for valid removals before enforcing the post-mutation image ceiling.
+    // IDs are deduplicated and ownership-checked above, so duplicate IDs cannot
+    // inflate the removal count or let a caller subtract another listing's images.
+    const uniqueRemoveCount = new Set(removeImages).size;
+    const resultingImageCount = currentImageCount - uniqueRemoveCount + addImages.length;
+    if (resultingImageCount > 10) {
+      return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
+    }
 
     await db.listing.update({ where: { id }, data }).catch(async (updateErr: any) => {
       // Stale PrismaClient may reject the new P1-5/6 scalar fields. Strip them and retry.
