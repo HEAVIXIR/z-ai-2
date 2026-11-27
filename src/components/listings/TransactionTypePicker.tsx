@@ -73,7 +73,7 @@ export default function TransactionTypePicker({
 }) {
   // The listing page supplies transaction types from its dedicated Step 1 API
   // request. The larger taxonomy payload is deferred until Step 2.
-  const normalized = types.map((item) => ({
+  const normalized: TransactionTypeOption[] = types.map((item) => ({
     ...item,
     nameFa: CANONICAL_LABELS[item.key] ?? item.nameFa,
     icon: CANONICAL_ICONS[item.key] ?? item.icon ?? ICON_FALLBACK[item.key] ?? "🛒",
