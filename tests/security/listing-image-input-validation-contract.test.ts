@@ -7,7 +7,10 @@ const imageBlock = source.slice(source.indexOf("// Image management: validate"),
 
 describe("listing image mutation request validation contract", () => {
   it("enforces the 10-image ceiling and validates image URL protocols", () => {
-    expect(imageBlock).toContain("currentImageCount + addImages.length > 10");
+    expect(imageBlock).toContain("const uniqueRemoveCount = new Set(removeImages).size;");
+    expect(imageBlock).toContain("const resultingImageCount = currentImageCount - uniqueRemoveCount + addImages.length;");
+    expect(imageBlock).toContain("if (resultingImageCount > 10)");
+    expect(imageBlock).toContain("Account for valid removals before enforcing the post-mutation image ceiling.");
     expect(imageBlock).toContain('parsed.protocol === "https:" || parsed.protocol === "http:"');
     expect(imageBlock).toContain("!parsed.username && !parsed.password");
   });
