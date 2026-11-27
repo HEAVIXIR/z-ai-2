@@ -17,11 +17,17 @@ describe("listing image mutation ownership contract", () => {
 
   it("scopes primary-image selection and validates before clearing current primary", () => {
     const source = readRoute();
-    const block = source.match(/if\s*\(body\.setPrimaryImage\)\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? "";
+    const start = source.indexOf("if (body.setPrimaryImage)");
+    const end = source.indexOf("if (body.reorderImages", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const block = source.slice(start, end);
+
     expect(block).toContain("listingImage.findFirst");
     expect(block).toMatch(/where:\s*\{\s*id:\s*String\(body\.setPrimaryImage\),\s*listingId:\s*id/);
-    expect(block).toMatch(/if\s*\(!targetImage\)/);
+    expect(block).toContain("if (!targetImage)");
     expect(block.indexOf("if (!targetImage)")).toBeLessThan(block.indexOf("data: { isPrimary: false }"));
+    expect(block).toMatch(/where:\s*\{\s*id:\s*targetImage\.id,\s*listingId:\s*id\s*\}/);
   });
 
   it("scopes image reorder mutations to the authorized listing", () => {
