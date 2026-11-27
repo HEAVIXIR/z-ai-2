@@ -317,6 +317,41 @@ describe("Prisma Worker database identity guard", () => {
     expect(secondClient.user.findMany).toHaveBeenCalledTimes(1);
   });
 
+  it("shares one in-flight identity proof across concurrent request clients", async () => {
+    const cacheKey = "test://app-preview/concurrent-requests";
+    let releaseIdentity!: () => void;
+    const identityGate = new Promise<void>((resolve) => {
+      releaseIdentity = resolve;
+    });
+    const firstClient = {
+      $queryRaw: vi.fn(async () => {
+        await identityGate;
+        return [{ system_identifier: "preview-app-id", database_oid: "101" }];
+      }),
+      user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["first"])) },
+    };
+    const secondClient = {
+      $queryRaw: vi.fn(async () => [
+        { system_identifier: "preview-app-id", database_oid: "101" },
+      ]),
+      user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["second"])) },
+    };
+
+    const first = withIdentityGuard(firstClient, "preview-app-id", "101", "App", cacheKey);
+    const second = withIdentityGuard(secondClient, "preview-app-id", "101", "App", cacheKey);
+    const firstResult = first.user.findMany();
+    const secondResult = second.user.findMany();
+    await Promise.resolve();
+
+    expect(firstClient.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(secondClient.$queryRaw).not.toHaveBeenCalled();
+    releaseIdentity();
+    await expect(Promise.all([firstResult, secondResult])).resolves.toEqual([
+      ["first"],
+      ["second"],
+    ]);
+  });
+
   it("does not reuse identity proof across different expected database identities", async () => {
     const cacheKey = "test://app-preview/same-connection";
     const firstClient = {
