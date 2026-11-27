@@ -341,9 +341,12 @@ describe("Prisma Worker database identity guard", () => {
     const second = withIdentityGuard(secondClient, "preview-app-id", "101", "App", cacheKey);
     const firstResult = first.user.findMany();
     const secondResult = second.user.findMany();
-    await Promise.resolve();
 
-    expect(firstClient.$queryRaw).toHaveBeenCalledTimes(1);
+    // Wait for the asynchronous lazy-PrismaPromise guard to start its identity
+    // query before asserting that the second request joined the in-flight proof.
+    await vi.waitFor(() => {
+      expect(firstClient.$queryRaw).toHaveBeenCalledTimes(1);
+    });
     expect(secondClient.$queryRaw).not.toHaveBeenCalled();
     releaseIdentity();
     await expect(Promise.all([firstResult, secondResult])).resolves.toEqual([
