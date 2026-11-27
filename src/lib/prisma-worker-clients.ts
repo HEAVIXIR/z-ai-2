@@ -46,28 +46,27 @@ function verifyIdentityWithIsolateCache(
   if (cached && cached.expiresAt > now) return cached.promise;
   if (cached) identityVerificationCache.delete(cacheKey);
 
+  const entry: IdentityVerificationCacheEntry = {
+    promise: Promise.resolve(),
+    expiresAt: Number.POSITIVE_INFINITY,
+  };
   const promise = Promise.resolve().then(verify).then(
     () => {
-      if (identityVerificationCache.get(cacheKey)?.promise === promise) {
-        identityVerificationCache.set(cacheKey, {
-          promise,
-          expiresAt: Date.now() + IDENTITY_VERIFICATION_CACHE_TTL_MS,
-        });
+      if (identityVerificationCache.get(cacheKey) === entry) {
+        entry.expiresAt = Date.now() + IDENTITY_VERIFICATION_CACHE_TTL_MS;
       }
     },
     (error) => {
       // Never cache a failed query or identity mismatch.
-      if (identityVerificationCache.get(cacheKey)?.promise === promise) {
+      if (identityVerificationCache.get(cacheKey) === entry) {
         identityVerificationCache.delete(cacheKey);
       }
       throw error;
     },
   );
+  entry.promise = promise;
   // Concurrent requests in this isolate share the in-flight verification.
-  identityVerificationCache.set(cacheKey, {
-    promise,
-    expiresAt: Number.POSITIVE_INFINITY,
-  });
+  identityVerificationCache.set(cacheKey, entry);
   return promise;
 }
 
