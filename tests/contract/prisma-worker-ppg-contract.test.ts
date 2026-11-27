@@ -30,6 +30,11 @@ describe("Prisma Postgres workerd client contract", () => {
     expect(factories).toContain('Missing Cloudflare Worker secret: DATABASE_URL');
     expect(factories).toContain('Missing Cloudflare Worker secret: STORE_DATABASE_URL');
     expect(factories).not.toContain("@prisma/adapter-pg");
+    expect(factories).toContain("verifyIdentityWithIsolateCache");
+    expect(factories).toContain("IDENTITY_VERIFICATION_CACHE_TTL_MS = 60_000");
+    expect(factories).toContain("identityCacheKey?: string");
+    expect(factories).toContain("Never cache a failed query or identity mismatch");
+    expect(factories).toContain("connectionString,");
     expect(resolver).toContain("new WeakMap<object, TClient>()");
     expect(resolver).toContain("requestKey");
     expect(main).not.toMatch(/globalThis\s*\.\s*\w+/);
