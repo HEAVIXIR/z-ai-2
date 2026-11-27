@@ -17,13 +17,13 @@ describe("media sidecar path containment contract", () => {
   });
 
   it("rejects paths that resolve outside the upload root", () => {
-    expect(source).toContain("const lexicalRoot = path.resolve(UPLOAD_ROOT)");
+    expect(source).toContain("const lexicalRoot = path.resolve(uploadRoot)");
     expect(source).toContain("const resolved = path.resolve(lexicalRoot, relativePath)");
     expect(source).toContain("relative.startsWith(`..${path.sep}`)");
   });
 
   it("checks real parent paths and rejects symlinked binary or sidecar files", () => {
-    expect(source).toContain("await fs.realpath(UPLOAD_ROOT)");
+    expect(source).toContain("await fs.realpath(uploadRoot)");
     expect(source).toContain("await fs.realpath(path.dirname(resolved))");
     expect(source).toContain("await fs.lstat(candidate)");
     expect(source).toContain("stat.isSymbolicLink()");
