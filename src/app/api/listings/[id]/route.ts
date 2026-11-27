@@ -238,8 +238,13 @@ export async function PATCH(req: Request, { params }: Args) {
       });
     }
     if (body.removeImages && Array.isArray(body.removeImages)) {
+      // Scope every image mutation to the already-authorized listing.
+      // An image ID supplied by the client must never cross listing boundaries.
       await db.listingImage.deleteMany({
-        where: { id: { in: body.removeImages.map(String) } },
+        where: {
+          listingId: id,
+          id: { in: body.removeImages.map(String) },
+        },
       });
     }
     if (body.setPrimaryImage) {
@@ -247,15 +252,24 @@ export async function PATCH(req: Request, { params }: Args) {
         where: { listingId: id },
         data: { isPrimary: false },
       });
-      await db.listingImage.update({
-        where: { id: String(body.setPrimaryImage) },
+      const primaryImage = await db.listingImage.updateMany({
+        where: { id: String(body.setPrimaryImage), listingId: id },
         data: { isPrimary: true },
       });
+      if (primaryImage.count === 0) {
+        return NextResponse.json(
+          { error: "تصویر متعلق به این آگهی نیست." },
+          { status: 404 },
+        );
+      }
     }
     if (body.reorderImages && Array.isArray(body.reorderImages)) {
       await Promise.all(
         body.reorderImages.map((imgId: string, idx: number) =>
-          db.listingImage.update({ where: { id: String(imgId) }, data: { sortOrder: idx } }),
+          db.listingImage.updateMany({
+            where: { id: String(imgId), listingId: id },
+            data: { sortOrder: idx },
+          }),
         ),
       );
     }
