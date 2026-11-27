@@ -248,20 +248,26 @@ export async function PATCH(req: Request, { params }: Args) {
       });
     }
     if (body.setPrimaryImage) {
-      await db.listingImage.updateMany({
-        where: { listingId: id },
-        data: { isPrimary: false },
-      });
-      const primaryImage = await db.listingImage.updateMany({
+      // Validate the target image before clearing the current primary image.
+      // Invalid/cross-listing IDs must not change this listing's image state.
+      const targetImage = await db.listingImage.findFirst({
         where: { id: String(body.setPrimaryImage), listingId: id },
-        data: { isPrimary: true },
+        select: { id: true },
       });
-      if (primaryImage.count === 0) {
+      if (!targetImage) {
         return NextResponse.json(
           { error: "تصویر متعلق به این آگهی نیست." },
           { status: 404 },
         );
       }
+      await db.listingImage.updateMany({
+        where: { listingId: id },
+        data: { isPrimary: false },
+      });
+      await db.listingImage.updateMany({
+        where: { id: targetImage.id, listingId: id },
+        data: { isPrimary: true },
+      });
     }
     if (body.reorderImages && Array.isArray(body.reorderImages)) {
       await Promise.all(
