@@ -208,6 +208,59 @@ export async function PATCH(req: Request, { params }: Args) {
       // Seller extend: keep current status (PUBLISHED stays PUBLISHED).
     }
 
+    // Image management: validate the whole image mutation request before applying it.
+    const imageUrlIsAllowed = (raw: unknown): boolean => {
+      const value = String(raw ?? "").trim();
+      if (!value || value.length > 2048) return false;
+      try {
+        const parsed = new URL(value);
+        return (parsed.protocol === "https:" || parsed.protocol === "http:") &&
+          !parsed.username && !parsed.password;
+      } catch {
+        return false;
+      }
+    };
+
+    if (body.addImages !== undefined && !Array.isArray(body.addImages)) {
+      return NextResponse.json({ error: "لیست تصاویر نامعتبر است." }, { status: 400 });
+    }
+    if (body.removeImages !== undefined && !Array.isArray(body.removeImages)) {
+      return NextResponse.json({ error: "لیست حذف تصاویر نامعتبر است." }, { status: 400 });
+    }
+    if (body.reorderImages !== undefined && !Array.isArray(body.reorderImages)) {
+      return NextResponse.json({ error: "ترتیب تصاویر نامعتبر است." }, { status: 400 });
+    }
+
+    const addImages = Array.isArray(body.addImages) ? body.addImages : [];
+    const removeImages = Array.isArray(body.removeImages) ? body.removeImages.map(String) : [];
+    const reorderImages = Array.isArray(body.reorderImages) ? body.reorderImages.map(String) : [];
+    const currentImageCount = await db.listingImage.count({ where: { listingId: id } });
+    if (addImages.some((img: any) => !imageUrlIsAllowed(img?.url ?? img))) {
+      return NextResponse.json({ error: "URL یکی از تصاویر معتبر نیست." }, { status: 400 });
+    }
+
+    // Validate all image IDs against this listing before mutating anything.
+    const requestedIds = [...new Set([...removeImages, ...reorderImages, ...(body.setPrimaryImage ? [String(body.setPrimaryImage)] : [])])];
+    if (requestedIds.length) {
+      const ownedImages = await db.listingImage.findMany({
+        where: { listingId: id, id: { in: requestedIds } },
+        select: { id: true },
+      });
+      const ownedIds = new Set(ownedImages.map((img) => img.id));
+      if (requestedIds.some((imageId) => !ownedIds.has(imageId))) {
+        return NextResponse.json({ error: "یک یا چند تصویر متعلق به این آگهی نیست." }, { status: 404 });
+      }
+    }
+
+    // Account for valid removals before enforcing the post-mutation image ceiling.
+    // IDs are deduplicated and ownership-checked above, so duplicate IDs cannot
+    // inflate the removal count or let a caller subtract another listing's images.
+    const uniqueRemoveCount = new Set(removeImages).size;
+    const resultingImageCount = currentImageCount - uniqueRemoveCount + addImages.length;
+    if (resultingImageCount > 10) {
+      return NextResponse.json({ error: "حداکثر ۱۰ تصویر برای هر آگهی مجاز است." }, { status: 400 });
+    }
+
     await db.listing.update({ where: { id }, data }).catch(async (updateErr: any) => {
       // Stale PrismaClient may reject the new P1-5/6 scalar fields. Strip them and retry.
       const msg = String(updateErr?.message ?? "");
@@ -224,38 +277,32 @@ export async function PATCH(req: Request, { params }: Args) {
       }
     });
 
-    // Image management (seller can add/remove/reorder/primary)
-    if (body.addImages && Array.isArray(body.addImages)) {
-      const existingCount = await db.listingImage.count({ where: { listingId: id } });
+    if (addImages.length) {
+      const existingCount = currentImageCount;
       await db.listingImage.createMany({
-        data: body.addImages.map((img: any, idx: number) => ({
+        data: addImages.map((img: any, idx: number) => ({
           listingId: id,
-          url: String(img.url ?? img),
+          url: String(img.url ?? img).trim(),
           alt: img.alt ?? null,
           isPrimary: img.isPrimary ?? (existingCount === 0 && idx === 0),
           sortOrder: img.sortOrder ?? existingCount + idx,
         })),
       });
     }
-    if (body.removeImages && Array.isArray(body.removeImages)) {
-      await db.listingImage.deleteMany({
-        where: { id: { in: body.removeImages.map(String) } },
-      });
+    if (removeImages.length) {
+      await db.listingImage.deleteMany({ where: { listingId: id, id: { in: removeImages } } });
     }
     if (body.setPrimaryImage) {
+      await db.listingImage.updateMany({ where: { listingId: id }, data: { isPrimary: false } });
       await db.listingImage.updateMany({
-        where: { listingId: id },
-        data: { isPrimary: false },
-      });
-      await db.listingImage.update({
-        where: { id: String(body.setPrimaryImage) },
+        where: { id: String(body.setPrimaryImage), listingId: id },
         data: { isPrimary: true },
       });
     }
-    if (body.reorderImages && Array.isArray(body.reorderImages)) {
+    if (reorderImages.length) {
       await Promise.all(
-        body.reorderImages.map((imgId: string, idx: number) =>
-          db.listingImage.update({ where: { id: String(imgId) }, data: { sortOrder: idx } }),
+        reorderImages.map((imgId: string, idx: number) =>
+          db.listingImage.updateMany({ where: { id: imgId, listingId: id }, data: { sortOrder: idx } }),
         ),
       );
     }
