@@ -71,8 +71,8 @@ export default function TransactionTypePicker({
   onRetry: () => void;
   compact?: boolean;
 }) {
-  // The listing page supplies transaction types from its existing /api/taxonomy
-  // request. This picker deliberately performs no second network request.
+  // The listing page supplies transaction types from its dedicated Step 1 API
+  // request. The larger taxonomy payload is deferred until Step 2.
   const normalized = types.map((item) => ({
     ...item,
     nameFa: CANONICAL_LABELS[item.key] ?? item.nameFa,
