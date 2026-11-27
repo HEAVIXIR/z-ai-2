@@ -341,6 +341,8 @@ describe("Prisma Worker database identity guard", () => {
     const second = withIdentityGuard(secondClient, "preview-app-id", "101", "App", cacheKey);
     const firstResult = first.user.findMany();
     const secondResult = second.user.findMany();
+    // Prisma promises are lazy: consume them before waiting for the guard.
+    const combined = Promise.all([firstResult, secondResult]);
 
     // Wait for the asynchronous lazy-PrismaPromise guard to start its identity
     // query before asserting that the second request joined the in-flight proof.
@@ -349,7 +351,7 @@ describe("Prisma Worker database identity guard", () => {
     });
     expect(secondClient.$queryRaw).not.toHaveBeenCalled();
     releaseIdentity();
-    await expect(Promise.all([firstResult, secondResult])).resolves.toEqual([
+    await expect(combined).resolves.toEqual([
       ["first"],
       ["second"],
     ]);
