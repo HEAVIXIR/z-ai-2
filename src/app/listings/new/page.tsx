@@ -6,7 +6,7 @@ import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
 import ListingImageUploader from "@/components/listings/ListingImageUploader";
 import CascadingCategoryPicker, { type CategoryPathItem } from "@/components/listings/CascadingCategoryPicker";
-import TransactionTypePicker from "@/components/listings/TransactionTypePicker";
+import TransactionTypePicker, { type TransactionTypeOption } from "@/components/listings/TransactionTypePicker";
 import LocationPicker, { type LocationValue } from "@/components/listings/LocationPicker";
 import AttributeFields, {
   type AttributeValue,
@@ -212,6 +212,7 @@ export default function NewListingPage() {
   // Catalog root/child/grandchild state
   const [catalogRoots, setCatalogRoots] = useState<TaxRoot[]>([]);
   const [serviceRoots, setServiceRoots] = useState<TaxRoot[]>([]);
+  const [transactionTypes, setTransactionTypes] = useState<TransactionTypeOption[]>([]);
   const [taxonomyLoading, setTaxonomyLoading] = useState(true);
   const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
   const [taxonomyRetryKey, setTaxonomyRetryKey] = useState(0);
@@ -243,15 +244,17 @@ export default function NewListingPage() {
         const data = (await res.json()) as {
           catalogRoots?: TaxRoot[];
           serviceRoots?: TaxRoot[];
+          transactionTypes?: TransactionTypeOption[];
           serviceTypes?: ServiceTypeOption[];
         };
         if (alive) {
           setCatalogRoots(data.catalogRoots ?? []);
           setServiceRoots(data.serviceRoots ?? []);
+          setTransactionTypes(data.transactionTypes ?? []);
           setServiceTypes(data.serviceTypes ?? []);
         }
       } catch {
-        if (alive) setTaxonomyError("دریافت دسته‌بندی‌ها ناموفق بود. اتصال را بررسی کنید و دوباره تلاش کنید.");
+        if (alive) setTaxonomyError("دریافت داده‌های اولیه ثبت آگهی ناموفق بود. اتصال را بررسی کنید و دوباره تلاش کنید.");
       } finally {
         if (alive) setTaxonomyLoading(false);
       }
@@ -926,7 +929,14 @@ export default function NewListingPage() {
                       subtitle="نوع معامله‌ای که می‌خواهید ثبت کنید را انتخاب کنید"
                     />
                     <div className="mt-6">
-                      <TransactionTypePicker value={transactionType} onChange={handleTransactionTypeChange} />
+                      <TransactionTypePicker
+                        value={transactionType}
+                        onChange={handleTransactionTypeChange}
+                        types={transactionTypes}
+                        loading={taxonomyLoading}
+                        error={Boolean(taxonomyError)}
+                        onRetry={() => setTaxonomyRetryKey((current) => current + 1)}
+                      />
                     </div>
 
                     {/* P0-A: WANTED intent selector MOVED to Step 1 — BEFORE category selection.
