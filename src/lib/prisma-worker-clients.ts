@@ -26,6 +26,51 @@ export type WorkerDatabaseEnv = {
 const EXPECTED_APP_SYSTEM_IDENTIFIER = "7701427422680793119";
 const EXPECTED_STORE_SYSTEM_IDENTIFIER = "7701425043360235551";
 
+// A Worker isolate keeps immutable bindings for its lifetime. Rechecking the
+// same database identity on every request adds a serial PPG round trip before
+// the actual query. Cache only successful proofs for a short interval; keep
+// Prisma clients/adapters request-scoped and always recheck transaction clients.
+const IDENTITY_VERIFICATION_CACHE_TTL_MS = 60_000;
+type IdentityVerificationCacheEntry = {
+  promise: Promise<void>;
+  expiresAt: number;
+};
+const identityVerificationCache = new Map<string, IdentityVerificationCacheEntry>();
+
+function verifyIdentityWithIsolateCache(
+  cacheKey: string,
+  verify: () => Promise<void>,
+): Promise<void> {
+  const now = Date.now();
+  const cached = identityVerificationCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.promise;
+  if (cached) identityVerificationCache.delete(cacheKey);
+
+  const promise = Promise.resolve().then(verify).then(
+    () => {
+      if (identityVerificationCache.get(cacheKey)?.promise === promise) {
+        identityVerificationCache.set(cacheKey, {
+          promise,
+          expiresAt: Date.now() + IDENTITY_VERIFICATION_CACHE_TTL_MS,
+        });
+      }
+    },
+    (error) => {
+      // Never cache a failed query or identity mismatch.
+      if (identityVerificationCache.get(cacheKey)?.promise === promise) {
+        identityVerificationCache.delete(cacheKey);
+      }
+      throw error;
+    },
+  );
+  // Concurrent requests in this isolate share the in-flight verification.
+  identityVerificationCache.set(cacheKey, {
+    promise,
+    expiresAt: Number.POSITIVE_INFINITY,
+  });
+  return promise;
+}
+
 function requireExpectedDatabaseOid(value: string | undefined, label: string): string {
   const valid = Boolean(value && /^[1-9]\d{0,9}$/.test(value) && Number(value) <= 4_294_967_295);
   if (!valid) {
@@ -67,15 +112,19 @@ export function withIdentityGuard<TClient extends object>(
   expectedSystemIdentifier: string,
   expectedDatabaseOid: string,
   label: string,
+  identityCacheKey?: string,
 ): TClient {
   let identityCheckPromise: Promise<void> | null = null;
+  const scopedIdentityCacheKey = identityCacheKey
+    ? JSON.stringify([identityCacheKey, expectedSystemIdentifier, expectedDatabaseOid, label])
+    : undefined;
   const delegateProxyCache = new WeakMap<object, object>();
   const identitySql =
     "SELECT (SELECT system_identifier::text FROM pg_control_system()) AS system_identifier, (SELECT oid::text FROM pg_database WHERE datname = current_database()) AS database_oid";
 
   const ensureIdentity = (): Promise<void> => {
     if (!identityCheckPromise) {
-      identityCheckPromise = (async () => {
+      const verifyIdentity = async () => {
         const rawMethod = Reflect.get(client, "$queryRaw", client) as
           | ((strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>)
           | undefined;
@@ -125,7 +174,10 @@ export function withIdentityGuard<TClient extends object>(
             actual, expectedSystemIdentifier, actualOid, expectedDatabaseOid, label,
           );
         }
-      })();
+      };
+      identityCheckPromise = scopedIdentityCacheKey
+        ? verifyIdentityWithIsolateCache(scopedIdentityCacheKey, verifyIdentity)
+        : verifyIdentity();
     }
     return identityCheckPromise;
   };
@@ -289,7 +341,13 @@ export function createAppWorkerClientResolver() {
         adapter: new PrismaPostgresAdapter({ connectionString }),
         log: ["error", "warn"],
       });
-      return withIdentityGuard(client, EXPECTED_APP_SYSTEM_IDENTIFIER, expectedDatabaseOid, "App");
+      return withIdentityGuard(
+        client,
+        EXPECTED_APP_SYSTEM_IDENTIFIER,
+        expectedDatabaseOid,
+        "App",
+        connectionString,
+      );
     },
   );
 }
@@ -306,7 +364,13 @@ export function createStoreWorkerClientResolver() {
         adapter: new PrismaPostgresAdapter({ connectionString }),
         log: ["error", "warn"],
       });
-      return withIdentityGuard(client, EXPECTED_STORE_SYSTEM_IDENTIFIER, expectedDatabaseOid, "Store");
+      return withIdentityGuard(
+        client,
+        EXPECTED_STORE_SYSTEM_IDENTIFIER,
+        expectedDatabaseOid,
+        "Store",
+        connectionString,
+      );
     },
   );
 }
