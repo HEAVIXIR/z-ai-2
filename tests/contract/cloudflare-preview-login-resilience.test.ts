@@ -17,4 +17,12 @@ describe("Cloudflare Integration Preview login resilience", () => {
     expect(login).toContain("این خطا به معنی اشتباه بودن رمز عبور نیست");
     expect(login).toContain("ارتباط با سرور پیش‌نمایش قطع شد");
   });
+
+  it("redacts query strings from both base and preview Worker telemetry", () => {
+    const config = read("wrangler.jsonc");
+    const [baseConfig, previewConfig] = config.split('"previews": {');
+    expect(baseConfig).toContain('"observability": { "enabled": true, "redact_query_string": true }');
+    expect(previewConfig).toContain('"redact_query_string": true');
+    expect(config.match(/"redact_query_string": true/g) ?? []).toHaveLength(2);
+  });
 });
