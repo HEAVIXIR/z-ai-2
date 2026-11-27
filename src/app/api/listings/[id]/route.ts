@@ -295,8 +295,10 @@ export async function PATCH(req: Request, { params }: Args) {
       });
     }
     if (reorderImages.length) {
-      await Promise.all(reorderImages.map((imgId: string, idx: number) =>
-        db.listingImage.updateMany({ where: { id: imgId, listingId: id }, data: { sortOrder: idx } }),
+      await Promise.all(
+        reorderImages.map((imgId: string, idx: number) =>
+          db.listingImage.updateMany({ where: { id: imgId, listingId: id }, data: { sortOrder: idx } }),
+        ),
       );
     }
 
