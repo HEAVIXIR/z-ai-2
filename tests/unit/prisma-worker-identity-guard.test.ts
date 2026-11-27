@@ -376,9 +376,9 @@ describe("Prisma Worker database identity guard", () => {
       };
       const secondClient = {
         $queryRaw: vi.fn(async () => [
-          { system_identifier: "preview-app-id", database_oid: "101" },
+          { system_identifier: "production-system-id", database_oid: "202" },
         ]),
-        user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["second"])) },
+        user: { findMany: vi.fn(() => lazyPrismaPromise(() => ["must-not-run"])) },
       };
 
       await expect(
@@ -387,10 +387,15 @@ describe("Prisma Worker database identity guard", () => {
       vi.setSystemTime(new Date("2026-11-27T00:01:01.000Z"));
       await expect(
         withIdentityGuard(secondClient, "preview-app-id", "101", "App", cacheKey).user.findMany(),
-      ).resolves.toEqual(["second"]);
+      ).rejects.toMatchObject({
+        name: "PreviewIdentityMismatchError",
+        expectedDatabaseOid: "101",
+        actualDatabaseOid: "202",
+      });
 
       expect(firstClient.$queryRaw).toHaveBeenCalledTimes(1);
       expect(secondClient.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(secondClient.user.findMany).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
