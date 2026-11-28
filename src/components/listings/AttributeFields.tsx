@@ -600,7 +600,7 @@ export function buildAttributePayload(
     };
     // Include explicit nulls for empty fields so PATCH can clear previously
     // persisted values instead of silently retaining stale specifications.
-    if (raw === undefined || raw === null || raw === "") {
+    if (raw === undefined || raw === null || (typeof raw === "string" && raw.trim() === "")) {
       switch (a.type) {
         case "BOOLEAN":
           entry.booleanValue = null;
