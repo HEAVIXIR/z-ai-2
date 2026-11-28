@@ -127,12 +127,16 @@ function isValidSidecar(value: unknown): value is AssetSidecar {
   if (typeof s.relativePath !== "string" || s.relativePath.length > 240 || s.relativePath.includes("\\") || s.relativePath.startsWith("/") || s.relativePath.split("/").some(part => !part || part === "." || part === "..")) return false;
   if (s.relativePath !== path.posix.join(typeof s.relativePath === "string" ? path.posix.dirname(s.relativePath) : "", s.filename)) return false;
   if (s.url !== `/uploads/${s.relativePath}`) return false;
-  if (typeof s.mimeType !== "string" || !/^image\/(jpeg|png|webp|gif|avif)$/.test(s.mimeType)) return false;
-  if (typeof s.ext !== "string" || !/^\.(jpg|jpeg|png|webp|gif|avif)$/.test(s.ext)) return false;
+  const formats: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", bmp: "image/bmp" };
+  if (typeof s.ext !== "string" || !Object.hasOwn(formats, s.ext)) return false;
+  if (s.mimeType !== formats[s.ext]) return false;
+  if (s.filename.toLowerCase().endsWith(`.${s.ext}`) === false) return false;
   if (!Number.isSafeInteger(s.size) || (s.size as number) <= 0) return false;
-  if (!nullableString(s.uploadedBy) || typeof s.uploadedAt !== "string" || !Number.isFinite(Date.parse(s.uploadedAt))) return false;
+  if (!nullableString(s.uploadedBy) || (typeof s.uploadedBy === "string" && s.uploadedBy.length > 256)) return false;
+  if (typeof s.uploadedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(s.uploadedAt) || !Number.isFinite(Date.parse(s.uploadedAt))) return false;
   if (!nullableString(s.entityType) || (s.entityType !== null && !ALLOWED_ENTITY_TYPES.has(s.entityType as string))) return false;
-  if (!nullableString(s.entityId) || !nullableString(s.altText)) return false;
+  if (!nullableString(s.entityId) || (typeof s.entityId === "string" && s.entityId.length > 256)) return false;
+  if (!nullableString(s.altText) || (typeof s.altText === "string" && s.altText.length > 500)) return false;
   return true;
 }
 
