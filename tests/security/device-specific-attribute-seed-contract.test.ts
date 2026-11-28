@@ -187,17 +187,10 @@ describe("listing category attribute cleanup", () => {
 
 
 describe("listing technical attribute API category validation", () => {
-  it("rejects attribute ids that are not linked to the resulting listing category", () => {
-    expect(sellerListingRoute).toContain("const targetCategoryId = data.categoryId ?? existing.categoryId");
-    expect(sellerListingRoute).toContain("getCategoryAttributeIds(db, targetCategoryId)");
-    expect(sellerListingRoute).toContain("allowedAttributeIds.has(String(value.attributeId))");
-    expect(sellerListingRoute).toContain("invalidAttributeIds.length > 0");
-    expect(sellerListingRoute).toContain("status: 400");
-  });
-
-  it("validates attributes before any listing mutation to avoid partial updates", () => {
-    const validation = sellerListingRoute.indexOf("Validate incoming attribute IDs");
+  it("runs complete technical attribute validation before any seller listing mutation", () => {
+    const validation = sellerListingRoute.indexOf("validateListingAttributeBatch(db, data.categoryId ?? existing.categoryId, body.attributeValues)");
     const listingUpdate = sellerListingRoute.indexOf("await db.listing.update({ where: { id }, data })");
+    expect(sellerListingRoute).toContain('import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation"');
     expect(validation).toBeGreaterThanOrEqual(0);
     expect(listingUpdate).toBeGreaterThan(validation);
   });
@@ -211,12 +204,10 @@ const adminListingRoute = readFileSync(
 );
 
 describe("admin listing technical attribute validation", () => {
-  it("rejects attributes outside the resulting category before listing mutation", () => {
-    const validation = adminListingRoute.indexOf("Validate incoming attribute IDs");
+  it("runs complete technical attribute validation before any admin listing mutation", () => {
+    const validation = adminListingRoute.indexOf("validateListingAttributeBatch(db, data.categoryId ?? existing.categoryId, body.attributeValues)");
     const mutation = adminListingRoute.indexOf("await db.listing.update({ where: { id }, data })");
-    expect(adminListingRoute).toContain("getCategoryAttributeIds(db, targetCategoryId)");
-    expect(adminListingRoute).toContain("invalidAttributeIds.length > 0");
-    expect(adminListingRoute).toContain("status: 400");
+    expect(adminListingRoute).toContain('import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation"');
     expect(validation).toBeGreaterThanOrEqual(0);
     expect(mutation).toBeGreaterThan(validation);
   });
