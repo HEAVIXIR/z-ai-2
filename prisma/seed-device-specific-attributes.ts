@@ -192,12 +192,17 @@ async function ensureAttribute(spec: AttributeSpec) {
   return definition;
 }
 
+const DEVICE_DOMAINS: Record<string, string> = {
+  Generators: "INDUSTRIAL_EQUIPMENT", Compressors: "INDUSTRIAL_EQUIPMENT", Pumps: "INDUSTRIAL_EQUIPMENT",
+  Tractor: "AGRICULTURE", "Combine Harvester": "AGRICULTURE",
+};
+
 async function main() {
   let linked = 0;
   const deviceNames = Object.keys(deviceCatalog);
   for (const [deviceNameEn, specific] of Object.entries(deviceCatalog)) {
     const category = await db.category.findFirst({
-      where: { domain: "MACHINE", level: 2, nameEn: deviceNameEn },
+      where: { domain: DEVICE_DOMAINS[deviceNameEn] ?? "MACHINE", level: 2, nameEn: deviceNameEn },
       select: { id: true, name: true, nameEn: true },
     });
     if (!category) {
