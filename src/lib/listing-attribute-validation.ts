@@ -196,7 +196,10 @@ export async function validateListingAttributeBatch(
           value.booleanValue,
           value.dateValue,
           value.optionId,
-        ].some((candidate) => candidate !== undefined && candidate !== null && candidate !== "");
+        ].some((candidate) => {
+          if (candidate === undefined || candidate === null || candidate === "") return false;
+          return typeof candidate !== "string" || candidate.trim().length > 0;
+        });
       })
       .map((link: any) => link.attributeId);
     if (missingRequired.length) {
