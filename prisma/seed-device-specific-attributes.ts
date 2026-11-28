@@ -235,6 +235,44 @@ async function ensureAttribute(spec: AttributeSpec) {
   return definition;
 }
 
+// Canonical slugs from the active taxonomy take precedence over legacy nameEn
+// matching. Several current MACHINE categories are created by seed-machine-taxonomy
+// with Persian names and stable slugs (without a nameEn field).
+const DEVICE_CATEGORY_SLUGS: Record<string, string[]> = {
+  Excavator: ["excavator"],
+  "Mining Excavator": ["mining-excavator-machine", "excavator-mining"],
+  "Wheel Loader": ["wheel-loader", "loader"],
+  "Skid Steer Loader": ["skid-steer-loader", "compact-loader"],
+  Compactor: ["road-roller", "soil-roller"],
+  Telehandler: ["telehandler", "telehandler-loader"],
+  "Backhoe Loader": ["backhoe-loader"],
+  Bulldozer: ["bulldozer"],
+  "Motor Grader": ["motor-grader", "grader"],
+  Crane: ["cranes-lifting", "mobile-crane"],
+  Forklift: ["forklift"],
+  "Reach Truck": ["reach-truck"],
+  Stackers: ["stackers"],
+  "Mining Dump Truck": ["mining-dump-truck"],
+  "Rigid Dump Truck": ["rigid-mining-truck", "mining-dump-truck"],
+  "Articulated Dump Truck": ["articulated-mining-truck", "mining-dump-truck"],
+  "Drilling Machine": ["drill-rig", "drilling"],
+  Crusher: ["crushing-processing", "jaw-crusher"],
+  "Screening Machine": ["screen"],
+  "Asphalt Paver": ["asphalt-finisher", "track-paver"],
+  "Asphalt Plant": ["asphalt-plant", "asphalt-machinery"],
+  "Road Roller": ["road-roller"],
+  Stabilizer: ["grading-earthmoving"],
+  "Cold Milling Machine": ["asphalt-machinery"],
+  "Batching Plant": ["batching-plant"],
+  "Concrete Mixer": ["concrete-mixer", "transit-mixer"],
+  "Concrete Pump": ["concrete-pump"],
+  Generators: ["generators"],
+  Compressors: ["compressors"],
+  Pumps: ["pumps"],
+  Tractor: ["tractor"],
+  "Combine Harvester": ["combine-harvester"],
+};
+
 const DEVICE_DOMAINS: Record<string, string> = {
   Generators: "INDUSTRIAL_EQUIPMENT", Compressors: "INDUSTRIAL_EQUIPMENT", Pumps: "INDUSTRIAL_EQUIPMENT",
   Tractor: "AGRICULTURE", "Combine Harvester": "AGRICULTURE",
@@ -247,13 +285,33 @@ async function main() {
     const domain = DEVICE_DOMAINS[deviceNameEn] ?? "MACHINE";
     // Most device forms attach to a level-2 leaf. Some catalog domains
     // (e.g. INDUSTRIAL_EQUIPMENT and AGRICULTURE V1) currently end at level 1.
-    const category = (await db.category.findFirst({
-      where: { domain, level: 2, nameEn: deviceNameEn },
-      select: { id: true, name: true, nameEn: true },
-    })) ?? (await db.category.findFirst({
-      where: { domain, level: 1, nameEn: deviceNameEn },
-      select: { id: true, name: true, nameEn: true },
-    }));
+    let category: { id: string; name: string; nameEn: string | null } | null = null;
+    for (const slug of DEVICE_CATEGORY_SLUGS[deviceNameEn] ?? []) {
+      category = await db.category.findFirst({
+        where: { slug, domain, layer: "CATALOG", active: true },
+        select: { id: true, name: true, nameEn: true },
+      });
+      if (category) break;
+    }
+    // Compatibility fallback for older active taxonomy rows that still carry nameEn.
+    if (!category) {
+      category = await db.category.findFirst({
+        where: { domain, layer: "CATALOG", active: true, level: 2, nameEn: deviceNameEn },
+        select: { id: true, name: true, nameEn: true },
+      });
+    }
+    if (!category) {
+      category = await db.category.findFirst({
+        where: { domain, layer: "CATALOG", active: true, level: 3, nameEn: deviceNameEn },
+        select: { id: true, name: true, nameEn: true },
+      });
+    }
+    if (!category) {
+      category = await db.category.findFirst({
+        where: { domain, layer: "CATALOG", active: true, level: 1, nameEn: deviceNameEn },
+        select: { id: true, name: true, nameEn: true },
+      });
+    }
     if (!category) {
       console.warn(`[device-attributes] category not found; skipped: ${deviceNameEn}`);
       continue;
