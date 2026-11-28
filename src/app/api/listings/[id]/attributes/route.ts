@@ -151,7 +151,6 @@ export async function PUT(req: Request, { params }: Args) {
         db,
         listing.categoryId,
         incoming,
-        { enforceRequired: true },
       );
       if (!validation.ok) {
         return NextResponse.json(
