@@ -22,7 +22,7 @@ export async function validateListingAttributeBatch(
   if (!Array.isArray(incoming)) return { ok: false, error: "attributeValues must be an array" };
   if (incoming.some((value) => !value || typeof value !== "object" || Array.isArray(value) ||
     typeof (value as AttributeValueInput).attributeId !== "string" ||
-    !(value as AttributeValueInput).attributeId?.trim())) {
+    !((value as AttributeValueInput).attributeId as string).trim())) {
     return { ok: false, error: "attributeId is required for each value" };
   }
 
