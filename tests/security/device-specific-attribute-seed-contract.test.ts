@@ -101,3 +101,22 @@ describe("listing technical attribute API category validation", () => {
     expect(listingUpdate).toBeGreaterThan(validation);
   });
 });
+
+
+
+const adminListingRoute = readFileSync(
+  resolve(process.cwd(), "src/app/api/admin/listings/[id]/route.ts"),
+  "utf8",
+);
+
+describe("admin listing technical attribute validation", () => {
+  it("rejects attributes outside the resulting category before listing mutation", () => {
+    const validation = adminListingRoute.indexOf("Validate incoming attribute IDs");
+    const mutation = adminListingRoute.indexOf("await db.listing.update({ where: { id }, data })");
+    expect(adminListingRoute).toContain("db.categoryAttribute.findMany");
+    expect(adminListingRoute).toContain("invalidAttributeIds.length > 0");
+    expect(adminListingRoute).toContain("status: 400");
+    expect(validation).toBeGreaterThanOrEqual(0);
+    expect(mutation).toBeGreaterThan(validation);
+  });
+});
