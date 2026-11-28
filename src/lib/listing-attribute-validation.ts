@@ -53,17 +53,26 @@ export async function validateListingAttributeBatch(
     return { ok: false, error: "One or more attribute definitions do not exist", details: { invalidAttributeIds: missingIds } };
   }
 
-  const invalidNumbers = values.some((value) =>
-    value.numberValue !== undefined && value.numberValue !== null && value.numberValue !== "" &&
-    !Number.isFinite(Number(value.numberValue))
-  );
-  if (invalidNumbers) return { ok: false, error: "Numeric attribute values must be finite numbers" };
+  const numericTypes = new Set(["INTEGER", "DECIMAL", "NUMBER", "CURRENCY", "UNIT", "SIZE", "WEIGHT", "YEAR", "RANGE"]);
+  const dateTypes = new Set(["DATE", "DATETIME"]);
+  const invalidNumbers = values.some((value) => {
+    if (value.numberValue === undefined || value.numberValue === null || value.numberValue === "") return false;
+    if (typeof value.numberValue !== "number" && typeof value.numberValue !== "string") return true;
+    const definition = definitionsById.get(String(value.attributeId)) as { type?: string } | undefined;
+    return !definition || !numericTypes.has(definition.type ?? "") ||
+      (typeof value.numberValue === "string" && value.numberValue.trim() === "") ||
+      !Number.isFinite(Number(value.numberValue));
+  });
+  if (invalidNumbers) return { ok: false, error: "Numeric values must be finite and match a numeric attribute" };
 
-  const invalidDates = values.some((value) =>
-    value.dateValue !== undefined && value.dateValue !== null && value.dateValue !== "" &&
-    Number.isNaN(new Date(value.dateValue as string | number | Date).getTime())
-  );
-  if (invalidDates) return { ok: false, error: "Date attribute values must be valid dates" };
+  const invalidDates = values.some((value) => {
+    if (value.dateValue === undefined || value.dateValue === null || value.dateValue === "") return false;
+    const definition = definitionsById.get(String(value.attributeId)) as { type?: string } | undefined;
+    return !definition || !dateTypes.has(definition.type ?? "") ||
+      typeof value.dateValue !== "string" ||
+      Number.isNaN(new Date(value.dateValue).getTime());
+  });
+  if (invalidDates) return { ok: false, error: "Date values must be valid and match a date attribute" };
 
   const optionRefs = values
     .filter((value) => value.optionId !== undefined && value.optionId !== null && value.optionId !== "")
