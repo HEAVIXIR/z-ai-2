@@ -230,7 +230,7 @@ export async function uploadAsset(
 
   // 3. Write binary file (guard against accidental overwrite)
   try {
-    await fs.writeFile(fullDiskPath, storedBuffer);
+    await fs.writeFile(fullDiskPath, storedBuffer, { flag: "wx" });
   } catch (err) {
     return {
       ok: false,
@@ -260,7 +260,7 @@ export async function uploadAsset(
   // 5. Persist sidecar
   const sidecarDiskPath = path.join(targetDir, sidecarPathFor(safeName));
   try {
-    await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), "utf8");
+    await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), { encoding: "utf8", flag: "wx" });
   } catch (err) {
     // Best-effort cleanup of orphaned binary if sidecar write failed
     await fs.unlink(fullDiskPath).catch(() => {});
