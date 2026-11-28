@@ -46,3 +46,15 @@ describe("device-specific technical attribute seed", () => {
     expect(seed).toContain("generator-prime-power");
   });
 });
+
+
+const listingEditForm = readFileSync(
+  resolve(process.cwd(), "src/app/admin/listings/[id]/edit/ListingEditForm.tsx"),
+  "utf8",
+);
+
+describe("device-specific listing edit form", () => {
+  it("clears previous category values before loading another device's specifications", () => {
+    expect(listingEditForm).toMatch(/if \(nextCategoryId !== categoryId\)[\\s\\S]*?setAttributeValues\(\{\}\)[\\s\\S]*?setAttributeDefs\(\[\]\)[\\s\\S]*?setCategoryId\(nextCategoryId\)/);
+  });
+});
