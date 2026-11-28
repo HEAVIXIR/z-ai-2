@@ -397,7 +397,7 @@ export default function AttributeFields({
                     className="h-4 w-4 accent-[#F58220]"
                   />
                   <span className="text-xs text-white/70">
-                    {v === true ? "بله" : "خیر"}
+                    {v === true ? "بله" : v === false ? "خیر" : "انتخاب نشده"}
                   </span>
                 </label>
               );
