@@ -65,3 +65,18 @@ describe("device-specific listing edit form", () => {
     expect(updateCategory).toBeGreaterThan(clearDefinitions);
   });
 });
+
+
+const sellerListingRoute = readFileSync(
+  resolve(process.cwd(), "src/app/api/listings/[id]/route.ts"),
+  "utf8",
+);
+
+describe("listing category attribute cleanup", () => {
+  it("removes only obsolete prior-category values and scopes deletion to the listing", () => {
+    expect(listingEditForm).toContain("payload.removeAttributeIds = initial.attributeValues");
+    expect(listingEditForm).toContain("!nextAttributeIds.has(attributeId)");
+    expect(sellerListingRoute).toContain("attributeId: { in: body.removeAttributeIds.map(String) }");
+    expect(sellerListingRoute).toContain("listingId: id");
+  });
+});
