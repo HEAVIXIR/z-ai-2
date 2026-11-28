@@ -9,7 +9,6 @@ import { hasPermission } from "@/lib/rbac";
 import { isAdmin } from "@/lib/authorization";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
 import { mutateListingImages } from "@/lib/listing-image-mutations";
-import { getCategoryAttributeIds } from "@/lib/category-attributes";
 import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation";
 
 // STEP 11.32 NEW-C1 FIX: these legacy admin routes are ADMIN-ONLY.
