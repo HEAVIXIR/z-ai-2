@@ -61,7 +61,7 @@ describe("listing device category technical form state", () => {
     );
     for (const route of [sellerRoute, adminRoute]) {
       expect(route).toContain("validateListingAttributeBatch(");
-      expect(route).toContain("data.categoryId ?? existing.categoryId");
+      expect(route).toContain("data.categoryId !== undefined ? data.categoryId : existing.categoryId");
       expect(route).toContain("if (!validation.ok)");
     }
     expect(validator).toContain("Duplicate attributeIds are not allowed");
