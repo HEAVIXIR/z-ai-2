@@ -119,7 +119,7 @@ async function walkFiles(
 }
 
 /** Validate sidecar metadata before it can enter the public asset flow. */
-function isValidSidecar(value: unknown): value is AssetSidecar {
+export function isValidSidecar(value: unknown): value is AssetSidecar {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const s = value as Record<string, unknown>;
   const nullableString = (v: unknown) => v === null || typeof v === "string";
