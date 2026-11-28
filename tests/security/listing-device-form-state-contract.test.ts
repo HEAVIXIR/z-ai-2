@@ -123,6 +123,9 @@ describe("end-to-end technical attribute persistence contract", () => {
     expect(component).toContain("out.push(entry);");
     expect(component).toContain("entry.numberValue = null;");
     expect(component).toContain("entry.optionId = null;");
+    expect(component).toContain("entry.textValue = selected || null;");
+    expect(component).toContain("range.every((part) => part.trim() === \"\")");
+    expect(component).toContain('a.type === "RANGE" && typeof v === "string"');
   });
 
   it("rejects whitespace-only required technical values in both client and server validation", () => {
