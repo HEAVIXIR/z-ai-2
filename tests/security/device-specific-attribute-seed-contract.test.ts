@@ -55,6 +55,13 @@ const listingEditForm = readFileSync(
 
 describe("device-specific listing edit form", () => {
   it("clears previous category values before loading another device's specifications", () => {
-    expect(listingEditForm).toMatch(/if \(nextCategoryId !== categoryId\)[\\s\\S]*?setAttributeValues\(\{\}\)[\\s\\S]*?setAttributeDefs\(\[\]\)[\\s\\S]*?setCategoryId\(nextCategoryId\)/);
+    const categoryChange = listingEditForm.indexOf("if (nextCategoryId !== categoryId)");
+    const clearValues = listingEditForm.indexOf("setAttributeValues({})", categoryChange);
+    const clearDefinitions = listingEditForm.indexOf("setAttributeDefs([])", clearValues);
+    const updateCategory = listingEditForm.indexOf("setCategoryId(nextCategoryId)", clearDefinitions);
+    expect(categoryChange).toBeGreaterThanOrEqual(0);
+    expect(clearValues).toBeGreaterThan(categoryChange);
+    expect(clearDefinitions).toBeGreaterThan(clearValues);
+    expect(updateCategory).toBeGreaterThan(clearDefinitions);
   });
 });
