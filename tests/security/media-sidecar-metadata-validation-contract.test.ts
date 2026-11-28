@@ -36,9 +36,9 @@ describe("media sidecar metadata validation", () => {
 
   it("rejects malformed ids and unsafe filenames", () => {
     expect(isValidSidecar({ ...validSidecar(), id: "not-an-id" })).toBe(false);
-    expect(isValidSidecar({ ...validSidecar(), filename: "../image.webp" })).toBe(false);
+    expect(isValidSidecar({ ...validSidecar(), filename: `image.webp${String.fromCharCode(0)}` })).toBe(false);
     expect(isValidSidecar({ ...validSidecar(), filename: "image.webp\\0" })).toBe(false);
-    expect(isValidSidecar({ ...validSidecar(), relativePath: "2026/11/image.webp\\0" })).toBe(false);
+    expect(isValidSidecar({ ...validSidecar(), relativePath: `2026/11/image.webp${String.fromCharCode(0)}` })).toBe(false);
   });
 
   it("rejects absolute, traversal, backslash, and mismatched paths", () => {
@@ -67,6 +67,7 @@ describe("media sidecar metadata validation", () => {
 
   it("rejects invalid timestamps and entity associations", () => {
     expect(isValidSidecar({ ...validSidecar(), uploadedAt: "yesterday" })).toBe(false);
+    expect(isValidSidecar({ ...validSidecar(), uploadedAt: "2026-02-31T12:30:00.000Z" })).toBe(false);
     expect(isValidSidecar({ ...validSidecar(), entityType: "UnknownEntity" })).toBe(false);
     expect(isValidSidecar({ ...validSidecar(), entityId: "x".repeat(257) })).toBe(false);
   });
