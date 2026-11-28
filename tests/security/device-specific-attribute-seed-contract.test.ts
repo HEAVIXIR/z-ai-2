@@ -76,6 +76,8 @@ describe("listing category attribute cleanup", () => {
   it("removes only obsolete prior-category values and scopes deletion to the listing", () => {
     expect(listingEditForm).toContain("payload.removeAttributeIds = initial.attributeValues");
     expect(listingEditForm).toContain("!nextAttributeIds.has(attributeId)");
+    expect(listingEditForm).toContain("attributeDefsCategoryId !== categoryId");
+    expect(listingEditForm).toContain("setAttributeDefsCategoryId(categoryId)");
     expect(sellerListingRoute).toContain("attributeId: { in: body.removeAttributeIds.map(String) }");
     expect(sellerListingRoute).toContain("listingId: id");
   });
