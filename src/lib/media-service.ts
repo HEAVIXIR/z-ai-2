@@ -228,14 +228,34 @@ export async function uploadAsset(
   const relPath = path.join(sub, safeName).split(path.sep).join("/");
   const publicUrl = `/uploads/${relPath}`;
 
-  // 3. Write binary file (guard against accidental overwrite)
-  try {
-    await fs.writeFile(fullDiskPath, storedBuffer, { flag: "wx" });
-  } catch (err) {
-    return {
-      ok: false,
-      error: `ذخیره‌سازی فایل ناموفق بود: ${(err as Error).message}`,
-    };
+  // 3. Write binary file exclusively (guard against accidental overwrite).
+  // If a randomized filename collision occurs, retry with a new filename rather
+  // than clobbering existing content.
+  let safeName = sanitizeFilename(optimized.ext);
+  let fullDiskPath = path.join(targetDir, safeName);
+  let relPath = path.join(sub, safeName).split(path.sep).join("/");
+  let publicUrl = `/uploads/${relPath}`;
+  let binaryCreated = false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await fs.writeFile(fullDiskPath, storedBuffer, { flag: "wx" });
+      binaryCreated = true;
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST" || attempt === 2) {
+        return {
+          ok: false,
+          error: `ذخیره‌سازی فایل ناموفق بود: ${(err as Error).message}`,
+        };
+      }
+      safeName = sanitizeFilename(optimized.ext);
+      fullDiskPath = path.join(targetDir, safeName);
+      relPath = path.join(sub, safeName).split(path.sep).join("/");
+      publicUrl = `/uploads/${relPath}`;
+    }
+  }
+  if (!binaryCreated) {
+    return { ok: false, error: "ذخیره‌سازی فایل ناموفق بود." };
   }
 
   // 4. Build sidecar metadata
