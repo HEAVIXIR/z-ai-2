@@ -455,9 +455,13 @@ export async function POST(req: Request) {
           })),
         });
       }
-      if (incomingAttributeValues.length > 0) {
+      const nonEmptyAttributeValues = incomingAttributeValues.filter((value) =>
+        [value.textValue, value.numberValue, value.booleanValue, value.dateValue, value.optionId]
+          .some((candidate) => candidate !== undefined && candidate !== null && candidate !== ""),
+      );
+      if (nonEmptyAttributeValues.length > 0) {
         await tx.listingAttributeValue.createMany({
-          data: incomingAttributeValues.map((value) => ({
+          data: nonEmptyAttributeValues.map((value) => ({
             listingId: created.id,
             attributeId: String(value.attributeId),
             textValue: value.textValue == null ? null : value.textValue,
