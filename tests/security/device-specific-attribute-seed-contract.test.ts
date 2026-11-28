@@ -72,6 +72,37 @@ const sellerListingRoute = readFileSync(
   "utf8",
 );
 
+const listingAttributeRoute = readFileSync(
+  resolve(process.cwd(), "src/app/api/listings/[id]/attributes/route.ts"),
+  "utf8",
+);
+
+describe("listing attribute PUT category and provenance guards", () => {
+  it("accepts only attributes attached to the listing's current category", () => {
+    expect(listingAttributeRoute).toContain("select: { id: true, sellerId: true, categoryId: true }");
+    expect(listingAttributeRoute).toContain("db.categoryAttribute.findMany");
+    expect(listingAttributeRoute).toContain("where: { categoryId: listing.categoryId, attributeId: { in: attrIds } }");
+    expect(listingAttributeRoute).toContain("disallowedAttributeIds.length");
+    expect(listingAttributeRoute).toContain("not available for this listing category");
+  });
+
+  it("prevents sellers from forging verification provenance or foreign option IDs", () => {
+    expect(listingAttributeRoute).toContain('sourceType: isAdmin ? "ADMIN_VERIFIED" : "SELLER_INPUT"');
+    expect(listingAttributeRoute).toContain("confidence: isAdmin && v.confidence != null");
+    expect(listingAttributeRoute).toContain("sourceReference: isAdmin && v.sourceReference != null");
+    expect(listingAttributeRoute).toContain("db.attributeOption.findMany");
+    expect(listingAttributeRoute).toContain('attrMap.get(option.attributeId)?.type !== "SELECT"');
+    expect(listingAttributeRoute).toContain("optionsById.get(option.optionId) !== option.attributeId");
+    expect(listingAttributeRoute).not.toContain("String(v.sourceType)");
+  });
+
+  it("rejects duplicate attribute IDs and malformed numeric/date values", () => {
+    expect(listingAttributeRoute).toContain("Duplicate attributeIds are not allowed");
+    expect(listingAttributeRoute).toContain("Number.isFinite(Number(value.numberValue))");
+    expect(listingAttributeRoute).toContain("new Date(value.dateValue).getTime()");
+  });
+});
+
 describe("listing category attribute cleanup", () => {
   it("removes only obsolete prior-category values and scopes deletion to the listing", () => {
     expect(listingEditForm).toContain("payload.removeAttributeIds = initial.attributeValues");
