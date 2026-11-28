@@ -36,7 +36,7 @@ import {
   sanitizeFilename,
 } from "@/lib/upload-security";
 import { optimizeImageBuffer } from "@/lib/media-image-optimizer";
-import { logAudit } from "@/lib/audit";
+import { logAudit, type AuditActorType } from "@/lib/audit";
 
 /* ── Constants ──────────────────────────────────────────────── */
 
@@ -308,6 +308,8 @@ export interface UploadAssetInput {
   altText?: string;
   /** Original filename (only used for ext derivation; never trusted). */
   originalFilename?: string;
+  /** Audit identity; existing admin callers retain the ADMIN default. */
+  actorType?: AuditActorType;
 }
 
 export interface UploadAssetResult {
@@ -426,7 +428,7 @@ export async function uploadAsset(
   // 6. Audit log (best-effort, never throws)
   await logAudit({
     actorId: input.uploadedBy ?? null,
-    actorType: "ADMIN",
+    actorType: input.actorType ?? "ADMIN",
     action: "media.upload",
     entityType: "MediaAsset",
     entityId: assetId,
