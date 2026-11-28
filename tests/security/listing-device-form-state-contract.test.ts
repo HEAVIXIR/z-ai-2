@@ -105,6 +105,17 @@ const sharedAttributeValidator = readFileSync(
 );
 
 describe("end-to-end technical attribute persistence contract", () => {
+  it("serializes empty technical fields as explicit nulls so edits can clear stale values", () => {
+    const component = readFileSync(
+      resolve(process.cwd(), "src/components/listings/AttributeFields.tsx"),
+      "utf8",
+    );
+    expect(component).toContain("Include explicit nulls for empty fields");
+    expect(component).toContain("out.push(entry);");
+    expect(component).toContain("entry.numberValue = null;");
+    expect(component).toContain("entry.optionId = null;");
+  });
+
   it("validates required fields, storage type compatibility and range bounds", () => {
     expect(sharedAttributeValidator).toContain("options.enforceRequired");
     expect(sharedAttributeValidator).toContain("getCategoryAttributeLinks(db, categoryId)");
