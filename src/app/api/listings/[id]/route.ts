@@ -233,8 +233,14 @@ export async function PATCH(req: Request, { params }: Args) {
       // Seller extend: keep current status (PUBLISHED stays PUBLISHED).
     }
 
-    if (Array.isArray(body.attributeValues) && body.attributeValues.length > 0) {
-      const validation = await validateListingAttributeBatch(db, data.categoryId ?? existing.categoryId, body.attributeValues);
+    const categoryChanged = data.categoryId !== undefined && data.categoryId !== existing.categoryId;
+    if ((Array.isArray(body.attributeValues) && body.attributeValues.length > 0) || categoryChanged) {
+      const validation = await validateListingAttributeBatch(
+        db,
+        data.categoryId ?? existing.categoryId,
+        Array.isArray(body.attributeValues) ? body.attributeValues : [],
+        { enforceRequired: categoryChanged },
+      );
       if (!validation.ok) {
         return NextResponse.json(
           { error: validation.error, ...(validation.details ?? {}) },
