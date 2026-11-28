@@ -641,12 +641,16 @@ export function buildAttributePayload(
         break;
       case "MULTI_SELECT": {
         const arr = Array.isArray(raw) ? raw : String(raw).split("|");
-        entry.textValue = arr.filter(Boolean).join(",");
+        const selected = arr.filter(Boolean).join(",");
+        entry.textValue = selected || null;
         break;
       }
       case "RANGE": {
-        // "min|max" → textValue
-        entry.textValue = String(raw);
+        // "min|max" → textValue; two empty endpoints mean clear the stored value.
+        const range = String(raw).split("|");
+        entry.textValue = range.length === 2 && range.every((part) => part.trim() === "")
+          ? null
+          : String(raw);
         break;
       }
       case "DATE":
@@ -688,6 +692,7 @@ export function validateAttributeFields(
       v === null ||
       v === "" ||
       (typeof v === "string" && v.trim() === "") ||
+      (a.type === "RANGE" && typeof v === "string" && v.split("|").every((part) => part.trim() === "")) ||
       (Array.isArray(v) && v.length === 0);
     if (empty) errs[k] = "این فیلد الزامی است";
   }
