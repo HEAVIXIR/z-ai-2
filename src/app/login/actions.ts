@@ -18,6 +18,11 @@ export async function loginAction(formData: FormData): Promise<void> {
 
   if (!(await verifyPassword(password, user.passwordHash))) redirect("/login?error=1");
 
+  // Match the API login contract: only explicitly ACTIVE, email-verified
+  // accounts may create a session. getCurrentUser() also rejects inactive
+  // sessions, so this guard avoids issuing unusable sessions for pending users.
+  if (user.status !== "ACTIVE" || !user.emailVerified) redirect("/login?error=1");
+
   await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   await createUserSession(user.id);
   redirect((await isAdmin(user.id)) ? "/admin/dashboard" : "/dashboard");
