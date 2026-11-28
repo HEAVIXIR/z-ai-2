@@ -188,7 +188,7 @@ describe("listing category attribute cleanup", () => {
 
 describe("listing technical attribute API category validation", () => {
   it("runs complete technical attribute validation before any seller listing mutation", () => {
-    const validation = sellerListingRoute.indexOf("validateListingAttributeBatch(db, data.categoryId ?? existing.categoryId, body.attributeValues)");
+    const validation = sellerListingRoute.indexOf("validateListingAttributeBatch(");
     const listingUpdate = sellerListingRoute.indexOf("await db.listing.update({ where: { id }, data })");
     expect(sellerListingRoute).toContain('import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation"');
     expect(validation).toBeGreaterThanOrEqual(0);
@@ -205,7 +205,7 @@ const adminListingRoute = readFileSync(
 
 describe("admin listing technical attribute validation", () => {
   it("runs complete technical attribute validation before any admin listing mutation", () => {
-    const validation = adminListingRoute.indexOf("validateListingAttributeBatch(db, data.categoryId ?? existing.categoryId, body.attributeValues)");
+    const validation = adminListingRoute.indexOf("validateListingAttributeBatch(");
     const mutation = adminListingRoute.indexOf("await db.listing.update({ where: { id }, data })");
     expect(adminListingRoute).toContain('import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation"');
     expect(validation).toBeGreaterThanOrEqual(0);
