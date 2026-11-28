@@ -174,3 +174,37 @@ describe("end-to-end technical attribute persistence contract", () => {
     }
   });
 });
+
+describe("public listing technical specification rendering contract", () => {
+  const detailPage = readFileSync(
+    resolve(process.cwd(), "src/app/listings/[slug]/page.tsx"),
+    "utf8",
+  );
+  const display = readFileSync(
+    resolve(process.cwd(), "src/components/listings/AttributeValueDisplay.tsx"),
+    "utf8",
+  );
+
+  it("loads only published listing details and fetches technical values with their option labels", () => {
+    expect(detailPage).toContain('if (!listing || listing.status !== "PUBLISHED") notFound();');
+    expect(detailPage).toContain("db.listingAttributeValue.findMany");
+    expect(detailPage).toContain("options: { orderBy:");
+    expect(detailPage).toContain(".filter((v) => v.attribute.visibleOnDetail)");
+    expect(detailPage).toContain("<AttributeValueRow key={r.id ?? r.attribute.id} v={r} />");
+  });
+
+  it("keeps legitimate zero and false values visible instead of treating them as empty", () => {
+    expect(detailPage).toContain("v.numberValue !== null");
+    expect(detailPage).toContain("v.booleanValue !== null");
+    expect(display).toContain('if (v.booleanValue === true) return "بله";');
+    expect(display).toContain('if (v.booleanValue === false) return "خیر";');
+  });
+
+  it("renders SELECT, MULTI_SELECT, RANGE and numeric technical values using their definitions", () => {
+    expect(display).toContain('if (a.type === "SELECT")');
+    expect(display).toContain('if (a.type === "MULTI_SELECT")');
+    expect(display).toContain('if (a.type === "RANGE")');
+    expect(display).toContain("const numericTypes = [");
+    expect(display).toContain("a.options?.find((o) => o.id === id || o.value === id)");
+  });
+});
