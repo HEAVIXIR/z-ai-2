@@ -118,7 +118,8 @@ export async function validateListingAttributeBatch(
     const parts = value.textValue.split("|");
     if (parts.length !== 2) return true;
     const parsed = parts.map((part) => part.trim() === "" ? null : Number(part));
-    if (parsed.some((part, index) => part !== null && !Number.isFinite(part))) return true;
+    if (parsed.every((part) => part === null)) return true;
+    if (parsed.some((part) => part !== null && !Number.isFinite(part))) return true;
     return parsed[0] !== null && parsed[1] !== null && parsed[0] > parsed[1];
   });
   if (invalidRanges) return { ok: false, error: "Range values must contain valid minimum and maximum numbers" };
