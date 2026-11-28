@@ -45,6 +45,13 @@ describe("device-specific technical attribute seed", () => {
     expect(seed).toContain("crane-max-lift-capacity");
     expect(seed).toContain("generator-prime-power");
   });
+
+  it("does not duplicate year, condition or operating-hours fields already captured by the listing form", () => {
+    expect(seed).not.toContain("device-manufacture-year");
+    expect(seed).not.toContain("device-condition");
+    expect(seed).not.toContain("device-operating-hours");
+    expect(seed).not.toContain("mining-excavator-operating-weight");
+  });
 });
 
 
