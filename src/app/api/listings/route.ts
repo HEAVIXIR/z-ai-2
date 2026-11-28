@@ -419,6 +419,9 @@ export async function POST(req: Request) {
       }
     }
 
+    if (body.attributeValues !== undefined && !Array.isArray(body.attributeValues)) {
+      return NextResponse.json({ error: "attributeValues must be an array" }, { status: 400 });
+    }
     const incomingAttributeValues: any[] = Array.isArray(body.attributeValues)
       ? body.attributeValues
       : [];
