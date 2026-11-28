@@ -4,9 +4,9 @@
  * the ownership check inside the transaction to close the validation/write race.
  */
 export async function mutateListingImages(db: any, listingId: string, body: any) {
-  const hasAdd = Array.isArray(body.addImages);
-  const hasRemove = Array.isArray(body.removeImages);
-  const hasReorder = Array.isArray(body.reorderImages);
+  const hasAdd = Array.isArray(body.addImages) && body.addImages.length > 0;
+  const hasRemove = Array.isArray(body.removeImages) && body.removeImages.length > 0;
+  const hasReorder = Array.isArray(body.reorderImages) && body.reorderImages.length > 0;
   const hasPrimary = Boolean(body.setPrimaryImage);
   if (!hasAdd && !hasRemove && !hasReorder && !hasPrimary) return null;
 
