@@ -153,7 +153,7 @@ function isValidAssetSidecar(
  * Resolve an asset path from persisted metadata without allowing traversal,
  * absolute paths, platform separator tricks, or symlink targets.
  */
-async function resolveStoredAssetPath(relativePath: string): Promise<string | null> {
+async function resolveStoredAssetPath(relativePath: string, expectedSize?: number): Promise<string | null> {
   if (
     typeof relativePath !== "string" ||
     relativePath.length === 0 ||
@@ -168,7 +168,11 @@ async function resolveStoredAssetPath(relativePath: string): Promise<string | nu
   if (!resolved.startsWith(root + path.sep)) return null;
   try {
     const stat = await fs.lstat(resolved);
-    if (!stat.isFile() || stat.isSymbolicLink()) return null;
+    if (
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      (expectedSize !== undefined && stat.size !== expectedSize)
+    ) return null;
     const realRoot = await fs.realpath(root);
     const realFile = await fs.realpath(resolved);
     if (!realFile.startsWith(realRoot + path.sep)) return null;
@@ -272,7 +276,7 @@ async function readAllAssets(): Promise<MediaAsset[]> {
     if (!sc) continue;
     // Ignore stale metadata and assets whose persisted path no longer resolves
     // to a regular file contained by UPLOAD_ROOT.
-    if (!(await resolveStoredAssetPath(binaryRelativePath))) continue;
+    if (!(await resolveStoredAssetPath(binaryRelativePath, sc.size))) continue;
     sidecars.push(sc);
   }
   sidecars.sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : a.uploadedAt > b.uploadedAt ? -1 : 0));
@@ -487,7 +491,7 @@ export async function deleteAsset(
   if (!asset) {
     return { ok: false, error: "رسانه یافت نشد." };
   }
-  const binaryPath = await resolveStoredAssetPath(asset.relativePath);
+  const binaryPath = await resolveStoredAssetPath(asset.relativePath, asset.size);
   if (!binaryPath) {
     return { ok: false, error: "مسیر فایل رسانه نامعتبر است یا فایل وجود ندارد." };
   }
@@ -545,7 +549,7 @@ export async function attachAsset(
     return { ok: false, error: "رسانه یافت نشد." };
   }
 
-  const binaryPath = await resolveStoredAssetPath(asset.relativePath);
+  const binaryPath = await resolveStoredAssetPath(asset.relativePath, asset.size);
   if (!binaryPath) {
     return { ok: false, error: "مسیر فایل رسانه نامعتبر است یا فایل وجود ندارد." };
   }
