@@ -93,4 +93,11 @@ describe("listing technical attribute API category validation", () => {
     expect(sellerListingRoute).toContain("invalidAttributeIds.length > 0");
     expect(sellerListingRoute).toContain("status: 400");
   });
+
+  it("validates attributes before any listing mutation to avoid partial updates", () => {
+    const validation = sellerListingRoute.indexOf("Validate incoming attribute IDs");
+    const listingUpdate = sellerListingRoute.indexOf("await db.listing.update({ where: { id }, data })");
+    expect(validation).toBeGreaterThanOrEqual(0);
+    expect(listingUpdate).toBeGreaterThan(validation);
+  });
 });
