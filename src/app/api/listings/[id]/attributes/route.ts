@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
+import { getCategoryAttributeIds } from "@/lib/category-attributes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
