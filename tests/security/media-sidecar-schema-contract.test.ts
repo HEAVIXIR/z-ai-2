@@ -17,8 +17,13 @@ describe("persisted media sidecar validation contract", () => {
   it("bounds sidecar reads before parsing JSON", () => {
     expect(source).toContain("const MAX_SIDECAR_BYTES = 4096;");
     expect(source).toContain("await fs.lstat(sidecarFullPath)");
+    expect(source).toContain('await fs.open(sidecarFullPath, "r")');
+    expect(source).toContain("opened.dev !== stat.dev");
+    expect(source).toContain("opened.ino !== stat.ino");
     expect(source).toContain("stat.size > MAX_SIDECAR_BYTES");
-    expect(source).toContain('Buffer.byteLength(raw, "utf8") > MAX_SIDECAR_BYTES');
+    expect(source).toContain("Buffer.alloc(MAX_SIDECAR_BYTES + 1)");
+    expect(source).toContain("bytesRead > MAX_SIDECAR_BYTES");
+    expect(source).toContain("await handle?.close().catch(() => {})");
   });
 
   it("validates the complete persisted sidecar shape", () => {
