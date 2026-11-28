@@ -62,6 +62,10 @@ describe("device-specific technical attribute seed", () => {
     expect(seed).toContain('Excavator: ["excavator"]');
     expect(seed).toContain('"wheel-loader"');
     expect(seed).toContain('"mining-excavator-machine"');
+    expect(seed).toContain('Crane: ["mobile-crane"]');
+    expect(seed).toContain('Crusher: ["jaw-crusher"]');
+    expect(seed).not.toContain('Crane: ["cranes-lifting"');
+    expect(seed).not.toContain('Crusher: ["crushing-processing"');
     expect(seed).toContain('level: 3, nameEn: deviceNameEn');
     expect(seed).toContain('active: true');
   });
