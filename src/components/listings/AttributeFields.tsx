@@ -628,7 +628,8 @@ export function buildAttributePayload(
       case "SIZE":
       case "WEIGHT":
       case "YEAR":
-        entry.numberValue = typeof raw === "number" ? raw : Number(raw) || null;
+        const numericValue = typeof raw === "number" ? raw : Number(raw);
+        entry.numberValue = Number.isFinite(numericValue) ? numericValue : null;
         break;
       default:
         entry.textValue = String(raw);
