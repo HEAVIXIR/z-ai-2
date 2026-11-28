@@ -1,11 +1,10 @@
-// @ts-nocheck — additive, idempotent catalog seed; never clears existing taxonomy.
 import { PrismaClient } from "@prisma/client";
 
 const db = new PrismaClient();
 
 type AttributeSpec = {
   key: string; name: string; nameEn: string; type: string; unit?: string;
-  required?: boolean; filterable?: boolean; sortable?: boolean;
+  required?: boolean; filterable?: boolean; searchable?: boolean; sortable?: boolean;
   options?: Array<{ value: string; label: string }>;
 };
 
