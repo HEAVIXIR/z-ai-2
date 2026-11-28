@@ -206,13 +206,33 @@ async function readSidecar(
   sidecarFullPath: string,
   expectedRelativePath: string,
 ): Promise<AssetSidecar | null> {
+  let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
   try {
     const stat = await fs.lstat(sidecarFullPath);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size === 0 || stat.size > MAX_SIDECAR_BYTES) {
       return null;
     }
-    const raw = await fs.readFile(sidecarFullPath, "utf8");
-    if (Buffer.byteLength(raw, "utf8") > MAX_SIDECAR_BYTES) return null;
+
+    // Open once, then compare inode identity with lstat to reject a symlink or
+    // path swap between the metadata check and the actual read.
+    handle = await fs.open(sidecarFullPath, "r");
+    const opened = await handle.stat();
+    if (
+      !opened.isFile() ||
+      opened.dev !== stat.dev ||
+      opened.ino !== stat.ino ||
+      opened.size === 0 ||
+      opened.size > MAX_SIDECAR_BYTES
+    ) {
+      return null;
+    }
+
+    // Read at most one byte beyond the limit so a concurrent file growth cannot
+    // turn a small metadata file into an unbounded allocation.
+    const buffer = Buffer.alloc(MAX_SIDECAR_BYTES + 1);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead === 0 || bytesRead > MAX_SIDECAR_BYTES) return null;
+    const raw = buffer.toString("utf8", 0, bytesRead);
 
     const parsed: unknown = JSON.parse(raw);
     if (!isValidAssetSidecar(parsed, expectedRelativePath)) return null;
@@ -234,6 +254,8 @@ async function readSidecar(
     };
   } catch {
     return null;
+  } finally {
+    await handle?.close().catch(() => {});
   }
 }
 
