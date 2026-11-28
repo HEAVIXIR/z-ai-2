@@ -103,6 +103,7 @@ export default function NewListingPage() {
   const [categoryId, setCategoryId] = useState<string>("");
   const [attributes, setAttributes] = useState<AttributeValue>({});
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
+  const [attributeDefsCategoryId, setAttributeDefsCategoryId] = useState<string | null>(null);
   const [attrErrors, setAttrErrors] = useState<Record<string, string>>({});
   const [brandId, setBrandId] = useState<string>("");
   const [modelId, setModelId] = useState<string>("");
@@ -271,6 +272,7 @@ export default function NewListingPage() {
   const resetCategoryAttributes = () => {
     setAttributes({});
     setAttributeDefs([]);
+    setAttributeDefsCategoryId(null);
     setAttrErrors({});
   };
 
@@ -316,6 +318,8 @@ export default function NewListingPage() {
     if (step === 1) return Boolean(transactionType);
     if (step === 2) return Boolean(categoryId);
     if (step === 3) {
+      // Do not allow the user to skip the asynchronous category schema load.
+      if (!categoryId || attributeDefsCategoryId !== categoryId) return false;
       // Required attributes must be filled before proceeding.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
       const errs = validateAttributeFields(attributeDefs, attributes);
@@ -692,7 +696,7 @@ export default function NewListingPage() {
                           setAttrErrors(validateAttributeFields(attributeDefs, next));
                         }}
                         errors={attrErrors}
-                        onAttributesLoaded={(defs) => setAttributeDefs(defs)}
+                        onAttributesLoaded={(defs) => { setAttributeDefs(defs); setAttributeDefsCategoryId(categoryId); }}
                       />
                     </div>
                     <p className="mt-4 text-[11px] text-white/40">
