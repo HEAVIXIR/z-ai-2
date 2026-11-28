@@ -43,7 +43,9 @@ describe("persisted media sidecar validation contract", () => {
 
   it("omits stale sidecars whose binary is missing or outside the upload root", () => {
     expect(source).toContain('const binaryRelativePath = rel.slice(0, -".meta.json".length)');
-    expect(source).toContain("await resolveStoredAssetPath(binaryRelativePath)");
+    expect(source).toContain("await resolveStoredAssetPath(binaryRelativePath, sc.size)");
+    expect(source).toContain("expectedSize !== undefined && stat.size !== expectedSize");
+    expect(source).toContain("resolveStoredAssetPath(asset.relativePath, asset.size)");
   });
 
   it("returns only whitelisted metadata fields after parsing", () => {
