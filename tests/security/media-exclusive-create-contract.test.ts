@@ -36,8 +36,9 @@ describe("media upload exclusive-create contract", () => {
   it("checks that the binary still exists before attaching metadata", () => {
     const attachStart = source.indexOf("export async function attachAsset");
     const attachSection = source.slice(attachStart);
-    expect(attachSection).toContain("await fs.lstat(binaryPath)");
-    expect(attachSection).toContain("binaryStat.isSymbolicLink()");
+    expect(source).toContain("async function resolveStoredAssetPath(relativePath: string)");
+    expect(source).toContain("await fs.lstat(resolved)");
+    expect(source).toContain("stat.isSymbolicLink()");
   });
 
   it("atomically replaces attached metadata through a unique exclusive temp file", () => {
@@ -47,6 +48,14 @@ describe("media upload exclusive-create contract", () => {
     expect(attachSection).toContain('flag: "wx"');
     expect(attachSection).toContain("await fs.rename(temporarySidecarPath, sidecarPath)");
     expect(attachSection).toContain("await fs.unlink(temporarySidecarPath).catch(() => {})");
+  });
+
+  it("rejects traversal and symlinked stored asset paths before mutation", () => {
+    expect(source).toContain("relativePath.includes");
+    expect(source).toContain('part === ".."');
+    expect(source).toContain("path.posix.isAbsolute(relativePath)");
+    expect(source).toContain("await fs.realpath(resolved)");
+    expect(source).toContain("resolved.startsWith(root + path.sep)");
   });
 
 });
