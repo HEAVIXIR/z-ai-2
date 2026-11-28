@@ -346,8 +346,7 @@ async function main() {
       continue;
     }
     const specs = [...shared, ...specific];
-    const definitions = [];
-    for (const spec of specs) definitions.push(await ensureAttribute(spec));
+    const definitions = await Promise.all(specs.map((spec) => ensureAttribute(spec)));
     for (const category of categories) {
       for (let i = 0; i < specs.length; i++) {
         const spec = specs[i];
