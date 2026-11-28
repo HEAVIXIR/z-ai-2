@@ -45,4 +45,29 @@ describe("listing device category technical form state", () => {
     expect(component).not.toContain("Number(raw) || null");
   });
 
+
+  it("validates complete technical-attribute batches before seller and admin PATCH mutations", () => {
+    const sellerRoute = readFileSync(
+      resolve(process.cwd(), "src/app/api/listings/[id]/route.ts"),
+      "utf8",
+    );
+    const adminRoute = readFileSync(
+      resolve(process.cwd(), "src/app/api/admin/listings/[id]/route.ts"),
+      "utf8",
+    );
+    const validator = readFileSync(
+      resolve(process.cwd(), "src/lib/listing-attribute-validation.ts"),
+      "utf8",
+    );
+    for (const route of [sellerRoute, adminRoute]) {
+      expect(route).toContain("validateListingAttributeBatch(db, data.categoryId ?? existing.categoryId, body.attributeValues)");
+      expect(route).toContain("if (!validation.ok)");
+    }
+    expect(validator).toContain("Duplicate attributeIds are not allowed");
+    expect(validator).toContain("Numeric attribute values must be finite numbers");
+    expect(validator).toContain("Date attribute values must be valid dates");
+    expect(validator).toContain("optionOwners.get(option.optionId) !== option.attributeId");
+    expect(validator).toContain("getCategoryAttributeIds(db, categoryId)");
+  });
+
 });
