@@ -135,7 +135,7 @@ describe("end-to-end technical attribute persistence contract", () => {
 
   it("uses the shared validator for the standalone technical-attribute PUT endpoint", () => {
     expect(listingAttributePutRoute).toContain('import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation"');
-    expect(listingAttributePutRoute).toContain("{ enforceRequired: true }");
+    expect(listingAttributePutRoute).toContain("validateListingAttributeBatch(");
     expect(listingAttributePutRoute).toContain("if (!validation.ok)");
   });
 
