@@ -21,7 +21,9 @@ describe("device-specific technical attribute seed", () => {
   });
 
   it("links attributes to the selected leaf device category, not every machine category", () => {
-    expect(seed).toContain('domain: "MACHINE", level: 2, nameEn: deviceNameEn');
+    expect(seed).toContain('domain: DEVICE_DOMAINS[deviceNameEn] ?? "MACHINE", level: 2, nameEn: deviceNameEn');
+    expect(seed).toContain('Generators: "INDUSTRIAL_EQUIPMENT"');
+    expect(seed).toContain('Tractor: "AGRICULTURE"');
     expect(seed).toContain("db.categoryAttribute.upsert");
     expect(seed).toContain("categoryId_attributeId");
   });
