@@ -344,6 +344,21 @@ export default function NewListingPage() {
     setAttributeWarning(null);
     setSubmitting(true);
     try {
+      if (!categoryId || attributeDefsCategoryId !== categoryId) {
+        setSubmitError("لطفاً تا بارگذاری مشخصات فنی دسته صبر کنید.");
+        return;
+      }
+      const defs = attributeDefs.length > 0
+        ? attributeDefs
+        : (getCachedAttributes(categoryId) ?? []);
+      const attributePayload = buildAttributePayload(defs, attributes);
+      const requiredErrors = validateAttributeFields(defs, attributes);
+      setAttrErrors(requiredErrors);
+      if (Object.keys(requiredErrors).length > 0) {
+        setSubmitError("لطفاً مشخصات فنی الزامی را تکمیل کنید.");
+        return;
+      }
+
       // Look up province/city names for storage (Listing.province/city are String?).
       // We can't easily resolve names from the client without another fetch, so
       // we pass province/city IDs and let the server fall back if needed.
@@ -371,7 +386,7 @@ export default function NewListingPage() {
         serialNumber: form.serialNumber || undefined,
         sellerName: form.sellerName || undefined,
         sellerPhone: form.sellerPhone || undefined,
-        attributes,
+        attributeValues: attributePayload,
         images: images.map((url) => ({ url })),
       };
 
@@ -397,39 +412,7 @@ export default function NewListingPage() {
         return;
       }
 
-      // ── Attribute save — fire after the listing row exists. ──
-      // We always have the listing id (from the POST response). Use the
-      // cached attribute definitions (the AttributeFields component populates
-      // the cache on mount) or fall back to the defs captured via the
-      // onAttributesLoaded callback.
-      const defs = attributeDefs.length > 0
-        ? attributeDefs
-        : (categoryId ? getCachedAttributes(categoryId) ?? [] : []);
-      const payload = buildAttributePayload(defs, attributes);
-      if (payload.length > 0 && data.id) {
-        try {
-          const attrRes = await fetch(
-            `/api/listings/${encodeURIComponent(data.id)}/attributes`,
-            {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ values: payload }),
-            },
-          );
-          if (!attrRes.ok) {
-            const attrData = await attrRes.json().catch(() => ({}));
-            setAttributeWarning(
-              attrData?.error
-                ? `ذخیرهٔ ویژگی‌ها ناموفق بود: ${attrData.error} — آگهی ثبت شد ولی ویژگی‌ها ذخیره نشدند.`
-                : "ذخیرهٔ ویژگی‌ها ناموفق بود — آگهی ثبت شد ولی ویژگی‌ها ذخیره نشدند. می‌توانید بعداً ویرایش کنید.",
-            );
-          }
-        } catch (attrErr: any) {
-          setAttributeWarning(
-            `آگهی ثبت شد ولی ذخیرهٔ ویژگی‌ها با خطا مواجه شد: ${attrErr?.message ?? "خطای شبکه"}. بعداً از پنل کاربری ویرایش کنید.`,
-          );
-        }
-      }
+      // Technical attributes are persisted atomically by POST /api/listings.
 
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
