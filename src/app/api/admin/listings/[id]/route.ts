@@ -234,11 +234,12 @@ export async function PATCH(req: Request, { params }: Params) {
     }
 
     const categoryChanged = data.categoryId !== undefined && data.categoryId !== existing.categoryId;
-    if ((Array.isArray(body.attributeValues) && body.attributeValues.length > 0) || categoryChanged) {
+    const hasAttributeValues = Object.prototype.hasOwnProperty.call(body, "attributeValues");
+    if (hasAttributeValues || categoryChanged) {
       const validation = await validateListingAttributeBatch(
         db,
-        data.categoryId ?? existing.categoryId,
-        Array.isArray(body.attributeValues) ? body.attributeValues : [],
+        data.categoryId !== undefined ? data.categoryId : existing.categoryId,
+        body.attributeValues === undefined ? [] : body.attributeValues,
         { enforceRequired: categoryChanged },
       );
       if (!validation.ok) {
