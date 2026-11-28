@@ -77,11 +77,35 @@ const listingAttributeRoute = readFileSync(
   "utf8",
 );
 
+const categoryAttributesHelper = readFileSync(
+  resolve(process.cwd(), "src/lib/category-attributes.ts"),
+  "utf8",
+);
+
+const categoryAttributesGetRoute = readFileSync(
+  resolve(process.cwd(), "src/app/api/categories/[id]/attributes/route.ts"),
+  "utf8",
+);
+
+describe("inherited category technical specifications", () => {
+  it("walks parent categories and lets the nearest category override duplicate definitions", () => {
+    expect(categoryAttributesHelper).toContain("getCategoryChainIds");
+    expect(categoryAttributesHelper).toContain("while (currentId && !visited.has(currentId))");
+    expect(categoryAttributesHelper).toContain("nearestByAttribute.has(row.attributeId)");
+    expect(categoryAttributesHelper).toContain("rank.get(a.categoryId)");
+  });
+
+  it("serves inherited specifications through the endpoint used by the listing form", () => {
+    expect(categoryAttributesGetRoute).toContain("getCategoryAttributeLinks(db, category.id)");
+    expect(categoryAttributesGetRoute).toContain("links.map((l) => ({");
+  });
+});
+
 describe("listing attribute PUT category and provenance guards", () => {
   it("accepts only attributes attached to the listing's current category", () => {
     expect(listingAttributeRoute).toContain("select: { id: true, sellerId: true, categoryId: true }");
-    expect(listingAttributeRoute).toContain("db.categoryAttribute.findMany");
-    expect(listingAttributeRoute).toContain("where: { categoryId: listing.categoryId, attributeId: { in: attrIds } }");
+    expect(listingAttributeRoute).toContain("getCategoryAttributeIds(db, listing.categoryId)");
+    expect(listingAttributeRoute).toContain("getCategoryAttributeIds(db, listing.categoryId)");
     expect(listingAttributeRoute).toContain("disallowedAttributeIds.length");
     expect(listingAttributeRoute).toContain("not available for this listing category");
   });
@@ -119,7 +143,7 @@ describe("listing category attribute cleanup", () => {
 describe("listing technical attribute API category validation", () => {
   it("rejects attribute ids that are not linked to the resulting listing category", () => {
     expect(sellerListingRoute).toContain("const targetCategoryId = data.categoryId ?? existing.categoryId");
-    expect(sellerListingRoute).toContain("db.categoryAttribute.findMany");
+    expect(sellerListingRoute).toContain("getCategoryAttributeIds(db, targetCategoryId)");
     expect(sellerListingRoute).toContain("allowedAttributeIds.has(String(value.attributeId))");
     expect(sellerListingRoute).toContain("invalidAttributeIds.length > 0");
     expect(sellerListingRoute).toContain("status: 400");
@@ -144,7 +168,7 @@ describe("admin listing technical attribute validation", () => {
   it("rejects attributes outside the resulting category before listing mutation", () => {
     const validation = adminListingRoute.indexOf("Validate incoming attribute IDs");
     const mutation = adminListingRoute.indexOf("await db.listing.update({ where: { id }, data })");
-    expect(adminListingRoute).toContain("db.categoryAttribute.findMany");
+    expect(adminListingRoute).toContain("getCategoryAttributeIds(db, targetCategoryId)");
     expect(adminListingRoute).toContain("invalidAttributeIds.length > 0");
     expect(adminListingRoute).toContain("status: 400");
     expect(validation).toBeGreaterThanOrEqual(0);
