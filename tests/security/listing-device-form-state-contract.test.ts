@@ -64,8 +64,8 @@ describe("listing device category technical form state", () => {
       expect(route).toContain("if (!validation.ok)");
     }
     expect(validator).toContain("Duplicate attributeIds are not allowed");
-    expect(validator).toContain("Numeric attribute values must be finite numbers");
-    expect(validator).toContain("Date attribute values must be valid dates");
+    expect(validator).toContain("Numeric values must be finite and match a numeric attribute");
+    expect(validator).toContain("Date values must be valid and match a date attribute");
     expect(validator).toContain("optionOwners.get(option.optionId) !== option.attributeId");
     expect(validator).toContain("getCategoryAttributeIds(db, categoryId)");
   });
