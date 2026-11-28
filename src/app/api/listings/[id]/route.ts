@@ -7,7 +7,6 @@ import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
 import { mutateListingImages } from "@/lib/listing-image-mutations";
-import { getCategoryAttributeIds } from "@/lib/category-attributes";
 import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation";
 
 export const runtime = "nodejs";
