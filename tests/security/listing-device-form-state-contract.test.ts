@@ -125,6 +125,15 @@ describe("end-to-end technical attribute persistence contract", () => {
     expect(component).toContain("entry.optionId = null;");
   });
 
+  it("rejects whitespace-only required technical values in both client and server validation", () => {
+    const component = readFileSync(
+      resolve(process.cwd(), "src/components/listings/AttributeFields.tsx"),
+      "utf8",
+    );
+    expect(component).toContain('typeof v === "string" && v.trim() === ""');
+    expect(sharedAttributeValidator).toContain("candidate.trim().length > 0");
+  });
+
   it("validates required fields, storage type compatibility and range bounds", () => {
     expect(sharedAttributeValidator).toContain("options.enforceRequired");
     expect(sharedAttributeValidator).toContain("getCategoryAttributeLinks(db, categoryId)");
