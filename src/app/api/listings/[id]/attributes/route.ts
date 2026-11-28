@@ -142,6 +142,9 @@ export async function PUT(req: Request, { params }: Args) {
     }
 
     const body = await req.json().catch(() => ({}));
+    if (body?.values !== undefined && !Array.isArray(body.values)) {
+      return NextResponse.json({ error: "values must be an array" }, { status: 400 });
+    }
     const incoming: any[] = Array.isArray(body?.values) ? body.values : [];
     if (incoming.length > 0 || listing.categoryId) {
       const validation = await validateListingAttributeBatch(
