@@ -220,13 +220,9 @@ export async function uploadAsset(
   const storedBuffer = optimized.buffer;
 
   // 3. Sanitize filename (random, opaque) using the output format, not client MIME.
-  const safeName = sanitizeFilename(optimized.ext);
   const sub = monthSubfolder();
   const targetDir = path.join(UPLOAD_ROOT, sub);
   await fs.mkdir(targetDir, { recursive: true }).catch(() => {});
-  const fullDiskPath = path.join(targetDir, safeName);
-  const relPath = path.join(sub, safeName).split(path.sep).join("/");
-  const publicUrl = `/uploads/${relPath}`;
 
   // 3. Write binary file exclusively (guard against accidental overwrite).
   // If a randomized filename collision occurs, retry with a new filename rather
