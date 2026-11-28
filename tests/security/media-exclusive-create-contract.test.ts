@@ -33,4 +33,20 @@ describe("media upload exclusive-create contract", () => {
     expect(sidecarWriteStart).toBeGreaterThan(-1);
     expect(cleanupStart).toBeGreaterThan(sidecarWriteStart);
   });
+  it("checks that the binary still exists before attaching metadata", () => {
+    const attachStart = source.indexOf("export async function attachAsset");
+    const attachSection = source.slice(attachStart);
+    expect(attachSection).toContain("await fs.lstat(binaryPath)");
+    expect(attachSection).toContain("binaryStat.isSymbolicLink()");
+  });
+
+  it("atomically replaces attached metadata through a unique exclusive temp file", () => {
+    const attachStart = source.indexOf("export async function attachAsset");
+    const attachSection = source.slice(attachStart);
+    expect(attachSection).toContain("crypto.randomBytes(8).toString(\"hex\")");
+    expect(attachSection).toContain('flag: "wx"');
+    expect(attachSection).toContain("await fs.rename(temporarySidecarPath, sidecarPath)");
+    expect(attachSection).toContain("await fs.unlink(temporarySidecarPath).catch(() => {})");
+  });
+
 });
