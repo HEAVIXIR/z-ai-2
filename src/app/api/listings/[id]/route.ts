@@ -260,6 +260,17 @@ export async function PATCH(req: Request, { params }: Args) {
       );
     }
 
+    // Remove category-specific values that no longer belong to the selected category.
+    // Scope deletion to this listing; the caller has already passed authorize(id).
+    if (Array.isArray(body.removeAttributeIds) && body.removeAttributeIds.length > 0) {
+      await db.listingAttributeValue.deleteMany({
+        where: {
+          listingId: id,
+          attributeId: { in: body.removeAttributeIds.map(String) },
+        },
+      });
+    }
+
     // Attribute values upsert
     if (Array.isArray(body.attributeValues)) {
       const incoming: any[] = body.attributeValues;
