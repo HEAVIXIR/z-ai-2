@@ -105,6 +105,15 @@ const sharedAttributeValidator = readFileSync(
 );
 
 describe("end-to-end technical attribute persistence contract", () => {
+  it("keeps an unset boolean distinct from an explicit false value in the admin form", () => {
+    expect(adminEdit).toContain("map[k] = av.booleanValue ?? null;");
+    const component = readFileSync(
+      resolve(process.cwd(), "src/components/listings/AttributeFields.tsx"),
+      "utf8",
+    );
+    expect(component).toContain('v === true ? "بله" : v === false ? "خیر" : "انتخاب نشده"');
+  });
+
   it("serializes empty technical fields as explicit nulls so edits can clear stale values", () => {
     const component = readFileSync(
       resolve(process.cwd(), "src/components/listings/AttributeFields.tsx"),
