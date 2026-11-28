@@ -124,8 +124,8 @@ export function isValidSidecar(value: unknown): value is AssetSidecar {
   const s = value as Record<string, unknown>;
   const nullableString = (v: unknown) => v === null || typeof v === "string";
   if (typeof s.id !== "string" || !/^[a-f0-9]{24}$/.test(s.id)) return false;
-  if (typeof s.filename !== "string" || s.filename.length > 180 || s.filename.includes("\\0") || path.basename(s.filename) !== s.filename) return false;
-  if (typeof s.relativePath !== "string" || s.relativePath.length > 240 || s.relativePath.includes("\\") || s.relativePath.includes("\\0") || s.relativePath.startsWith("/") || s.relativePath.split("/").some(part => !part || part === "." || part === "..")) return false;
+  if (typeof s.filename !== "string" || s.filename.length > 180 || s.filename.includes("\0") || path.basename(s.filename) !== s.filename) return false;
+  if (typeof s.relativePath !== "string" || s.relativePath.length > 240 || s.relativePath.includes("\\") || s.relativePath.includes("\0") || s.relativePath.startsWith("/") || s.relativePath.split("/").some(part => !part || part === "." || part === "..")) return false;
   if (s.relativePath !== path.posix.join(typeof s.relativePath === "string" ? path.posix.dirname(s.relativePath) : "", s.filename)) return false;
   if (s.url !== `/uploads/${s.relativePath}`) return false;
   const formats: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", bmp: "image/bmp" };
