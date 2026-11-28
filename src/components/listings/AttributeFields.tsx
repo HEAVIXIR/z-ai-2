@@ -397,7 +397,7 @@ export default function AttributeFields({
                     className="h-4 w-4 accent-[#F58220]"
                   />
                   <span className="text-xs text-white/70">
-                    {v === true ? "بله" : "خیر"}
+                    {v === true ? "بله" : v === false ? "خیر" : "انتخاب نشده"}
                   </span>
                 </label>
               );
@@ -593,12 +593,45 @@ export function buildAttributePayload(
   for (const a of attributes) {
     const k = attrKey(a);
     const raw = values[k];
-    if (raw === undefined || raw === null || raw === "") continue;
     const entry: PayloadEntry = {
       attributeId: a.id,
       unit: a.unit ?? null,
       sourceType: "SELLER_INPUT",
     };
+    // Include explicit nulls for empty fields so PATCH can clear previously
+    // persisted values instead of silently retaining stale specifications.
+    if (raw === undefined || raw === null || (typeof raw === "string" && raw.trim() === "")) {
+      switch (a.type) {
+        case "BOOLEAN":
+          entry.booleanValue = null;
+          break;
+        case "SELECT":
+          entry.optionId = null;
+          break;
+        case "MULTI_SELECT":
+        case "RANGE":
+          entry.textValue = null;
+          break;
+        case "DATE":
+        case "DATETIME":
+          entry.dateValue = null;
+          break;
+        case "INTEGER":
+        case "DECIMAL":
+        case "NUMBER":
+        case "CURRENCY":
+        case "UNIT":
+        case "SIZE":
+        case "WEIGHT":
+        case "YEAR":
+          entry.numberValue = null;
+          break;
+        default:
+          entry.textValue = null;
+      }
+      out.push(entry);
+      continue;
+    }
     switch (a.type) {
       case "BOOLEAN":
         entry.booleanValue = raw === true || raw === "true";
@@ -608,12 +641,16 @@ export function buildAttributePayload(
         break;
       case "MULTI_SELECT": {
         const arr = Array.isArray(raw) ? raw : String(raw).split("|");
-        entry.textValue = arr.filter(Boolean).join(",");
+        const selected = arr.filter(Boolean).join(",");
+        entry.textValue = selected || null;
         break;
       }
       case "RANGE": {
-        // "min|max" → textValue
-        entry.textValue = String(raw);
+        // "min|max" → textValue; two empty endpoints mean clear the stored value.
+        const range = String(raw).split("|");
+        entry.textValue = range.length === 2 && range.every((part) => part.trim() === "")
+          ? null
+          : String(raw);
         break;
       }
       case "DATE":
@@ -628,7 +665,8 @@ export function buildAttributePayload(
       case "SIZE":
       case "WEIGHT":
       case "YEAR":
-        entry.numberValue = typeof raw === "number" ? raw : Number(raw) || null;
+        const numericValue = typeof raw === "number" ? raw : Number(raw);
+        entry.numberValue = Number.isFinite(numericValue) ? numericValue : null;
         break;
       default:
         entry.textValue = String(raw);
@@ -653,6 +691,8 @@ export function validateAttributeFields(
       v === undefined ||
       v === null ||
       v === "" ||
+      (typeof v === "string" && v.trim() === "") ||
+      (a.type === "RANGE" && typeof v === "string" && v.split("|").every((part) => part.trim() === "")) ||
       (Array.isArray(v) && v.length === 0);
     if (empty) errs[k] = "این فیلد الزامی است";
   }

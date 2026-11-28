@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
+import { getCurrentUserId } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
+import { getCategoryAttributeIds } from "@/lib/category-attributes";
+import { logAudit } from "@/lib/audit";
+import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -129,7 +132,7 @@ export async function PUT(req: Request, { params }: Args) {
 
     const listing = await db.listing.findUnique({
       where: { id },
-      select: { id: true, sellerId: true },
+      select: { id: true, sellerId: true, categoryId: true },
     });
     if (!listing) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
@@ -139,15 +142,35 @@ export async function PUT(req: Request, { params }: Args) {
     }
 
     const body = await req.json().catch(() => ({}));
+    if (body?.values !== undefined && !Array.isArray(body.values)) {
+      return NextResponse.json({ error: "values must be an array" }, { status: 400 });
+    }
     const incoming: any[] = Array.isArray(body?.values) ? body.values : [];
+    if (incoming.length > 0 || listing.categoryId) {
+      const validation = await validateListingAttributeBatch(
+        db,
+        listing.categoryId,
+        incoming,
+      );
+      if (!validation.ok) {
+        return NextResponse.json(
+          { error: validation.error, ...(validation.details ?? {}) },
+          { status: 400 },
+        );
+      }
+    }
     if (incoming.length === 0) {
       return NextResponse.json({ ok: true, count: 0 });
     }
+    if (incoming.some((value) => !value || typeof value.attributeId !== "string" || !value.attributeId.trim())) {
+      return NextResponse.json({ error: "attributeId is required for each value" }, { status: 400 });
+    }
 
-    // Validate that all attributeIds exist
-    const attrIds = Array.from(
-      new Set(incoming.map((v) => String(v.attributeId)).filter(Boolean)),
-    );
+    const rawAttributeIds = incoming.map((value) => String(value.attributeId));
+    if (new Set(rawAttributeIds).size !== rawAttributeIds.length) {
+      return NextResponse.json({ error: "Duplicate attributeIds are not allowed" }, { status: 400 });
+    }
+    const attrIds = rawAttributeIds;
     if (attrIds.length === 0) {
       return NextResponse.json(
         { error: "attributeId is required for each value" },
@@ -165,6 +188,60 @@ export async function PUT(req: Request, { params }: Args) {
         { error: `Unknown attributeId: ${missing.join(", ")}` },
         { status: 400 },
       );
+    }
+
+    // Attribute definitions must be explicitly attached to this listing's category.
+    if (!listing.categoryId) {
+      return NextResponse.json({ error: "Listing has no category for technical attributes" }, { status: 400 });
+    }
+    const allowedAttributeIds = await getCategoryAttributeIds(db, listing.categoryId);
+    const disallowedAttributeIds = attrIds.filter((attributeId) => !allowedAttributeIds.has(attributeId));
+    if (disallowedAttributeIds.length) {
+      return NextResponse.json(
+        { error: "One or more attributes are not available for this listing category", invalidAttributeIds: disallowedAttributeIds },
+        { status: 400 },
+      );
+    }
+
+    const invalidNumbers = incoming.filter((value) =>
+      value.numberValue !== undefined && value.numberValue !== null && value.numberValue !== "" &&
+      !Number.isFinite(Number(value.numberValue))
+    );
+    if (invalidNumbers.length) {
+      return NextResponse.json({ error: "Numeric attribute values must be finite numbers" }, { status: 400 });
+    }
+    const invalidDates = incoming.filter((value) =>
+      value.dateValue !== undefined && value.dateValue !== null && value.dateValue !== "" &&
+      Number.isNaN(new Date(value.dateValue).getTime())
+    );
+    if (invalidDates.length) {
+      return NextResponse.json({ error: "Date attribute values must be valid dates" }, { status: 400 });
+    }
+
+    const optionRefs = incoming
+      .filter((value) => value.optionId !== undefined && value.optionId !== null && value.optionId !== "")
+      .map((value) => ({ attributeId: String(value.attributeId), optionId: String(value.optionId) }));
+    if (optionRefs.length) {
+      const optionRows = await db.attributeOption.findMany({
+        where: { id: { in: optionRefs.map((option) => option.optionId) } },
+        select: { id: true, attributeId: true },
+      });
+      const optionsById = new Map(optionRows.map((option) => [option.id, option.attributeId]));
+      const invalidOptions = optionRefs.filter((option) =>
+        attrMap.get(option.attributeId)?.type !== "SELECT" ||
+        optionsById.get(option.optionId) !== option.attributeId
+      );
+      if (invalidOptions.length) {
+        return NextResponse.json({ error: "One or more selected options do not belong to their attributes" }, { status: 400 });
+      }
+    }
+
+    const invalidConfidence = incoming.some((value) =>
+      value.confidence !== undefined && value.confidence !== null &&
+      (!Number.isFinite(Number(value.confidence)) || Number(value.confidence) < 0 || Number(value.confidence) > 1)
+    );
+    if (invalidConfidence && isAdmin) {
+      return NextResponse.json({ error: "Confidence must be between 0 and 1" }, { status: 400 });
     }
 
     // Build the upsert operations
@@ -204,20 +281,9 @@ export async function PUT(req: Request, { params }: Args) {
               v.unit === undefined || v.unit === null || v.unit === ""
                 ? null
                 : String(v.unit),
-            sourceType:
-              v.sourceType === undefined || v.sourceType === null
-                ? isAdmin
-                  ? "ADMIN_VERIFIED"
-                  : "SELLER_INPUT"
-                : String(v.sourceType),
-            confidence:
-              v.confidence === undefined || v.confidence === null
-                ? null
-                : Math.max(0, Math.min(1, Number(v.confidence))),
-            sourceReference:
-              v.sourceReference === undefined || v.sourceReference === null
-                ? null
-                : String(v.sourceReference),
+            sourceType: isAdmin ? "ADMIN_VERIFIED" : "SELLER_INPUT",
+            confidence: isAdmin && v.confidence != null ? Number(v.confidence) : null,
+            sourceReference: isAdmin && v.sourceReference != null ? String(v.sourceReference) : null,
             verifiedAt: isAdmin ? new Date() : null,
             verifiedBy: isAdmin ? "admin" : null,
           },
@@ -243,20 +309,9 @@ export async function PUT(req: Request, { params }: Args) {
               v.unit === undefined || v.unit === null || v.unit === ""
                 ? null
                 : String(v.unit),
-            sourceType:
-              v.sourceType === undefined || v.sourceType === null
-                ? isAdmin
-                  ? "ADMIN_VERIFIED"
-                  : "SELLER_INPUT"
-                : String(v.sourceType),
-            confidence:
-              v.confidence === undefined || v.confidence === null
-                ? null
-                : Math.max(0, Math.min(1, Number(v.confidence))),
-            sourceReference:
-              v.sourceReference === undefined || v.sourceReference === null
-                ? null
-                : String(v.sourceReference),
+            sourceType: isAdmin ? "ADMIN_VERIFIED" : "SELLER_INPUT",
+            confidence: isAdmin && v.confidence != null ? Number(v.confidence) : null,
+            sourceReference: isAdmin && v.sourceReference != null ? String(v.sourceReference) : null,
             verifiedAt: isAdmin ? new Date() : null,
             verifiedBy: isAdmin ? "admin" : null,
           },
@@ -264,6 +319,17 @@ export async function PUT(req: Request, { params }: Args) {
       });
 
     await db.$transaction(ops);
+
+    // Record the successful batch after the value transaction commits.
+    // Technical values are intentionally excluded from the audit payload.
+    await logAudit({
+      actorId: userId,
+      actorType: isAdmin ? "ADMIN" : "USER",
+      action: "marketplace.listing_attribute_value.bulk_upsert",
+      entityType: "ListingAttributeValue",
+      entityId: id,
+      after: { count: ops.length, attributeIds: attrIds },
+    });
 
     return NextResponse.json({ ok: true, count: ops.length });
   } catch (err: any) {

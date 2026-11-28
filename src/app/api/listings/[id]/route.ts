@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
+import { mutateListingImages } from "@/lib/listing-image-mutations";
+import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -139,6 +141,29 @@ export async function PATCH(req: Request, { params }: Args) {
     const existing = await db.listing.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    // Validate image mutation IDs before any listing mutation to prevent partial updates.
+    const requestedImageIds = [
+      ...(Array.isArray(body.removeImages) ? body.removeImages.map(String) : []),
+      ...(body.setPrimaryImage ? [String(body.setPrimaryImage)] : []),
+      ...(Array.isArray(body.reorderImages) ? body.reorderImages.map(String) : []),
+    ];
+    const uniqueRequestedImageIds = [...new Set(requestedImageIds)];
+    if (body.reorderImages && Array.isArray(body.reorderImages) &&
+        new Set(body.reorderImages.map(String)).size !== body.reorderImages.length) {
+      return NextResponse.json({ error: "Duplicate image IDs in reorderImages" }, { status: 400 });
+    }
+    if (uniqueRequestedImageIds.length) {
+      const ownedImages = await db.listingImage.findMany({
+        where: { listingId: id, id: { in: uniqueRequestedImageIds } },
+        select: { id: true },
+      });
+      const ownedIds = new Set(ownedImages.map((img: any) => String(img.id)));
+      const invalidImageIds = uniqueRequestedImageIds.filter((imageId) => !ownedIds.has(imageId));
+      if (invalidImageIds.length) {
+        return NextResponse.json({ error: "One or more images do not belong to this listing", invalidImageIds }, { status: 400 });
+      }
+    }
+
     const data: any = {};
     const allowedFields = [
       "title", "description", "shortDesc", "priceType", "listingType",
@@ -208,6 +233,24 @@ export async function PATCH(req: Request, { params }: Args) {
       // Seller extend: keep current status (PUBLISHED stays PUBLISHED).
     }
 
+    const categoryChanged = data.categoryId !== undefined && data.categoryId !== existing.categoryId;
+    const hasAttributeValues = Object.prototype.hasOwnProperty.call(body, "attributeValues");
+    if (hasAttributeValues || categoryChanged) {
+      const validation = await validateListingAttributeBatch(
+        db,
+        data.categoryId !== undefined ? data.categoryId : existing.categoryId,
+        body.attributeValues === undefined ? [] : body.attributeValues,
+        { enforceRequired: categoryChanged },
+      );
+      if (!validation.ok) {
+        return NextResponse.json(
+          { error: validation.error, ...(validation.details ?? {}) },
+          { status: 400 },
+        );
+      }
+    }
+
+
     await db.listing.update({ where: { id }, data }).catch(async (updateErr: any) => {
       // Stale PrismaClient may reject the new P1-5/6 scalar fields. Strip them and retry.
       const msg = String(updateErr?.message ?? "");
@@ -224,41 +267,21 @@ export async function PATCH(req: Request, { params }: Args) {
       }
     });
 
-    // Image management (seller can add/remove/reorder/primary)
-    if (body.addImages && Array.isArray(body.addImages)) {
-      const existingCount = await db.listingImage.count({ where: { listingId: id } });
-      await db.listingImage.createMany({
-        data: body.addImages.map((img: any, idx: number) => ({
+    // All image changes are committed together; ownership was validated above.
+    await mutateListingImages(db, id, body);
+
+    // Remove category-specific values that no longer belong to the selected category.
+    // Scope deletion to this listing; the caller has already passed authorize(id).
+    if (Array.isArray(body.removeAttributeIds) && body.removeAttributeIds.length > 0) {
+      await db.listingAttributeValue.deleteMany({
+        where: {
           listingId: id,
-          url: String(img.url ?? img),
-          alt: img.alt ?? null,
-          isPrimary: img.isPrimary ?? (existingCount === 0 && idx === 0),
-          sortOrder: img.sortOrder ?? existingCount + idx,
-        })),
+          attributeId: { in: body.removeAttributeIds.map(String) },
+        },
       });
     }
-    if (body.removeImages && Array.isArray(body.removeImages)) {
-      await db.listingImage.deleteMany({
-        where: { id: { in: body.removeImages.map(String) } },
-      });
-    }
-    if (body.setPrimaryImage) {
-      await db.listingImage.updateMany({
-        where: { listingId: id },
-        data: { isPrimary: false },
-      });
-      await db.listingImage.update({
-        where: { id: String(body.setPrimaryImage) },
-        data: { isPrimary: true },
-      });
-    }
-    if (body.reorderImages && Array.isArray(body.reorderImages)) {
-      await Promise.all(
-        body.reorderImages.map((imgId: string, idx: number) =>
-          db.listingImage.update({ where: { id: String(imgId) }, data: { sortOrder: idx } }),
-        ),
-      );
-    }
+
+
 
     // Attribute values upsert
     if (Array.isArray(body.attributeValues)) {
@@ -319,7 +342,7 @@ export async function PATCH(req: Request, { params }: Args) {
         : null,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: err?.status ?? 500 });
   }
 }
 

@@ -36,7 +36,7 @@ import {
   sanitizeFilename,
 } from "@/lib/upload-security";
 import { optimizeImageBuffer } from "@/lib/media-image-optimizer";
-import { logAudit } from "@/lib/audit";
+import { logAudit, type AuditActorType } from "@/lib/audit";
 
 /* ── Constants ──────────────────────────────────────────────── */
 
@@ -90,8 +90,96 @@ interface AssetSidecar {
 
 /* ── Helpers ───────────────────────────────────────────────── */
 
+const MAX_SIDECAR_BYTES = 4096;
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  jpg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+};
+
 function sidecarPathFor(assetRelativePathWithExt: string): string {
   return `${assetRelativePathWithExt}.meta.json`;
+}
+
+function isSafeRelativeAssetPath(relativePath: string): boolean {
+  return (
+    relativePath.length > 0 &&
+    !relativePath.includes(String.fromCharCode(92)) &&
+    !relativePath.includes(String.fromCharCode(0)) &&
+    !path.posix.isAbsolute(relativePath) &&
+    !relativePath.split("/").some((part) => !part || part === "." || part === "..")
+  );
+}
+
+/** Validate persisted metadata against the sidecar's actual filename and asset path. */
+function isValidAssetSidecar(
+  value: unknown,
+  expectedRelativePath: string,
+): value is AssetSidecar {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (!isSafeRelativeAssetPath(expectedRelativePath)) return false;
+
+  const expectedFilename = path.posix.basename(expectedRelativePath);
+  const extension = path.posix.extname(expectedFilename).slice(1).toLowerCase();
+  const expectedMime = MIME_BY_EXTENSION[extension];
+
+  return Boolean(
+    expectedMime &&
+    typeof candidate.id === "string" &&
+    candidate.id.length > 0 &&
+    candidate.id.length <= 128 &&
+    candidate.filename === expectedFilename &&
+    candidate.url === `/uploads/${expectedRelativePath}` &&
+    candidate.relativePath === expectedRelativePath &&
+    candidate.mimeType === expectedMime &&
+    candidate.ext === extension &&
+    Number.isSafeInteger(candidate.size) &&
+    (candidate.size as number) > 0 &&
+    (candidate.uploadedBy === null || typeof candidate.uploadedBy === "string") &&
+    typeof candidate.uploadedAt === "string" &&
+    Number.isFinite(Date.parse(candidate.uploadedAt)) &&
+    (candidate.entityType === null ||
+      (typeof candidate.entityType === "string" && ALLOWED_ENTITY_TYPES.has(candidate.entityType))) &&
+    (candidate.entityId === null || typeof candidate.entityId === "string") &&
+    (candidate.altText === null || typeof candidate.altText === "string")
+  );
+}
+
+/**
+ * Resolve an asset path from persisted metadata without allowing traversal,
+ * absolute paths, platform separator tricks, or symlink targets.
+ */
+async function resolveStoredAssetPath(relativePath: string, expectedSize?: number): Promise<string | null> {
+  if (
+    typeof relativePath !== "string" ||
+    relativePath.length === 0 ||
+    relativePath.includes("\\") ||
+    relativePath.includes("\0") ||
+    path.posix.isAbsolute(relativePath) ||
+    relativePath.split("/").some((part) => !part || part === "." || part === "..")
+  ) return null;
+
+  const root = path.resolve(UPLOAD_ROOT);
+  const resolved = path.resolve(root, ...relativePath.split("/"));
+  if (!resolved.startsWith(root + path.sep)) return null;
+  try {
+    const stat = await fs.lstat(resolved);
+    if (
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      (expectedSize !== undefined && stat.size !== expectedSize)
+    ) return null;
+    const realRoot = await fs.realpath(root);
+    const realFile = await fs.realpath(resolved);
+    if (!realFile.startsWith(realRoot + path.sep)) return null;
+    return resolved;
+  } catch {
+    return null;
+  }
 }
 
 /** Walk a directory recursively, returning every regular file. */
@@ -117,17 +205,61 @@ async function walkFiles(
   return acc;
 }
 
-/** Read a sidecar JSON; returns null if missing/corrupt. */
+/** Read and fully validate a bounded sidecar JSON; returns null if invalid. */
 async function readSidecar(
   sidecarFullPath: string,
+  expectedRelativePath: string,
 ): Promise<AssetSidecar | null> {
+  let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
   try {
-    const raw = await fs.readFile(sidecarFullPath, "utf8");
-    const parsed = JSON.parse(raw) as AssetSidecar;
-    if (!parsed || typeof parsed.id !== "string") return null;
-    return parsed;
+    const stat = await fs.lstat(sidecarFullPath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size === 0 || stat.size > MAX_SIDECAR_BYTES) {
+      return null;
+    }
+
+    // Open once, then compare inode identity with lstat to reject a symlink or
+    // path swap between the metadata check and the actual read.
+    handle = await fs.open(sidecarFullPath, "r");
+    const opened = await handle.stat();
+    if (
+      !opened.isFile() ||
+      opened.dev !== stat.dev ||
+      opened.ino !== stat.ino ||
+      opened.size === 0 ||
+      opened.size > MAX_SIDECAR_BYTES
+    ) {
+      return null;
+    }
+
+    // Read at most one byte beyond the limit so a concurrent file growth cannot
+    // turn a small metadata file into an unbounded allocation.
+    const buffer = Buffer.alloc(MAX_SIDECAR_BYTES + 1);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead === 0 || bytesRead > MAX_SIDECAR_BYTES) return null;
+    const raw = buffer.toString("utf8", 0, bytesRead);
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!isValidAssetSidecar(parsed, expectedRelativePath)) return null;
+
+    // Return only the supported fields; never expose arbitrary persisted JSON keys.
+    return {
+      id: parsed.id,
+      filename: parsed.filename,
+      url: parsed.url,
+      relativePath: parsed.relativePath,
+      mimeType: parsed.mimeType,
+      ext: parsed.ext,
+      size: parsed.size,
+      uploadedBy: parsed.uploadedBy,
+      uploadedAt: parsed.uploadedAt,
+      entityType: parsed.entityType,
+      entityId: parsed.entityId,
+      altText: parsed.altText,
+    };
   } catch {
     return null;
+  } finally {
+    await handle?.close().catch(() => {});
   }
 }
 
@@ -139,8 +271,13 @@ async function readAllAssets(): Promise<MediaAsset[]> {
   for (const rel of rels) {
     if (!rel.endsWith(".meta.json")) continue;
     const full = path.join(UPLOAD_ROOT, rel);
-    const sc = await readSidecar(full);
-    if (sc) sidecars.push(sc);
+    const binaryRelativePath = rel.slice(0, -".meta.json".length);
+    const sc = await readSidecar(full, binaryRelativePath);
+    if (!sc) continue;
+    // Ignore stale metadata and assets whose persisted path no longer resolves
+    // to a regular file contained by UPLOAD_ROOT.
+    if (!(await resolveStoredAssetPath(binaryRelativePath, sc.size))) continue;
+    sidecars.push(sc);
   }
   sidecars.sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : a.uploadedAt > b.uploadedAt ? -1 : 0));
   return sidecars.map((s) => ({ ...s }));
@@ -171,6 +308,8 @@ export interface UploadAssetInput {
   altText?: string;
   /** Original filename (only used for ext derivation; never trusted). */
   originalFilename?: string;
+  /** Audit identity; existing admin callers retain the ADMIN default. */
+  actorType?: AuditActorType;
 }
 
 export interface UploadAssetResult {
@@ -220,22 +359,38 @@ export async function uploadAsset(
   const storedBuffer = optimized.buffer;
 
   // 3. Sanitize filename (random, opaque) using the output format, not client MIME.
-  const safeName = sanitizeFilename(optimized.ext);
   const sub = monthSubfolder();
   const targetDir = path.join(UPLOAD_ROOT, sub);
   await fs.mkdir(targetDir, { recursive: true }).catch(() => {});
-  const fullDiskPath = path.join(targetDir, safeName);
-  const relPath = path.join(sub, safeName).split(path.sep).join("/");
-  const publicUrl = `/uploads/${relPath}`;
 
-  // 3. Write binary file (guard against accidental overwrite)
-  try {
-    await fs.writeFile(fullDiskPath, storedBuffer);
-  } catch (err) {
-    return {
-      ok: false,
-      error: `ذخیره‌سازی فایل ناموفق بود: ${(err as Error).message}`,
-    };
+  // 3. Write binary file exclusively (guard against accidental overwrite).
+  // If a randomized filename collision occurs, retry with a new filename rather
+  // than clobbering existing content.
+  let safeName = sanitizeFilename(optimized.ext);
+  let fullDiskPath = path.join(targetDir, safeName);
+  let relPath = path.join(sub, safeName).split(path.sep).join("/");
+  let publicUrl = `/uploads/${relPath}`;
+  let binaryCreated = false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await fs.writeFile(fullDiskPath, storedBuffer, { flag: "wx" });
+      binaryCreated = true;
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST" || attempt === 2) {
+        return {
+          ok: false,
+          error: `ذخیره‌سازی فایل ناموفق بود: ${(err as Error).message}`,
+        };
+      }
+      safeName = sanitizeFilename(optimized.ext);
+      fullDiskPath = path.join(targetDir, safeName);
+      relPath = path.join(sub, safeName).split(path.sep).join("/");
+      publicUrl = `/uploads/${relPath}`;
+    }
+  }
+  if (!binaryCreated) {
+    return { ok: false, error: "ذخیره‌سازی فایل ناموفق بود." };
   }
 
   // 4. Build sidecar metadata
@@ -260,7 +415,7 @@ export async function uploadAsset(
   // 5. Persist sidecar
   const sidecarDiskPath = path.join(targetDir, sidecarPathFor(safeName));
   try {
-    await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), "utf8");
+    await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), { encoding: "utf8", flag: "wx" });
   } catch (err) {
     // Best-effort cleanup of orphaned binary if sidecar write failed
     await fs.unlink(fullDiskPath).catch(() => {});
@@ -273,7 +428,7 @@ export async function uploadAsset(
   // 6. Audit log (best-effort, never throws)
   await logAudit({
     actorId: input.uploadedBy ?? null,
-    actorType: "ADMIN",
+    actorType: input.actorType ?? "ADMIN",
     action: "media.upload",
     entityType: "MediaAsset",
     entityId: assetId,
@@ -326,6 +481,15 @@ export async function getAsset(assetId: string): Promise<MediaAsset | null> {
   return all.find((a) => a.id === assetId) ?? null;
 }
 
+/** Fetch several assets with one filesystem walk for ownership validation. */
+export async function getAssets(assetIds: string[]): Promise<MediaAsset[]> {
+  if (!Array.isArray(assetIds) || assetIds.length === 0) return [];
+  const requestedIds = new Set(assetIds.filter((id) => typeof id === "string" && id.length > 0));
+  if (requestedIds.size === 0) return [];
+  const all = await readAllAssets();
+  return all.filter((asset) => requestedIds.has(asset.id));
+}
+
 /**
  * Delete an asset: removes both the binary file and its sidecar.
  * Audit-logged as 'media.delete'.
@@ -338,7 +502,10 @@ export async function deleteAsset(
   if (!asset) {
     return { ok: false, error: "رسانه یافت نشد." };
   }
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
+  const binaryPath = await resolveStoredAssetPath(asset.relativePath, asset.size);
+  if (!binaryPath) {
+    return { ok: false, error: "مسیر فایل رسانه نامعتبر است یا فایل وجود ندارد." };
+  }
   const sidecarPath = `${binaryPath}.meta.json`;
 
   // Remove binary file
@@ -393,7 +560,10 @@ export async function attachAsset(
     return { ok: false, error: "رسانه یافت نشد." };
   }
 
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
+  const binaryPath = await resolveStoredAssetPath(asset.relativePath, asset.size);
+  if (!binaryPath) {
+    return { ok: false, error: "مسیر فایل رسانه نامعتبر است یا فایل وجود ندارد." };
+  }
   const sidecarPath = `${binaryPath}.meta.json`;
   const before = { entityType: asset.entityType, entityId: asset.entityId };
   const updated: AssetSidecar = {
@@ -410,9 +580,18 @@ export async function attachAsset(
     entityId,
     altText: asset.altText,
   };
+  // Write a unique temporary sidecar and atomically replace the old one.
+  // Readers therefore observe either the previous complete JSON or the new one,
+  // never a partially-written document.
+  const temporarySidecarPath = `${sidecarPath}.${crypto.randomBytes(8).toString("hex")}.tmp`;
   try {
-    await fs.writeFile(sidecarPath, JSON.stringify(updated, null, 2), "utf8");
+    await fs.writeFile(temporarySidecarPath, JSON.stringify(updated, null, 2), {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    await fs.rename(temporarySidecarPath, sidecarPath);
   } catch (err) {
+    await fs.unlink(temporarySidecarPath).catch(() => {});
     return {
       ok: false,
       error: `به‌روزرسانی متادیتا ناموفق بود: ${(err as Error).message}`,

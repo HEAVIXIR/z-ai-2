@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getCategoryAttributeLinks } from "@/lib/category-attributes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,23 +51,7 @@ export async function GET(
       );
     }
 
-    const links = await db.categoryAttribute.findMany({
-      where: { categoryId: category.id },
-      orderBy: [
-        { displayOrder: "asc" },
-        { attribute: { sortOrder: "asc" } },
-        { attribute: { name: "asc" } },
-      ],
-      include: {
-        attribute: {
-          include: {
-            options: {
-              orderBy: [{ sortOrder: "asc" }, { value: "asc" }],
-            },
-          },
-        },
-      },
-    });
+    const links = await getCategoryAttributeLinks(db, category.id);
 
     const attributes = links.map((l) => ({
       id: l.attribute.id,

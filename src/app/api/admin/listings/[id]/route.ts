@@ -8,6 +8,8 @@ import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 import { isAdmin } from "@/lib/authorization";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
+import { mutateListingImages } from "@/lib/listing-image-mutations";
+import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation";
 
 // STEP 11.32 NEW-C1 FIX: these legacy admin routes are ADMIN-ONLY.
 // See src/app/api/admin/listings/route.ts for full rationale.
@@ -171,6 +173,29 @@ export async function PATCH(req: Request, { params }: Params) {
     const existing = await db.listing.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    // Validate image mutation IDs before any listing mutation to prevent partial updates.
+    const requestedImageIds = [
+      ...(Array.isArray(body.removeImages) ? body.removeImages.map(String) : []),
+      ...(body.setPrimaryImage ? [String(body.setPrimaryImage)] : []),
+      ...(Array.isArray(body.reorderImages) ? body.reorderImages.map(String) : []),
+    ];
+    const uniqueRequestedImageIds = [...new Set(requestedImageIds)];
+    if (body.reorderImages && Array.isArray(body.reorderImages) &&
+        new Set(body.reorderImages.map(String)).size !== body.reorderImages.length) {
+      return NextResponse.json({ error: "Duplicate image IDs in reorderImages" }, { status: 400 });
+    }
+    if (uniqueRequestedImageIds.length) {
+      const ownedImages = await db.listingImage.findMany({
+        where: { listingId: id, id: { in: uniqueRequestedImageIds } },
+        select: { id: true },
+      });
+      const ownedIds = new Set(ownedImages.map((img: any) => String(img.id)));
+      const invalidImageIds = uniqueRequestedImageIds.filter((imageId) => !ownedIds.has(imageId));
+      if (invalidImageIds.length) {
+        return NextResponse.json({ error: "One or more images do not belong to this listing", invalidImageIds }, { status: 400 });
+      }
+    }
+
     const url = new URL(req.url);
     const queryAction = url.searchParams.get("action");
     const bodyAction = body.action as string | undefined;
@@ -206,6 +231,23 @@ export async function PATCH(req: Request, { params }: Params) {
     }
     if ("price" in body) {
       data.price = parseBig(body.price);
+    }
+
+    const categoryChanged = data.categoryId !== undefined && data.categoryId !== existing.categoryId;
+    const hasAttributeValues = Object.prototype.hasOwnProperty.call(body, "attributeValues");
+    if (hasAttributeValues || categoryChanged) {
+      const validation = await validateListingAttributeBatch(
+        db,
+        data.categoryId !== undefined ? data.categoryId : existing.categoryId,
+        body.attributeValues === undefined ? [] : body.attributeValues,
+        { enforceRequired: categoryChanged },
+      );
+      if (!validation.ok) {
+        return NextResponse.json(
+          { error: validation.error, ...(validation.details ?? {}) },
+          { status: 400 },
+        );
+      }
     }
 
     // Slug re-sync if title changed
@@ -317,71 +359,20 @@ export async function PATCH(req: Request, { params }: Params) {
       after: { updated: true, fields: Object.keys(data || {}).length },
     });
 
-    // Image management
-    if (body.addImages && Array.isArray(body.addImages)) {
-      const existingCount = await db.listingImage.count({ where: { listingId: id } });
-      await db.listingImage.createMany({
-        data: body.addImages.map((img: any, idx: number) => ({
-          listingId: id,
-          url: String(img.url ?? img),
-          alt: img.alt ?? null,
-          isPrimary: img.isPrimary ?? (existingCount === 0 && idx === 0),
-          sortOrder: img.sortOrder ?? existingCount + idx,
-        })),
-      });
+    // Image mutations run atomically; audit records are emitted only after commit.
+    const imageMutation = await mutateListingImages(db, id, body);
+    if (imageMutation?.added) {
+      await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.bulk_create', entityType: 'ListingImage', after: { count: body.addImages.length } });
     }
-    if (body.removeImages && Array.isArray(body.removeImages)) {
-      await db.listingImage.deleteMany({
-        where: { id: { in: body.removeImages.map(String) } },
-      });
-    await logAudit({
-      actorId: user?.id ?? null,
-      actorType: 'ADMIN',
-      action: 'marketplace.listing_image.bulk_deleteMany',
-      entityType: 'ListingImage',
-      after: { bulk: true },
-    });
-
+    if (imageMutation?.removed) {
+      await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.bulk_deleteMany', entityType: 'ListingImage', after: { bulk: true } });
     }
-    if (body.setPrimaryImage) {
-      await db.listingImage.updateMany({
-        where: { listingId: id },
-        data: { isPrimary: false },
-      });
-    await logAudit({
-      actorId: user?.id ?? null,
-      actorType: 'ADMIN',
-      action: 'marketplace.listing_image.bulk_updateMany',
-      entityType: 'ListingImage',
-      after: { bulk: true },
-    });
-
-      await db.listingImage.update({
-        where: { id: String(body.setPrimaryImage) },
-        data: { isPrimary: true },
-      });
-      await logAudit({
-        actorId: user?.id ?? null,
-        actorType: 'ADMIN',
-        action: 'marketplace.listing_image.update',
-        entityType: 'ListingImage',
-        entityId: String(body.setPrimaryImage),
-        after: { isPrimary: true },
-      });
+    if (imageMutation?.primary) {
+      await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.bulk_updateMany', entityType: 'ListingImage', after: { bulk: true } });
+      await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.update', entityType: 'ListingImage', entityId: String(body.setPrimaryImage), after: { isPrimary: true } });
     }
-    if (body.reorderImages && Array.isArray(body.reorderImages)) {
-      await Promise.all(
-        body.reorderImages.map((imgId: string, idx: number) =>
-          db.listingImage.update({ where: { id: String(imgId) }, data: { sortOrder: idx } }),
-        ),
-      );
-      await logAudit({
-        actorId: user?.id ?? null,
-        actorType: 'ADMIN',
-        action: 'marketplace.listing_image.bulk_reorder',
-        entityType: 'ListingImage',
-        after: { count: body.reorderImages.length },
-      });
+    if (imageMutation?.reordered) {
+      await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.bulk_reorder', entityType: 'ListingImage', after: { count: body.reorderImages.length } });
     }
 
     // ── Attribute values upsert (full attribute editing) ──
@@ -471,7 +462,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true, listing: fresh ? serialize(fresh) : null });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: err?.status ?? 500 });
   }
 }
 

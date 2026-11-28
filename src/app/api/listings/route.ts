@@ -2,6 +2,7 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig, parseNumber, slugify, uniqueSlug } from "@/lib/api-helpers";
 import {
@@ -13,6 +14,7 @@ import { logSearchQuery } from "@/lib/demand-engine";
 import { getClientIp } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { trackError } from "@/lib/error-tracking";
+import { getAssets } from "@/lib/media-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -351,6 +353,53 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
 
+    // Listing images must reference media assets uploaded by this authenticated
+    // seller; arbitrary external URLs and another user's asset IDs are rejected.
+    if (body.images !== undefined && !Array.isArray(body.images)) {
+      return NextResponse.json({ error: "images must be an array" }, { status: 400 });
+    }
+    const imageInputs: unknown[] = Array.isArray(body.images) ? body.images : [];
+    if (imageInputs.length > 10) {
+      return NextResponse.json({ error: "حداکثر ۱۰ تصویر مجاز است." }, { status: 400 });
+    }
+    const imageAssetIds = new Set<string>();
+    const normalizedImageInputs: Array<{ assetId: string; url: string; alt: string | null }> = [];
+    for (const imageInput of imageInputs) {
+      if (!imageInput || typeof imageInput !== "object" || Array.isArray(imageInput)) {
+        return NextResponse.json({ error: "ساختار تصویر نامعتبر است." }, { status: 400 });
+      }
+      const image = imageInput as Record<string, unknown>;
+      const assetId = typeof image.assetId === "string" ? image.assetId.trim() : "";
+      const url = typeof image.url === "string" ? image.url : "";
+      if (!assetId || !url || imageAssetIds.has(assetId)) {
+        return NextResponse.json({ error: "شناسه یا آدرس تصویر نامعتبر یا تکراری است." }, { status: 400 });
+      }
+      imageAssetIds.add(assetId);
+      normalizedImageInputs.push({
+        assetId,
+        url,
+        alt: typeof image.alt === "string" ? image.alt.slice(0, 500) : null,
+      });
+    }
+
+    const assetsById = new Map(
+      (await getAssets([...imageAssetIds])).map((asset) => [asset.id, asset]),
+    );
+    const validatedImages: Array<{ url: string; alt: string | null }> = [];
+    for (const image of normalizedImageInputs) {
+      const asset = assetsById.get(image.assetId);
+      if (
+        !asset ||
+        asset.uploadedBy !== user.id ||
+        asset.entityType !== "Generic" ||
+        asset.entityId !== user.id ||
+        asset.url !== image.url
+      ) {
+        return NextResponse.json({ error: "تصویر متعلق به حساب شما نیست یا قابل استفاده نیست." }, { status: 403 });
+      }
+      validatedImages.push({ url: asset.url, alt: image.alt });
+    }
+
     const title = String(body.title ?? "").trim();
     if (!title || title.length < 3) {
       return NextResponse.json({ error: "عنوان آگهی معتبر نیست" }, { status: 400 });
@@ -418,19 +467,67 @@ export async function POST(req: Request) {
       }
     }
 
-    const listing = await db.listing.create({ data });
-
-    if (Array.isArray(body.images)) {
-      await db.listingImage.createMany({
-        data: body.images.slice(0, 10).map((img: any, idx: number) => ({
-          listingId: listing.id,
-          url: String(img.url ?? img),
-          alt: img.alt ?? null,
-          isPrimary: idx === 0,
-          sortOrder: idx,
-        })),
-      });
+    if (body.attributeValues !== undefined && !Array.isArray(body.attributeValues)) {
+      return NextResponse.json({ error: "attributeValues must be an array" }, { status: 400 });
     }
+    const incomingAttributeValues: any[] = Array.isArray(body.attributeValues)
+      ? body.attributeValues
+      : [];
+    if (data.categoryId || incomingAttributeValues.length > 0) {
+      const attributeValidation = await validateListingAttributeBatch(
+        db,
+        data.categoryId,
+        incomingAttributeValues,
+        { enforceRequired: true },
+      );
+      if (!attributeValidation.ok) {
+        return NextResponse.json(
+          { error: attributeValidation.error, ...(attributeValidation.details ?? {}) },
+          { status: 400 },
+        );
+      }
+    }
+
+    // Listing, images and technical specifications are committed together.
+    // A failed attribute write must not leave behind a partially-created listing.
+    const listing = await db.$transaction(async (tx: any) => {
+      const created = await tx.listing.create({ data });
+      if (validatedImages.length > 0) {
+        await tx.listingImage.createMany({
+          data: validatedImages.map((image, idx) => ({
+            listingId: created.id,
+            url: image.url,
+            alt: image.alt,
+            isPrimary: idx === 0,
+            sortOrder: idx,
+          })),
+        });
+      }
+      const nonEmptyAttributeValues = incomingAttributeValues.filter((value) =>
+        [value.textValue, value.numberValue, value.booleanValue, value.dateValue, value.optionId]
+          .some((candidate) => candidate !== undefined && candidate !== null && candidate !== ""),
+      );
+      if (nonEmptyAttributeValues.length > 0) {
+        await tx.listingAttributeValue.createMany({
+          data: nonEmptyAttributeValues.map((value) => ({
+            listingId: created.id,
+            attributeId: String(value.attributeId),
+            textValue: value.textValue == null ? null : value.textValue,
+            numberValue: value.numberValue == null || value.numberValue === "" ? null : Number(value.numberValue),
+            booleanValue: value.booleanValue == null ? null : value.booleanValue,
+            dateValue: value.dateValue == null || value.dateValue === "" ? null : new Date(value.dateValue),
+            optionId: value.optionId == null || value.optionId === "" ? null : String(value.optionId),
+            unit: value.unit == null || value.unit === "" ? null : String(value.unit),
+            sourceType: "SELLER_INPUT",
+            confidence: null,
+            sourceReference: null,
+            verifiedAt: null,
+            verifiedBy: null,
+          })),
+        });
+      }
+      return created;
+    });
 
     // P1-2 — track LISTING_CREATE (fire-and-forget).
     trackEvent({

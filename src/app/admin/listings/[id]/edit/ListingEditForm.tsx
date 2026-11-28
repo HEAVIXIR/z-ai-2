@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import AttributeFields, {
   buildAttributePayload,
+  validateAttributeFields,
   type AttributeDef,
   type AttributeValue,
 } from "@/components/listings/AttributeFields";
@@ -229,7 +230,9 @@ export default function ListingEditForm({
 
   // ── Attributes ──
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
+  const [attributeDefsCategoryId, setAttributeDefsCategoryId] = useState(initial.categoryId);
   const [attributeValues, setAttributeValues] = useState<AttributeValue>({});
+  const [attributeErrors, setAttributeErrors] = useState<Record<string, string>>({});
 
   // ── Submit state ──
   const [saving, setSaving] = useState(false);
@@ -401,7 +404,7 @@ export default function ListingEditForm({
     for (const av of initial.attributeValues) {
       const k = av.key ?? av.attributeId;
       if (av.type === "BOOLEAN") {
-        map[k] = av.booleanValue ?? false;
+        map[k] = av.booleanValue ?? null;
       } else if (av.type === "SELECT" || av.type === "MULTI_SELECT") {
         if (av.type === "MULTI_SELECT") {
           map[k] = av.textValue ? av.textValue.split(",") : [];
@@ -517,6 +520,22 @@ export default function ListingEditForm({
     setSaving(true);
     setError(null);
     setSuccess(null);
+    if (categoryId && attributeDefsCategoryId !== categoryId) {
+      setError("لطفاً تا بارگذاری مشخصات فنی دستهٔ جدید صبر کنید.");
+      setSaving(false);
+      return;
+    }
+    // Require mandatory technical fields when moving a listing to a new category.
+    // Existing legacy listings remain editable without retroactive backfill.
+    if (categoryId !== initial.categoryId && categoryId) {
+      const errors = validateAttributeFields(attributeDefs, attributeValues);
+      setAttributeErrors(errors);
+      if (Object.keys(errors).length > 0) {
+        setError("لطفاً مشخصات فنی الزامی را تکمیل کنید.");
+        setSaving(false);
+        return;
+      }
+    }
     try {
       const payload: any = {
         title: title.trim(),
@@ -552,6 +571,14 @@ export default function ListingEditForm({
       // Build attribute payload from current defs + values.
       if (attributeDefs.length > 0) {
         payload.attributeValues = buildAttributePayload(attributeDefs, attributeValues);
+      }
+      // When the category changes, remove only old attributes that are not
+      // part of the newly selected category; shared fields remain intact.
+      if (categoryId !== initial.categoryId && attributeDefsCategoryId === categoryId) {
+        const nextAttributeIds = new Set(attributeDefs.map((attribute) => attribute.id));
+        payload.removeAttributeIds = initial.attributeValues
+          .map((value) => value.attributeId)
+          .filter((attributeId) => !nextAttributeIds.has(attributeId));
       }
 
       const res = await fetch(apiBase, {
@@ -714,7 +741,18 @@ export default function ListingEditForm({
                 <label className={labelCls}>دسته‌بندی</label>
                 <select
                   value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
+                  onChange={(e) => {
+                    const nextCategoryId = e.target.value;
+                    if (nextCategoryId !== categoryId) {
+                      // A device/category change invalidates the previous device specs.
+                      // Never carry excavator values into a loader (or another category).
+                      setAttributeValues({});
+                      setAttributeErrors({});
+                      setAttributeDefs([]);
+                      setAttributeDefsCategoryId(null);
+                    }
+                    setCategoryId(nextCategoryId);
+                  }}
                   className={inputCls}
                 >
                   <option value="">— انتخاب کنید —</option>
@@ -1120,8 +1158,17 @@ export default function ListingEditForm({
                 <AttributeFields
                   categoryId={categoryId}
                   values={attributeValues}
-                  onChange={setAttributeValues}
-                  onAttributesLoaded={setAttributeDefs}
+                  errors={attributeErrors}
+                  onChange={(next) => {
+                    setAttributeValues(next);
+                    if (Object.keys(attributeErrors).length > 0) {
+                      setAttributeErrors(validateAttributeFields(attributeDefs, next));
+                    }
+                  }}
+                  onAttributesLoaded={(defs) => {
+                    setAttributeDefs(defs);
+                    setAttributeDefsCategoryId(categoryId);
+                  }}
                 />
               </div>
             </section>

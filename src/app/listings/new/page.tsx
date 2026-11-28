@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import NextImage from "next/image";
 import Link from "next/link";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -90,19 +91,24 @@ type TaxRoot = {
 
 type ModelOption = { id: string; name: string; nameEn: string | null };
 
+type UploadedListingImage = { assetId: string; url: string };
+
 export default function NewListingPage() {
   const [step, setStep] = useState(1);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [attributeWarning, setAttributeWarning] = useState<string | null>(null);
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<UploadedListingImage[]>([]);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
 
   // Form state — V1.1
   const [transactionType, setTransactionType] = useState<string>("SALE");
   const [categoryId, setCategoryId] = useState<string>("");
   const [attributes, setAttributes] = useState<AttributeValue>({});
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
+  const [attributeDefsCategoryId, setAttributeDefsCategoryId] = useState<string | null>(null);
   const [attrErrors, setAttrErrors] = useState<Record<string, string>>({});
   const [brandId, setBrandId] = useState<string>("");
   const [modelId, setModelId] = useState<string>("");
@@ -268,7 +274,15 @@ export default function NewListingPage() {
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   // ── Cascade: when a root is selected, populate its children ──
+  const resetCategoryAttributes = () => {
+    setAttributes({});
+    setAttributeDefs([]);
+    setAttributeDefsCategoryId(null);
+    setAttrErrors({});
+  };
+
   const onPickRoot = (root: TaxRoot) => {
+    resetCategoryAttributes();
     setSelectedRootId(root.id);
     setCategoryId(root.id);
     setChildCats(root.children ?? []);
@@ -277,6 +291,7 @@ export default function NewListingPage() {
   };
 
   const onPickChild = (child: TaxChild) => {
+    resetCategoryAttributes();
     setSelectedChildId(child.id);
     setCategoryId(child.id);
     setGrandchildCats([]);
@@ -297,6 +312,7 @@ export default function NewListingPage() {
   };
 
   const onPickGrandchild = (gc: TaxChild) => {
+    resetCategoryAttributes();
     setCategoryId(gc.id);
   };
 
@@ -307,6 +323,8 @@ export default function NewListingPage() {
     if (step === 1) return Boolean(transactionType);
     if (step === 2) return Boolean(categoryId);
     if (step === 3) {
+      // Do not allow the user to skip the asynchronous category schema load.
+      if (!categoryId || attributeDefsCategoryId !== categoryId) return false;
       // Required attributes must be filled before proceeding.
       // NOTE: do NOT call setAttrErrors here — canProceed runs during render.
       const errs = validateAttributeFields(attributeDefs, attributes);
@@ -315,6 +333,7 @@ export default function NewListingPage() {
     if (step === 4) return Boolean(brandId) && form.title.trim().length >= 5 && form.shortDesc.trim();
     if (step === 5) return Boolean(location.provinceId);
     if (step === 6) {
+      if (imageUploading) return false;
       if (isRent) return form.price && form.rentalPeriod && images.length >= 1;
       if (isAuction) return images.length >= 1; // auction price optional at submission
       return form.price && images.length >= 1;
@@ -331,6 +350,25 @@ export default function NewListingPage() {
     setAttributeWarning(null);
     setSubmitting(true);
     try {
+      if (imageUploading) {
+        setSubmitError("لطفاً تا پایان بارگذاری تصاویر صبر کنید.");
+        return;
+      }
+      if (!categoryId || attributeDefsCategoryId !== categoryId) {
+        setSubmitError("لطفاً تا بارگذاری مشخصات فنی دسته صبر کنید.");
+        return;
+      }
+      const defs = attributeDefs.length > 0
+        ? attributeDefs
+        : (getCachedAttributes(categoryId) ?? []);
+      const attributePayload = buildAttributePayload(defs, attributes);
+      const requiredErrors = validateAttributeFields(defs, attributes);
+      setAttrErrors(requiredErrors);
+      if (Object.keys(requiredErrors).length > 0) {
+        setSubmitError("لطفاً مشخصات فنی الزامی را تکمیل کنید.");
+        return;
+      }
+
       // Look up province/city names for storage (Listing.province/city are String?).
       // We can't easily resolve names from the client without another fetch, so
       // we pass province/city IDs and let the server fall back if needed.
@@ -358,8 +396,8 @@ export default function NewListingPage() {
         serialNumber: form.serialNumber || undefined,
         sellerName: form.sellerName || undefined,
         sellerPhone: form.sellerPhone || undefined,
-        attributes,
-        images: images.map((url) => ({ url })),
+        attributeValues: attributePayload,
+        images: images.map((image) => ({ assetId: image.assetId, url: image.url })),
       };
 
       // P2-5b — Rental fields (sent only when transactionType=RENT).
@@ -384,39 +422,7 @@ export default function NewListingPage() {
         return;
       }
 
-      // ── Attribute save — fire after the listing row exists. ──
-      // We always have the listing id (from the POST response). Use the
-      // cached attribute definitions (the AttributeFields component populates
-      // the cache on mount) or fall back to the defs captured via the
-      // onAttributesLoaded callback.
-      const defs = attributeDefs.length > 0
-        ? attributeDefs
-        : (categoryId ? getCachedAttributes(categoryId) ?? [] : []);
-      const payload = buildAttributePayload(defs, attributes);
-      if (payload.length > 0 && data.id) {
-        try {
-          const attrRes = await fetch(
-            `/api/listings/${encodeURIComponent(data.id)}/attributes`,
-            {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ values: payload }),
-            },
-          );
-          if (!attrRes.ok) {
-            const attrData = await attrRes.json().catch(() => ({}));
-            setAttributeWarning(
-              attrData?.error
-                ? `ذخیرهٔ ویژگی‌ها ناموفق بود: ${attrData.error} — آگهی ثبت شد ولی ویژگی‌ها ذخیره نشدند.`
-                : "ذخیرهٔ ویژگی‌ها ناموفق بود — آگهی ثبت شد ولی ویژگی‌ها ذخیره نشدند. می‌توانید بعداً ویرایش کنید.",
-            );
-          }
-        } catch (attrErr: any) {
-          setAttributeWarning(
-            `آگهی ثبت شد ولی ذخیرهٔ ویژگی‌ها با خطا مواجه شد: ${attrErr?.message ?? "خطای شبکه"}. بعداً از پنل کاربری ویرایش کنید.`,
-          );
-        }
-      }
+      // Technical attributes are persisted atomically by POST /api/listings.
 
       setSubmitted(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -683,7 +689,7 @@ export default function NewListingPage() {
                           setAttrErrors(validateAttributeFields(attributeDefs, next));
                         }}
                         errors={attrErrors}
-                        onAttributesLoaded={(defs) => setAttributeDefs(defs)}
+                        onAttributesLoaded={(defs) => { setAttributeDefs(defs); setAttributeDefsCategoryId(categoryId); }}
                       />
                     </div>
                     <p className="mt-4 text-[11px] text-white/40">
@@ -1132,18 +1138,52 @@ export default function NewListingPage() {
                           <span className="text-sm font-bold text-white/60">
                             تصاویر دستگاه را اینجا بکشید یا کلیک کنید
                           </span>
-                          <span className="mt-1 text-[11px] text-white/30">PNG, JPG تا ۱۰ مگابایت</span>
+                          <span className="mt-1 text-[11px] text-white/30">حداکثر ۱۰ تصویر، هرکدام تا ۴ مگابایت</span>
                           <input
                             type="file"
                             multiple
-                            accept="image/*"
+                            disabled={imageUploading || images.length >= 10}
+                            accept="image/jpeg,image/png,image/webp,image/gif,image/bmp"
                             className="hidden"
-                            onChange={(e) => {
-                              const files = Array.from(e.target.files ?? []);
-                              const placeholders = files.map(
-                                (_, i) => `/uploads/placeholder-${Date.now()}-${i}.jpg`,
-                              );
-                              setImages((prev) => [...prev, ...placeholders].slice(0, 30));
+                            onChange={async (e) => {
+                              const input = e.currentTarget;
+                              const files = Array.from(input.files ?? []);
+                              input.value = "";
+                              setImageUploadError(null);
+                              if (files.length === 0) return;
+                              const availableSlots = 10 - images.length;
+                              if (availableSlots <= 0) {
+                                setImageUploadError("حداکثر ۱۰ تصویر قابل بارگذاری است.");
+                                return;
+                              }
+                              if (files.length > availableSlots) {
+                                setImageUploadError(`فقط ${availableSlots} تصویر دیگر می‌توانید اضافه کنید.`);
+                              }
+                              setImageUploading(true);
+                              try {
+                                for (const file of files.slice(0, availableSlots)) {
+                                  const formData = new FormData();
+                                  formData.append("file", file);
+                                  const response = await fetch("/api/listings/upload", {
+                                    method: "POST",
+                                    body: formData,
+                                  });
+                                  const result = await response.json().catch(() => ({}));
+                                  if (!response.ok || !result.ok || !result.asset?.id || !result.asset?.url) {
+                                    setImageUploadError(result.error ?? "بارگذاری یکی از تصاویر ناموفق بود.");
+                                    continue;
+                                  }
+                                  setImages((previous) =>
+                                    previous.length < 10
+                                      ? [...previous, { assetId: result.asset.id, url: result.asset.url }]
+                                      : previous,
+                                  );
+                                }
+                              } catch {
+                                setImageUploadError("ارتباط با سرور هنگام بارگذاری تصویر برقرار نشد.");
+                              } finally {
+                                setImageUploading(false);
+                              }
                             }}
                           />
                         </label>
@@ -1155,9 +1195,14 @@ export default function NewListingPage() {
                                 key={i}
                                 className="group relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-black/40"
                               >
-                                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1f1f1f] to-[#0c0c0c]">
-                                  <span className="text-3xl">🖼️</span>
-                                </div>
+                                <NextImage
+                                  src={img.url}
+                                  alt={`تصویر دستگاه ${i + 1}`}
+                                  width={240}
+                                  height={240}
+                                  unoptimized
+                                  className="h-full w-full object-cover"
+                                />
                                 {i === 0 && (
                                   <span className="absolute right-1 top-1 rounded bg-[#F58220] px-1.5 py-0.5 text-[8px] font-black text-white">
                                     اصلی
@@ -1175,7 +1220,8 @@ export default function NewListingPage() {
                           </div>
                         )}
                         <p className="mt-3 text-[11px] text-white/35">
-                          {images.length} تصویر انتخاب شده. حداقل یک تصویر الزامی است.
+                          {imageUploading ? "در حال بارگذاری تصاویر..." : `${images.length} تصویر بارگذاری شده. حداقل یک تصویر الزامی است.`}
+                          {imageUploadError && <span className="mt-1 block text-red-400">{imageUploadError}</span>}
                         </p>
                       </div>
                     </div>

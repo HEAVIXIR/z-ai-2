@@ -4,7 +4,6 @@ const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
   listAssets: vi.fn(),
   uploadAsset: vi.fn(),
-  logAudit: vi.fn(),
 }));
 
 vi.mock("@/lib/admin-guard", () => ({
@@ -16,9 +15,6 @@ vi.mock("@/lib/media-service", () => ({
   uploadAsset: mocks.uploadAsset,
 }));
 
-vi.mock("@/lib/audit", () => ({
-  logAudit: mocks.logAudit,
-}));
 
 import { GET, POST } from "@/app/api/admin/media/route";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload-security";
@@ -29,7 +25,6 @@ describe("/api/admin/media permission separation", () => {
     mocks.requireAdmin.mockResolvedValue([{ id: "admin-1" }, null]);
     mocks.listAssets.mockResolvedValue([]);
     mocks.uploadAsset.mockResolvedValue({ ok: true, asset: { id: "asset-1" } });
-    mocks.logAudit.mockResolvedValue(undefined);
   });
 
   it("uses media.read for listing assets", async () => {
@@ -52,6 +47,26 @@ describe("/api/admin/media permission separation", () => {
     expect(mocks.requireAdmin).toHaveBeenCalledWith("media.upload");
     expect(mocks.uploadAsset).not.toHaveBeenCalled();
   });
+  it("delegates the single upload audit event to the media service", async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], "photo.jpg", { type: "image/jpeg" });
+    const formData = new FormData();
+    formData.set("file", file);
+    mocks.uploadAsset.mockResolvedValue({
+      ok: true,
+      asset: { id: "asset-1", url: "/uploads/photo.jpg" },
+    });
+    const response = await POST(new Request("http://localhost/api/admin/media", {
+      method: "POST",
+      body: formData,
+    }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.uploadAsset).toHaveBeenCalledTimes(1);
+    expect(mocks.uploadAsset).toHaveBeenCalledWith(expect.objectContaining({
+      uploadedBy: "admin-1",
+    }));
+  });
+
   it("rejects oversized declared bodies before multipart parsing", async () => {
     const formData = vi.fn();
     const request = {

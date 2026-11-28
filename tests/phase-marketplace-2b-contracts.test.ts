@@ -6,7 +6,7 @@
  *
  * Evidence anchors (from the batch):
  *   7 admin route files (listings, offers-all, products)
- *   21 storeDb mutation calls (create/update/delete/upsert/deleteMany/updateMany)
+ *   22 storeDb mutation calls (create/update/delete/upsert/deleteMany/updateMany)
  *   15 logAudit calls (13 wired this batch + 2 pre-existing in offers-all/[id])
  */
 
@@ -113,7 +113,7 @@ describe('Phase Marketplace-2B — Admin Audit Contract Tests', () => {
       expect(gaps).toEqual([]);
     });
 
-    it('total audits (15) covers most mutations (21)', () => {
+    it('total audits (15) covers most mutations (22)', () => {
       let totalMut = 0;
       let totalAudit = 0;
       for (const f of listRouteFiles()) {
@@ -123,7 +123,12 @@ describe('Phase Marketplace-2B — Admin Audit Contract Tests', () => {
         totalMut += mutMatches.length;
         totalAudit += auditMatches.length;
       }
-      expect(totalMut).toBe(21);
+      // Listing-image writes are intentionally centralized in a transaction helper,
+      // so include those extracted writes in the Marketplace mutation inventory.
+      const imageHelper = read('src/lib/listing-image-mutations.ts');
+      const helperMutations = imageHelper.match(/tx\.listingImage\.(create|update|delete|upsert|deleteMany|updateMany)\(/g) || [];
+      totalMut += helperMutations.length;
+      expect(totalMut).toBe(22);
       expect(totalAudit).toBeGreaterThanOrEqual(15);
     });
   });
