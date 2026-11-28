@@ -147,3 +147,32 @@ describe("listing image ownership guards", () => {
     expect(route).toContain("Duplicate image IDs in reorderImages");
   });
 });
+
+
+const listingImageMutationHelper = readFileSync(
+  resolve(process.cwd(), "src/lib/listing-image-mutations.ts"),
+  "utf8",
+);
+
+describe("atomic listing image mutations", () => {
+  it("groups add, remove, primary selection and reorder in one Prisma transaction", () => {
+    expect(listingImageMutationHelper).toContain("db.$transaction(async (tx: any) =>");
+    expect(listingImageMutationHelper).toContain("tx.listingImage.createMany");
+    expect(listingImageMutationHelper).toContain("tx.listingImage.deleteMany");
+    expect(listingImageMutationHelper).toContain("tx.listingImage.updateMany");
+    expect(listingImageMutationHelper).toContain("for (let idx = 0; idx < body.reorderImages.length; idx++)");
+  });
+
+  it("keeps every image mutation constrained to the listing", () => {
+    expect(listingImageMutationHelper).toContain("where: { listingId, id: { in: body.removeImages.map(String) } }");
+    expect(listingImageMutationHelper).toContain("where: { listingId, id: String(body.setPrimaryImage) }");
+    expect(listingImageMutationHelper).toContain("where: { listingId, id: String(body.reorderImages[idx]) }");
+    expect(listingImageMutationHelper).toContain("where: { listingId }");
+  });
+
+  it("routes seller and admin image operations through the atomic helper", () => {
+    expect(sellerListingRoute).toContain("await mutateListingImages(db, id, body)");
+    expect(adminListingRoute).toContain("await mutateListingImages(db, id, body)");
+    expect(adminListingRoute).toContain("audit records are emitted only after commit");
+  });
+});
