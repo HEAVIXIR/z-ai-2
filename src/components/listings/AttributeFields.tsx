@@ -687,6 +687,7 @@ export function validateAttributeFields(
       v === undefined ||
       v === null ||
       v === "" ||
+      (typeof v === "string" && v.trim() === "") ||
       (Array.isArray(v) && v.length === 0);
     if (empty) errs[k] = "این فیلد الزامی است";
   }
