@@ -14,7 +14,7 @@ import { logSearchQuery } from "@/lib/demand-engine";
 import { getClientIp } from "@/lib/request-context";
 import { trackEvent } from "@/lib/analytics";
 import { trackError } from "@/lib/error-tracking";
-import { getAsset } from "@/lib/media-service";
+import { getAssets } from "@/lib/media-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -363,32 +363,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "حداکثر ۱۰ تصویر مجاز است." }, { status: 400 });
     }
     const imageAssetIds = new Set<string>();
-    const validatedImages: Array<{ url: string; alt: string | null }> = [];
+    const normalizedImageInputs: Array<{ assetId: string; url: string; alt: string | null }> = [];
     for (const imageInput of imageInputs) {
       if (!imageInput || typeof imageInput !== "object" || Array.isArray(imageInput)) {
         return NextResponse.json({ error: "ساختار تصویر نامعتبر است." }, { status: 400 });
       }
       const image = imageInput as Record<string, unknown>;
       const assetId = typeof image.assetId === "string" ? image.assetId.trim() : "";
-      const requestedUrl = typeof image.url === "string" ? image.url : "";
-      if (!assetId || !requestedUrl || imageAssetIds.has(assetId)) {
+      const url = typeof image.url === "string" ? image.url : "";
+      if (!assetId || !url || imageAssetIds.has(assetId)) {
         return NextResponse.json({ error: "شناسه یا آدرس تصویر نامعتبر یا تکراری است." }, { status: 400 });
       }
       imageAssetIds.add(assetId);
-      const asset = await getAsset(assetId);
+      normalizedImageInputs.push({
+        assetId,
+        url,
+        alt: typeof image.alt === "string" ? image.alt.slice(0, 500) : null,
+      });
+    }
+
+    const assetsById = new Map(
+      (await getAssets([...imageAssetIds])).map((asset) => [asset.id, asset]),
+    );
+    const validatedImages: Array<{ url: string; alt: string | null }> = [];
+    for (const image of normalizedImageInputs) {
+      const asset = assetsById.get(image.assetId);
       if (
         !asset ||
         asset.uploadedBy !== user.id ||
         asset.entityType !== "Generic" ||
         asset.entityId !== user.id ||
-        asset.url !== requestedUrl
+        asset.url !== image.url
       ) {
         return NextResponse.json({ error: "تصویر متعلق به حساب شما نیست یا قابل استفاده نیست." }, { status: 403 });
       }
-      validatedImages.push({
-        url: asset.url,
-        alt: typeof image.alt === "string" ? image.alt.slice(0, 500) : null,
-      });
+      validatedImages.push({ url: asset.url, alt: image.alt });
     }
 
     const title = String(body.title ?? "").trim();
