@@ -34,6 +34,7 @@ import crypto from "node:crypto";
 import {
   validateImageBuffer,
   sanitizeFilename,
+  MAX_UPLOAD_BYTES,
 } from "@/lib/upload-security";
 import { optimizeImageBuffer } from "@/lib/media-image-optimizer";
 import { logAudit } from "@/lib/audit";
@@ -123,15 +124,15 @@ function isValidSidecar(value: unknown): value is AssetSidecar {
   const s = value as Record<string, unknown>;
   const nullableString = (v: unknown) => v === null || typeof v === "string";
   if (typeof s.id !== "string" || !/^[a-f0-9]{24}$/.test(s.id)) return false;
-  if (typeof s.filename !== "string" || s.filename.length > 180 || path.basename(s.filename) !== s.filename) return false;
-  if (typeof s.relativePath !== "string" || s.relativePath.length > 240 || s.relativePath.includes("\\") || s.relativePath.startsWith("/") || s.relativePath.split("/").some(part => !part || part === "." || part === "..")) return false;
+  if (typeof s.filename !== "string" || s.filename.length > 180 || s.filename.includes("\\0") || path.basename(s.filename) !== s.filename) return false;
+  if (typeof s.relativePath !== "string" || s.relativePath.length > 240 || s.relativePath.includes("\\") || s.relativePath.includes("\\0") || s.relativePath.startsWith("/") || s.relativePath.split("/").some(part => !part || part === "." || part === "..")) return false;
   if (s.relativePath !== path.posix.join(typeof s.relativePath === "string" ? path.posix.dirname(s.relativePath) : "", s.filename)) return false;
   if (s.url !== `/uploads/${s.relativePath}`) return false;
   const formats: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", bmp: "image/bmp" };
   if (typeof s.ext !== "string" || !Object.hasOwn(formats, s.ext)) return false;
   if (s.mimeType !== formats[s.ext]) return false;
   if (s.filename.toLowerCase().endsWith(`.${s.ext}`) === false) return false;
-  if (!Number.isSafeInteger(s.size) || (s.size as number) <= 0) return false;
+  if (!Number.isSafeInteger(s.size) || (s.size as number) <= 0 || (s.size as number) > MAX_UPLOAD_BYTES) return false;
   if (!nullableString(s.uploadedBy) || (typeof s.uploadedBy === "string" && s.uploadedBy.length > 256)) return false;
   if (typeof s.uploadedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(s.uploadedAt) || !Number.isFinite(Date.parse(s.uploadedAt))) return false;
   if (!nullableString(s.entityType) || (s.entityType !== null && !ALLOWED_ENTITY_TYPES.has(s.entityType as string))) return false;
