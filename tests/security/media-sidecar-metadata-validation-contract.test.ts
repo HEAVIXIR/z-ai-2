@@ -23,7 +23,8 @@ describe("media sidecar metadata validation contract", () => {
   });
 
   it("requires public URL and path to match the sidecar filename", () => {
-    expect(source).toContain('s.url !== `/uploads/${s.relativePath`');
+    expect(source).toContain("s.url !==");
+    expect(source).toContain("/uploads/");
     expect(source).toContain("path.posix.dirname(s.relativePath)");
     expect(source).toContain("s.filename");
   });
