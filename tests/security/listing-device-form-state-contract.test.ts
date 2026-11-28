@@ -8,6 +8,13 @@ const page = readFileSync(
 );
 
 describe("listing device category technical form state", () => {
+  it("waits for the selected category schema before allowing the technical-specification step", () => {
+    expect(page).toContain("const [attributeDefsCategoryId, setAttributeDefsCategoryId] = useState<string | null>(null)");
+    expect(page).toContain("attributeDefsCategoryId !== categoryId");
+    expect(page).toContain("setAttributeDefsCategoryId(categoryId)");
+    expect(page).toContain("setAttributeDefsCategoryId(null)");
+  });
+
   it("clears prior device values, definitions and validation errors on every category depth change", () => {
     expect(page).toContain("const resetCategoryAttributes = () =>");
     expect(page).toContain("setAttributes({});");
