@@ -166,7 +166,7 @@ describe("atomic listing image mutations", () => {
   it("keeps every image mutation constrained to the listing", () => {
     expect(listingImageMutationHelper).toContain("where: { listingId, id: { in: removeIds } }");
     expect(listingImageMutationHelper).toContain("where: { listingId, id: String(body.setPrimaryImage) }");
-    expect(listingImageMutationHelper).toContain("where: { listingId, id: String(body.reorderImages[idx]) }");
+    expect(listingImageMutationHelper).toContain("where: { listingId, id: reorderIds[idx] }");
     expect(listingImageMutationHelper).toContain("where: { listingId }");
   });
 
