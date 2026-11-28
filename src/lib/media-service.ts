@@ -34,6 +34,7 @@ import crypto from "node:crypto";
 import {
   validateImageBuffer,
   sanitizeFilename,
+  MAX_UPLOAD_BYTES,
 } from "@/lib/upload-security";
 import { optimizeImageBuffer } from "@/lib/media-image-optimizer";
 import { logAudit } from "@/lib/audit";
@@ -117,15 +118,43 @@ async function walkFiles(
   return acc;
 }
 
-/** Read a sidecar JSON; returns null if missing/corrupt. */
+/** Validate sidecar metadata before it can enter the public asset flow. */
+export function isValidSidecar(value: unknown): value is AssetSidecar {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const s = value as Record<string, unknown>;
+  const nullableString = (v: unknown) => v === null || typeof v === "string";
+  if (typeof s.id !== "string" || !/^[a-f0-9]{24}$/.test(s.id)) return false;
+  if (typeof s.filename !== "string" || s.filename.length > 180 || s.filename.includes("\0") || path.basename(s.filename) !== s.filename) return false;
+  if (typeof s.relativePath !== "string" || s.relativePath.length > 240 || s.relativePath.includes("\\") || s.relativePath.includes("\0") || s.relativePath.startsWith("/") || s.relativePath.split("/").some(part => !part || part === "." || part === "..")) return false;
+  if (s.relativePath !== path.posix.join(typeof s.relativePath === "string" ? path.posix.dirname(s.relativePath) : "", s.filename)) return false;
+  if (s.url !== `/uploads/${s.relativePath}`) return false;
+  const formats: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", bmp: "image/bmp" };
+  if (typeof s.ext !== "string" || !Object.hasOwn(formats, s.ext)) return false;
+  if (s.mimeType !== formats[s.ext]) return false;
+  if (s.filename.toLowerCase().endsWith(`.${s.ext}`) === false) return false;
+  if (!Number.isSafeInteger(s.size) || (s.size as number) <= 0 || (s.size as number) > MAX_UPLOAD_BYTES) return false;
+  if (!nullableString(s.uploadedBy) || (typeof s.uploadedBy === "string" && s.uploadedBy.length > 256)) return false;
+  if (typeof s.uploadedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(s.uploadedAt)) return false;
+  const timestamp = Date.parse(s.uploadedAt);
+  if (!Number.isFinite(timestamp)) return false;
+  const parsedDate = new Date(timestamp);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(s.uploadedAt);
+  if (!match || parsedDate.getUTCFullYear() !== Number(match[1]) || parsedDate.getUTCMonth() + 1 !== Number(match[2]) || parsedDate.getUTCDate() !== Number(match[3]) || parsedDate.getUTCHours() !== Number(match[4]) || parsedDate.getUTCMinutes() !== Number(match[5]) || parsedDate.getUTCSeconds() !== Number(match[6])) return false;
+  if (!nullableString(s.entityType) || (s.entityType !== null && !ALLOWED_ENTITY_TYPES.has(s.entityType as string))) return false;
+  if (!nullableString(s.entityId) || (typeof s.entityId === "string" && s.entityId.length > 256)) return false;
+  if (!nullableString(s.altText) || (typeof s.altText === "string" && s.altText.length > 500)) return false;
+  return true;
+}
+
+/** Read a sidecar JSON; returns null if missing, corrupt, or invalid. */
 async function readSidecar(
   sidecarFullPath: string,
 ): Promise<AssetSidecar | null> {
   try {
     const raw = await fs.readFile(sidecarFullPath, "utf8");
-    const parsed = JSON.parse(raw) as AssetSidecar;
-    if (!parsed || typeof parsed.id !== "string") return null;
-    return parsed;
+    if (raw.length > 4096) return null;
+    const parsed: unknown = JSON.parse(raw);
+    return isValidSidecar(parsed) ? parsed : null;
   } catch {
     return null;
   }
