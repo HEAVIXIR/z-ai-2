@@ -63,9 +63,17 @@ describe("device-specific technical attribute seed", () => {
     expect(seed).toContain('"wheel-loader"');
     expect(seed).toContain('"mining-excavator-machine"');
     expect(seed).toContain('Crane: ["mobile-crane"]');
-    expect(seed).toContain('Crusher: ["jaw-crusher"]');
+    expect(seed).toContain('Crusher: []');
+    expect(seed).toContain('const DEVICE_CATEGORY_GROUP_SLUGS');
+    expect(seed).toContain('"jaw-crusher"');
+    expect(seed).toContain('"cone-crusher"');
+    expect(seed).toContain('"impact-crusher"');
+    expect(seed).toContain('"hammer-crusher"');
+    expect(seed).toContain('Compactor: ["soil-roller"]');
     expect(seed).not.toContain('Crane: ["cranes-lifting"');
     expect(seed).not.toContain('Crusher: ["crushing-processing"');
+    expect(seed).not.toContain('Compactor: ["road-roller", "soil-roller"]');
+    expect(seed).toContain('for (const category of categories)');
     expect(seed).not.toContain('Stabilizer: ["grading-earthmoving"]');
     expect(seed).not.toContain('"Cold Milling Machine": ["asphalt-machinery"]');
     expect(seed).toContain('level: 2, nameEn: deviceNameEn');
