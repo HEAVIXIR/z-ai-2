@@ -21,7 +21,9 @@ describe("device-specific technical attribute seed", () => {
   });
 
   it("links attributes to the selected leaf device category, not every machine category", () => {
-    expect(seed).toContain('domain: DEVICE_DOMAINS[deviceNameEn] ?? "MACHINE", level: 2, nameEn: deviceNameEn');
+    expect(seed).toMatch(/const domain = DEVICE_DOMAINS\[deviceNameEn\]\s*\?\?\s*"MACHINE"/);
+    expect(seed).toMatch(/where:\s*\{\s*domain,\s*level:\s*2,\s*nameEn:\s*deviceNameEn\s*\}/);
+    expect(seed).toMatch(/where:\s*\{\s*domain,\s*level:\s*1,\s*nameEn:\s*deviceNameEn\s*\}/);
     expect(seed).toContain('Generators: "INDUSTRIAL_EQUIPMENT"');
     expect(seed).toContain('Tractor: "AGRICULTURE"');
     expect(seed).toContain("level: 1, nameEn: deviceNameEn");
