@@ -404,7 +404,7 @@ export default function ListingEditForm({
     for (const av of initial.attributeValues) {
       const k = av.key ?? av.attributeId;
       if (av.type === "BOOLEAN") {
-        map[k] = av.booleanValue ?? false;
+        map[k] = av.booleanValue ?? null;
       } else if (av.type === "SELECT" || av.type === "MULTI_SELECT") {
         if (av.type === "MULTI_SELECT") {
           map[k] = av.textValue ? av.textValue.split(",") : [];
