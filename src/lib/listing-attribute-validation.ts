@@ -22,7 +22,7 @@ type ValidationResult = { ok: true } | { ok: false; error: string; details?: Rec
 export async function validateListingAttributeBatch(
   db: any,
   categoryId: string | null | undefined,
-  incoming: unknown[],
+  incoming: unknown,
   options: ValidationOptions = {},
 ): Promise<ValidationResult> {
   if (!Array.isArray(incoming)) return { ok: false, error: "attributeValues must be an array" };
