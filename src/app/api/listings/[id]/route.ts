@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
+import { mutateListingImages } from "@/lib/listing-image-mutations";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -271,41 +272,8 @@ export async function PATCH(req: Request, { params }: Args) {
       }
     });
 
-    // Image management (seller can add/remove/reorder/primary)
-    if (body.addImages && Array.isArray(body.addImages)) {
-      const existingCount = await db.listingImage.count({ where: { listingId: id } });
-      await db.listingImage.createMany({
-        data: body.addImages.map((img: any, idx: number) => ({
-          listingId: id,
-          url: String(img.url ?? img),
-          alt: img.alt ?? null,
-          isPrimary: img.isPrimary ?? (existingCount === 0 && idx === 0),
-          sortOrder: img.sortOrder ?? existingCount + idx,
-        })),
-      });
-    }
-    if (body.removeImages && Array.isArray(body.removeImages)) {
-      await db.listingImage.deleteMany({
-        where: { listingId: id, id: { in: body.removeImages.map(String) } },
-      });
-    }
-    if (body.setPrimaryImage) {
-      await db.listingImage.updateMany({
-        where: { listingId: id },
-        data: { isPrimary: false },
-      });
-      await db.listingImage.update({
-        where: { listingId: id, id: String(body.setPrimaryImage) },
-        data: { isPrimary: true },
-      });
-    }
-    if (body.reorderImages && Array.isArray(body.reorderImages)) {
-      await Promise.all(
-        body.reorderImages.map((imgId: string, idx: number) =>
-          db.listingImage.updateMany({ where: { listingId: id, id: String(imgId) }, data: { sortOrder: idx } }),
-        ),
-      );
-    }
+    // All image changes are committed together; ownership was validated above.
+    await mutateListingImages(db, id, body);
 
     // Remove category-specific values that no longer belong to the selected category.
     // Scope deletion to this listing; the caller has already passed authorize(id).
