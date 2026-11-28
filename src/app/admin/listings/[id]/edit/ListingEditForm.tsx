@@ -553,6 +553,14 @@ export default function ListingEditForm({
       if (attributeDefs.length > 0) {
         payload.attributeValues = buildAttributePayload(attributeDefs, attributeValues);
       }
+      // When the category changes, remove only old attributes that are not
+      // part of the newly selected category; shared fields remain intact.
+      if (categoryId !== initial.categoryId && attributeDefs.length > 0) {
+        const nextAttributeIds = new Set(attributeDefs.map((attribute) => attribute.id));
+        payload.removeAttributeIds = initial.attributeValues
+          .map((value) => value.attributeId)
+          .filter((attributeId) => !nextAttributeIds.has(attributeId));
+      }
 
       const res = await fetch(apiBase, {
         method: "PATCH",
