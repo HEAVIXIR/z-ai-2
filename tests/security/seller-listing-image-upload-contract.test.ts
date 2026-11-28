@@ -39,6 +39,7 @@ describe("seller listing image upload contract", () => {
     expect(listingRoute).toContain("body.images !== undefined && !Array.isArray(body.images)");
     expect(listingRoute).toContain("imageInputs.length > 10");
     expect(listingRoute).toContain("imageAssetIds.has(assetId)");
+    expect(listingRoute).toContain("await getAssets([...imageAssetIds])");
     expect(listingRoute).toContain("asset.uploadedBy !== user.id");
     expect(listingRoute).toContain('asset.entityType !== "Generic"');
     expect(listingRoute).toContain("asset.entityId !== user.id");
