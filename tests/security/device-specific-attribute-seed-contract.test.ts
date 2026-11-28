@@ -137,14 +137,14 @@ describe("listing image ownership guards", () => {
     expect(listingMutation).toBeGreaterThan(validation);
   });
 
-  it.each([
-    ["seller", sellerListingRoute],
-    ["admin", adminListingImageRoute],
-  ])("%s route scopes delete, primary selection and reordering to the current listing", (_name, route) => {
-    expect(route).toContain("where: { listingId: id, id: { in: body.removeImages.map(String) } }");
-    expect(route).toContain("where: { listingId: id, id: String(body.setPrimaryImage) }");
-    expect(route).toContain("where: { listingId: id, id: String(imgId) }");
-    expect(route).toContain("Duplicate image IDs in reorderImages");
+  it("scopes delete, primary selection and reordering inside the shared mutation helper", () => {
+    expect(listingImageMutationHelper).toContain("where: { listingId, id: { in: removeIds } }");
+    expect(listingImageMutationHelper).toContain("where: { listingId, id: String(body.setPrimaryImage) }");
+    expect(listingImageMutationHelper).toContain("where: { listingId, id: reorderIds[idx] }");
+    expect(listingImageMutationHelper).toContain("Duplicate image IDs in reorderImages");
+    expect(listingImageMutationHelper).toContain("The primary image cannot also be removed");
+    expect(listingImageMutationHelper).toContain("An image cannot be removed and reordered");
+    expect(listingImageMutationHelper).toContain("tx.listingImage.findMany");
   });
 });
 
