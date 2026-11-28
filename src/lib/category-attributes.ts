@@ -28,7 +28,8 @@ export async function getCategoryAttributeLinks(db: any, categoryId: string) {
   const chain = await getCategoryChainIds(db, categoryId);
   if (!chain.length) return [];
 
-  const rank = new Map(chain.map((id, index) => [id, index]));
+  const rank = new Map<string, number>();
+  chain.forEach((id, index) => rank.set(id, index));
   const rows = await db.categoryAttribute.findMany({
     where: { categoryId: { in: chain } },
     include: {
