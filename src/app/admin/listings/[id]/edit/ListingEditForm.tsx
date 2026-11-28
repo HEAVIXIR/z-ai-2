@@ -561,7 +561,7 @@ export default function ListingEditForm({
       }
       // When the category changes, remove only old attributes that are not
       // part of the newly selected category; shared fields remain intact.
-      if (categoryId !== initial.categoryId && attributeDefs.length > 0) {
+      if (categoryId !== initial.categoryId && attributeDefsCategoryId === categoryId) {
         const nextAttributeIds = new Set(attributeDefs.map((attribute) => attribute.id));
         payload.removeAttributeIds = initial.attributeValues
           .map((value) => value.attributeId)
