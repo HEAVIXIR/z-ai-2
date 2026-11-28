@@ -208,6 +208,29 @@ export async function PATCH(req: Request, { params }: Params) {
       data.price = parseBig(body.price);
     }
 
+    // Validate incoming attribute IDs against the resulting category before any mutation.
+    // This keeps invalid attribute PATCH requests from partially changing the listing.
+    if (Array.isArray(body.attributeValues) && body.attributeValues.length > 0) {
+      const targetCategoryId = data.categoryId ?? existing.categoryId;
+      if (!targetCategoryId) {
+        return NextResponse.json({ error: "Attributes require a category" }, { status: 400 });
+      }
+      const allowedLinks = await db.categoryAttribute.findMany({
+        where: { categoryId: targetCategoryId },
+        select: { attributeId: true },
+      });
+      const allowedAttributeIds = new Set(allowedLinks.map((link: any) => link.attributeId));
+      const invalidAttributeIds = body.attributeValues
+        .filter((value: any) => value?.attributeId && !allowedAttributeIds.has(String(value.attributeId)))
+        .map((value: any) => String(value.attributeId));
+      if (invalidAttributeIds.length > 0) {
+        return NextResponse.json(
+          { error: "One or more attributes do not belong to the selected category", invalidAttributeIds },
+          { status: 400 },
+        );
+      }
+    }
+
     // Slug re-sync if title changed
     if (body.title && body.title !== existing.title) {
       let slug = slugify(body.title);
