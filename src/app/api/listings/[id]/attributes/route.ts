@@ -4,6 +4,7 @@ import { getCurrentUserId } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { getCategoryAttributeIds } from "@/lib/category-attributes";
 import { logAudit } from "@/lib/audit";
+import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -142,6 +143,20 @@ export async function PUT(req: Request, { params }: Args) {
 
     const body = await req.json().catch(() => ({}));
     const incoming: any[] = Array.isArray(body?.values) ? body.values : [];
+    if (incoming.length > 0 || listing.categoryId) {
+      const validation = await validateListingAttributeBatch(
+        db,
+        listing.categoryId,
+        incoming,
+        { enforceRequired: true },
+      );
+      if (!validation.ok) {
+        return NextResponse.json(
+          { error: validation.error, ...(validation.details ?? {}) },
+          { status: 400 },
+        );
+      }
+    }
     if (incoming.length === 0) {
       return NextResponse.json({ ok: true, count: 0 });
     }
