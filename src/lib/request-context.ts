@@ -6,9 +6,11 @@
 
 /**
  * Best-effort client-IP extraction behind the documented Cloudflare/Caddy
- * proxy chain. Prefer Cloudflare's edge-provided address. Caddy appends the
- * connecting peer to X-Forwarded-For, so use the right-most hop; never trust
- * the left-most value because it may have been supplied by the caller.
+ * proxy chain. Prefer Cloudflare's edge-provided address. The production
+ * Caddyfile explicitly overwrites X-Forwarded-For and X-Real-IP with
+ * {remote_host}; therefore the fallback is the trusted peer seen by Caddy,
+ * not an assumed client-supplied forwarding chain. Never trust the left-most
+ * X-Forwarded-For value because it may have been supplied by the caller.
  */
 export function getClientIp(req: Request): string {
   const headers = req.headers;
