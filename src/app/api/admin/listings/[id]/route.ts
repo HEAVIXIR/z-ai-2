@@ -464,7 +464,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return NextResponse.json({ ok: true, listing: fresh ? serialize(fresh) : null });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: err?.status ?? 500 });
   }
 }
 
