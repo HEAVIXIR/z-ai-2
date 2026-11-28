@@ -120,3 +120,30 @@ describe("admin listing technical attribute validation", () => {
     expect(mutation).toBeGreaterThan(validation);
   });
 });
+
+
+const adminListingImageRoute = adminListingRoute;
+describe("listing image ownership guards", () => {
+  it.each([
+    ["seller", sellerListingRoute],
+    ["admin", adminListingImageRoute],
+  ])("%s route rejects foreign image IDs before mutating the listing", (_name, route) => {
+    const validation = route.indexOf("Validate image mutation IDs before any listing mutation");
+    const listingMutation = route.indexOf("await db.listing.update({ where: { id }, data })");
+    expect(route).toContain("where: { listingId: id, id: { in: uniqueRequestedImageIds } }");
+    expect(route).toContain("One or more images do not belong to this listing");
+    expect(route).toContain("invalidImageIds.length");
+    expect(validation).toBeGreaterThanOrEqual(0);
+    expect(listingMutation).toBeGreaterThan(validation);
+  });
+
+  it.each([
+    ["seller", sellerListingRoute],
+    ["admin", adminListingImageRoute],
+  ])("%s route scopes delete, primary selection and reordering to the current listing", (_name, route) => {
+    expect(route).toContain("where: { listingId: id, id: { in: body.removeImages.map(String) } }");
+    expect(route).toContain("where: { listingId: id, id: String(body.setPrimaryImage) }");
+    expect(route).toContain("where: { listingId: id, id: String(imgId) }");
+    expect(route).toContain("Duplicate image IDs in reorderImages");
+  });
+});
