@@ -52,6 +52,16 @@ describe("device-specific technical attribute seed", () => {
     expect(seed).not.toContain("device-operating-hours");
     expect(seed).not.toContain("mining-excavator-operating-weight");
   });
+
+  it("resolves active taxonomy categories by canonical slug before legacy nameEn fallback", () => {
+    expect(seed).toContain("const DEVICE_CATEGORY_SLUGS");
+    expect(seed).toContain('where: { slug, domain, layer: "CATALOG", active: true }');
+    expect(seed).toContain('Excavator: ["excavator"]');
+    expect(seed).toContain('"wheel-loader"');
+    expect(seed).toContain('"mining-excavator-machine"');
+    expect(seed).toContain('level: 3, nameEn: deviceNameEn');
+    expect(seed).toContain('active: true');
+  });
 });
 
 
