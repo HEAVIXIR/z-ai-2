@@ -160,11 +160,11 @@ describe("atomic listing image mutations", () => {
     expect(listingImageMutationHelper).toContain("tx.listingImage.createMany");
     expect(listingImageMutationHelper).toContain("tx.listingImage.deleteMany");
     expect(listingImageMutationHelper).toContain("tx.listingImage.updateMany");
-    expect(listingImageMutationHelper).toContain("for (let idx = 0; idx < body.reorderImages.length; idx++)");
+    expect(listingImageMutationHelper).toContain("for (let idx = 0; idx < reorderIds.length; idx++)");
   });
 
   it("keeps every image mutation constrained to the listing", () => {
-    expect(listingImageMutationHelper).toContain("where: { listingId, id: { in: body.removeImages.map(String) } }");
+    expect(listingImageMutationHelper).toContain("where: { listingId, id: { in: removeIds } }");
     expect(listingImageMutationHelper).toContain("where: { listingId, id: String(body.setPrimaryImage) }");
     expect(listingImageMutationHelper).toContain("where: { listingId, id: String(body.reorderImages[idx]) }");
     expect(listingImageMutationHelper).toContain("where: { listingId }");
