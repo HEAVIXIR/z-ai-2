@@ -6,6 +6,10 @@ const page = readFileSync(
   resolve(process.cwd(), "src/app/listings/new/page.tsx"),
   "utf8",
 );
+const adminEdit = readFileSync(
+  resolve(process.cwd(), "src/app/admin/listings/[id]/edit/ListingEditForm.tsx"),
+  "utf8",
+);
 
 describe("listing device category technical form state", () => {
   it("waits for the selected category schema before allowing the technical-specification step", () => {
@@ -13,6 +17,14 @@ describe("listing device category technical form state", () => {
     expect(page).toContain("attributeDefsCategoryId !== categoryId");
     expect(page).toContain("setAttributeDefsCategoryId(categoryId)");
     expect(page).toContain("setAttributeDefsCategoryId(null)");
+  });
+
+  it("validates required technical fields when an admin changes a listing category", () => {
+    expect(adminEdit).toContain("validateAttributeFields,");
+    expect(adminEdit).toContain("const [attributeErrors, setAttributeErrors]");
+    expect(adminEdit).toContain("if (categoryId !== initial.categoryId && categoryId)");
+    expect(adminEdit).toContain("errors={attributeErrors}");
+    expect(adminEdit).toContain("setAttributeErrors(validateAttributeFields(attributeDefs, next))");
   });
 
   it("clears prior device values, definitions and validation errors on every category depth change", () => {
