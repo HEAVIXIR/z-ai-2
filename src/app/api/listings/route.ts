@@ -2,6 +2,7 @@ import { HOMEPAGE_CACHE_TAGS } from '@/lib/homepage-cache-tags';
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation";
 import { getCurrentUser } from "@/lib/auth";
 import { parseBig, parseNumber, slugify, uniqueSlug } from "@/lib/api-helpers";
 import {
@@ -418,19 +419,58 @@ export async function POST(req: Request) {
       }
     }
 
-    const listing = await db.listing.create({ data });
-
-    if (Array.isArray(body.images)) {
-      await db.listingImage.createMany({
-        data: body.images.slice(0, 10).map((img: any, idx: number) => ({
-          listingId: listing.id,
-          url: String(img.url ?? img),
-          alt: img.alt ?? null,
-          isPrimary: idx === 0,
-          sortOrder: idx,
-        })),
-      });
+    const incomingAttributeValues: any[] = Array.isArray(body.attributeValues)
+      ? body.attributeValues
+      : [];
+    const attributeValidation = await validateListingAttributeBatch(
+      db,
+      data.categoryId,
+      incomingAttributeValues,
+      { enforceRequired: true },
+    );
+    if (!attributeValidation.ok) {
+      return NextResponse.json(
+        { error: attributeValidation.error, ...(attributeValidation.details ?? {}) },
+        { status: 400 },
+      );
     }
+
+    // Listing, images and technical specifications are committed together.
+    // A failed attribute write must not leave behind a partially-created listing.
+    const listing = await db.$transaction(async (tx: any) => {
+      const created = await tx.listing.create({ data });
+      if (Array.isArray(body.images)) {
+        await tx.listingImage.createMany({
+          data: body.images.slice(0, 10).map((img: any, idx: number) => ({
+            listingId: created.id,
+            url: String(img.url ?? img),
+            alt: img.alt ?? null,
+            isPrimary: idx === 0,
+            sortOrder: idx,
+          })),
+        });
+      }
+      if (incomingAttributeValues.length > 0) {
+        await tx.listingAttributeValue.createMany({
+          data: incomingAttributeValues.map((value) => ({
+            listingId: created.id,
+            attributeId: String(value.attributeId),
+            textValue: value.textValue == null ? null : value.textValue,
+            numberValue: value.numberValue == null || value.numberValue === "" ? null : Number(value.numberValue),
+            booleanValue: value.booleanValue == null ? null : value.booleanValue,
+            dateValue: value.dateValue == null || value.dateValue === "" ? null : new Date(value.dateValue),
+            optionId: value.optionId == null || value.optionId === "" ? null : String(value.optionId),
+            unit: value.unit == null || value.unit === "" ? null : String(value.unit),
+            sourceType: "SELLER_INPUT",
+            confidence: null,
+            sourceReference: null,
+            verifiedAt: null,
+            verifiedBy: null,
+          })),
+        });
+      }
+      return created;
+    });
 
     // P1-2 — track LISTING_CREATE (fire-and-forget).
     trackEvent({
