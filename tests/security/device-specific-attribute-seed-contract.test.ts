@@ -83,3 +83,14 @@ describe("listing category attribute cleanup", () => {
     expect(sellerListingRoute).toContain("listingId: id");
   });
 });
+
+
+describe("listing technical attribute API category validation", () => {
+  it("rejects attribute ids that are not linked to the resulting listing category", () => {
+    expect(sellerListingRoute).toContain("const targetCategoryId = data.categoryId ?? existing.categoryId");
+    expect(sellerListingRoute).toContain("db.categoryAttribute.findMany");
+    expect(sellerListingRoute).toContain("allowedAttributeIds.has(String(value.attributeId))");
+    expect(sellerListingRoute).toContain("invalidAttributeIds.length > 0");
+    expect(sellerListingRoute).toContain("status: 400");
+  });
+});
