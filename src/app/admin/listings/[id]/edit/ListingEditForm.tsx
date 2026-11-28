@@ -229,6 +229,7 @@ export default function ListingEditForm({
 
   // ── Attributes ──
   const [attributeDefs, setAttributeDefs] = useState<AttributeDef[]>([]);
+  const [attributeDefsCategoryId, setAttributeDefsCategoryId] = useState(initial.categoryId);
   const [attributeValues, setAttributeValues] = useState<AttributeValue>({});
 
   // ── Submit state ──
@@ -517,6 +518,11 @@ export default function ListingEditForm({
     setSaving(true);
     setError(null);
     setSuccess(null);
+    if (categoryId && attributeDefsCategoryId !== categoryId) {
+      setError("لطفاً تا بارگذاری مشخصات فنی دستهٔ جدید صبر کنید.");
+      setSaving(false);
+      return;
+    }
     try {
       const payload: any = {
         title: title.trim(),
@@ -729,6 +735,7 @@ export default function ListingEditForm({
                       // Never carry excavator values into a loader (or another category).
                       setAttributeValues({});
                       setAttributeDefs([]);
+                      setAttributeDefsCategoryId(null);
                     }
                     setCategoryId(nextCategoryId);
                   }}
@@ -1138,7 +1145,10 @@ export default function ListingEditForm({
                   categoryId={categoryId}
                   values={attributeValues}
                   onChange={setAttributeValues}
-                  onAttributesLoaded={setAttributeDefs}
+                  onAttributesLoaded={(defs) => {
+                    setAttributeDefs(defs);
+                    setAttributeDefsCategoryId(categoryId);
+                  }}
                 />
               </div>
             </section>
