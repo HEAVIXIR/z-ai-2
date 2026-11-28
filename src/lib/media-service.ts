@@ -411,6 +411,15 @@ export async function attachAsset(
 
   const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
   const sidecarPath = `${binaryPath}.meta.json`;
+  // Do not recreate metadata for a binary that has already disappeared.
+  try {
+    const binaryStat = await fs.lstat(binaryPath);
+    if (!binaryStat.isFile() || binaryStat.isSymbolicLink()) {
+      return { ok: false, error: "فایل رسانه معتبر نیست." };
+    }
+  } catch {
+    return { ok: false, error: "فایل رسانه یافت نشد." };
+  }
   const before = { entityType: asset.entityType, entityId: asset.entityId };
   const updated: AssetSidecar = {
     id: asset.id,
@@ -426,9 +435,18 @@ export async function attachAsset(
     entityId,
     altText: asset.altText,
   };
+  // Write a unique temporary sidecar and atomically replace the old one.
+  // Readers therefore observe either the previous complete JSON or the new one,
+  // never a partially-written document.
+  const temporarySidecarPath = `${sidecarPath}.${crypto.randomBytes(8).toString("hex")}.tmp`;
   try {
-    await fs.writeFile(sidecarPath, JSON.stringify(updated, null, 2), "utf8");
+    await fs.writeFile(temporarySidecarPath, JSON.stringify(updated, null, 2), {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    await fs.rename(temporarySidecarPath, sidecarPath);
   } catch (err) {
+    await fs.unlink(temporarySidecarPath).catch(() => {});
     return {
       ok: false,
       error: `به‌روزرسانی متادیتا ناموفق بود: ${(err as Error).message}`,
