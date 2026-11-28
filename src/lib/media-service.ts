@@ -90,8 +90,63 @@ interface AssetSidecar {
 
 /* ── Helpers ───────────────────────────────────────────────── */
 
+const MAX_SIDECAR_BYTES = 4096;
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  jpg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+};
+
 function sidecarPathFor(assetRelativePathWithExt: string): string {
   return `${assetRelativePathWithExt}.meta.json`;
+}
+
+function isSafeRelativeAssetPath(relativePath: string): boolean {
+  return (
+    relativePath.length > 0 &&
+    !relativePath.includes(String.fromCharCode(92)) &&
+    !relativePath.includes(String.fromCharCode(0)) &&
+    !path.posix.isAbsolute(relativePath) &&
+    !relativePath.split("/").some((part) => !part || part === "." || part === "..")
+  );
+}
+
+/** Validate persisted metadata against the sidecar's actual filename and asset path. */
+function isValidAssetSidecar(
+  value: unknown,
+  expectedRelativePath: string,
+): value is AssetSidecar {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (!isSafeRelativeAssetPath(expectedRelativePath)) return false;
+
+  const expectedFilename = path.posix.basename(expectedRelativePath);
+  const extension = path.posix.extname(expectedFilename).slice(1).toLowerCase();
+  const expectedMime = MIME_BY_EXTENSION[extension];
+
+  return Boolean(
+    expectedMime &&
+    typeof candidate.id === "string" &&
+    candidate.id.length > 0 &&
+    candidate.id.length <= 128 &&
+    candidate.filename === expectedFilename &&
+    candidate.url === `/uploads/${expectedRelativePath}` &&
+    candidate.relativePath === expectedRelativePath &&
+    candidate.mimeType === expectedMime &&
+    candidate.ext === extension &&
+    Number.isSafeInteger(candidate.size) &&
+    (candidate.size as number) > 0 &&
+    (candidate.uploadedBy === null || typeof candidate.uploadedBy === "string") &&
+    typeof candidate.uploadedAt === "string" &&
+    Number.isFinite(Date.parse(candidate.uploadedAt)) &&
+    (candidate.entityType === null ||
+      (typeof candidate.entityType === "string" && ALLOWED_ENTITY_TYPES.has(candidate.entityType))) &&
+    (candidate.entityId === null || typeof candidate.entityId === "string") &&
+    (candidate.altText === null || typeof candidate.altText === "string")
+  );
 }
 
 /**
@@ -146,15 +201,37 @@ async function walkFiles(
   return acc;
 }
 
-/** Read a sidecar JSON; returns null if missing/corrupt. */
+/** Read and fully validate a bounded sidecar JSON; returns null if invalid. */
 async function readSidecar(
   sidecarFullPath: string,
+  expectedRelativePath: string,
 ): Promise<AssetSidecar | null> {
   try {
+    const stat = await fs.lstat(sidecarFullPath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size === 0 || stat.size > MAX_SIDECAR_BYTES) {
+      return null;
+    }
     const raw = await fs.readFile(sidecarFullPath, "utf8");
-    const parsed = JSON.parse(raw) as AssetSidecar;
-    if (!parsed || typeof parsed.id !== "string") return null;
-    return parsed;
+    if (Buffer.byteLength(raw, "utf8") > MAX_SIDECAR_BYTES) return null;
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!isValidAssetSidecar(parsed, expectedRelativePath)) return null;
+
+    // Return only the supported fields; never expose arbitrary persisted JSON keys.
+    return {
+      id: parsed.id,
+      filename: parsed.filename,
+      url: parsed.url,
+      relativePath: parsed.relativePath,
+      mimeType: parsed.mimeType,
+      ext: parsed.ext,
+      size: parsed.size,
+      uploadedBy: parsed.uploadedBy,
+      uploadedAt: parsed.uploadedAt,
+      entityType: parsed.entityType,
+      entityId: parsed.entityId,
+      altText: parsed.altText,
+    };
   } catch {
     return null;
   }
@@ -168,8 +245,13 @@ async function readAllAssets(): Promise<MediaAsset[]> {
   for (const rel of rels) {
     if (!rel.endsWith(".meta.json")) continue;
     const full = path.join(UPLOAD_ROOT, rel);
-    const sc = await readSidecar(full);
-    if (sc) sidecars.push(sc);
+    const binaryRelativePath = rel.slice(0, -".meta.json".length);
+    const sc = await readSidecar(full, binaryRelativePath);
+    if (!sc) continue;
+    // Ignore stale metadata and assets whose persisted path no longer resolves
+    // to a regular file contained by UPLOAD_ROOT.
+    if (!(await resolveStoredAssetPath(binaryRelativePath))) continue;
+    sidecars.push(sc);
   }
   sidecars.sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : a.uploadedAt > b.uploadedAt ? -1 : 0));
   return sidecars.map((s) => ({ ...s }));
