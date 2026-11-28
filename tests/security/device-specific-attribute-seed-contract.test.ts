@@ -145,6 +145,17 @@ describe("listing attribute PUT category and provenance guards", () => {
     expect(listingAttributeRoute).toContain("Number.isFinite(Number(value.numberValue))");
     expect(listingAttributeRoute).toContain("new Date(value.dateValue).getTime()");
   });
+
+  it("writes an audit event only after the technical attribute transaction commits", () => {
+    const transaction = listingAttributeRoute.indexOf("await db.$transaction(ops)");
+    const audit = listingAttributeRoute.indexOf("action: \"marketplace.listing_attribute_value.bulk_upsert\"");
+    const response = listingAttributeRoute.indexOf("return NextResponse.json({ ok: true, count: ops.length })");
+    expect(listingAttributeRoute).toContain('import { logAudit } from "@/lib/audit"');
+    expect(transaction).toBeGreaterThanOrEqual(0);
+    expect(audit).toBeGreaterThan(transaction);
+    expect(response).toBeGreaterThan(audit);
+    expect(listingAttributeRoute).toContain("actorType: isAdmin ? \"ADMIN\" : \"USER\"");
+  });
 });
 
 describe("listing category attribute cleanup", () => {
