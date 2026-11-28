@@ -8,6 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/lib/rbac";
 import { isAdmin } from "@/lib/authorization";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
+import { mutateListingImages } from "@/lib/listing-image-mutations";
 
 // STEP 11.32 NEW-C1 FIX: these legacy admin routes are ADMIN-ONLY.
 // See src/app/api/admin/listings/route.ts for full rationale.
@@ -363,71 +364,17 @@ export async function PATCH(req: Request, { params }: Params) {
       after: { updated: true, fields: Object.keys(data || {}).length },
     });
 
-    // Image management
-    if (body.addImages && Array.isArray(body.addImages)) {
-      const existingCount = await db.listingImage.count({ where: { listingId: id } });
-      await db.listingImage.createMany({
-        data: body.addImages.map((img: any, idx: number) => ({
-          listingId: id,
-          url: String(img.url ?? img),
-          alt: img.alt ?? null,
-          isPrimary: img.isPrimary ?? (existingCount === 0 && idx === 0),
-          sortOrder: img.sortOrder ?? existingCount + idx,
-        })),
-      });
+    // Image mutations run atomically; audit records are emitted only after commit.
+    const imageMutation = await mutateListingImages(db, id, body);
+    if (imageMutation?.removed) {
+      await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.bulk_deleteMany', entityType: 'ListingImage', after: { bulk: true } });
     }
-    if (body.removeImages && Array.isArray(body.removeImages)) {
-      await db.listingImage.deleteMany({
-        where: { listingId: id, id: { in: body.removeImages.map(String) } },
-      });
-    await logAudit({
-      actorId: user?.id ?? null,
-      actorType: 'ADMIN',
-      action: 'marketplace.listing_image.bulk_deleteMany',
-      entityType: 'ListingImage',
-      after: { bulk: true },
-    });
-
+    if (imageMutation?.primary) {
+      await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.bulk_updateMany', entityType: 'ListingImage', after: { bulk: true } });
+      await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.update', entityType: 'ListingImage', entityId: String(body.setPrimaryImage), after: { isPrimary: true } });
     }
-    if (body.setPrimaryImage) {
-      await db.listingImage.updateMany({
-        where: { listingId: id },
-        data: { isPrimary: false },
-      });
-    await logAudit({
-      actorId: user?.id ?? null,
-      actorType: 'ADMIN',
-      action: 'marketplace.listing_image.bulk_updateMany',
-      entityType: 'ListingImage',
-      after: { bulk: true },
-    });
-
-      await db.listingImage.update({
-        where: { listingId: id, id: String(body.setPrimaryImage) },
-        data: { isPrimary: true },
-      });
-      await logAudit({
-        actorId: user?.id ?? null,
-        actorType: 'ADMIN',
-        action: 'marketplace.listing_image.update',
-        entityType: 'ListingImage',
-        entityId: String(body.setPrimaryImage),
-        after: { isPrimary: true },
-      });
-    }
-    if (body.reorderImages && Array.isArray(body.reorderImages)) {
-      await Promise.all(
-        body.reorderImages.map((imgId: string, idx: number) =>
-          db.listingImage.updateMany({ where: { listingId: id, id: String(imgId) }, data: { sortOrder: idx } }),
-        ),
-      );
-      await logAudit({
-        actorId: user?.id ?? null,
-        actorType: 'ADMIN',
-        action: 'marketplace.listing_image.bulk_reorder',
-        entityType: 'ListingImage',
-        after: { count: body.reorderImages.length },
-      });
+    if (imageMutation?.reordered) {
+      await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.bulk_reorder', entityType: 'ListingImage', after: { count: body.reorderImages.length } });
     }
 
     // ── Attribute values upsert (full attribute editing) ──
