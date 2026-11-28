@@ -175,11 +175,7 @@ export async function PUT(req: Request, { params }: Args) {
     if (!listing.categoryId) {
       return NextResponse.json({ error: "Listing has no category for technical attributes" }, { status: 400 });
     }
-    const categoryLinks = await db.categoryAttribute.findMany({
-      where: { categoryId: listing.categoryId, attributeId: { in: attrIds } },
-      select: { attributeId: true },
-    });
-    const allowedAttributeIds = new Set(categoryLinks.map((link) => link.attributeId));
+    const allowedAttributeIds = await getCategoryAttributeIds(db, listing.categoryId);
     const disallowedAttributeIds = attrIds.filter((attributeId) => !allowedAttributeIds.has(attributeId));
     if (disallowedAttributeIds.length) {
       return NextResponse.json(
