@@ -22,8 +22,11 @@ describe("device-specific technical attribute seed", () => {
 
   it("links attributes to the selected leaf device category, not every machine category", () => {
     expect(seed).toMatch(/const domain = DEVICE_DOMAINS\[deviceNameEn\]\s*\?\?\s*"MACHINE"/);
-    expect(seed).toMatch(/where:\s*\{\s*domain,\s*level:\s*2,\s*nameEn:\s*deviceNameEn\s*\}/);
-    expect(seed).toMatch(/where:\s*\{\s*domain,\s*level:\s*1,\s*nameEn:\s*deviceNameEn\s*\}/);
+    // Canonical slug resolution is primary; legacy nameEn fallback checks levels 2, 3 and 1.
+    expect(seed).toContain('where: { slug, domain, layer: "CATALOG", active: true }');
+    expect(seed).toMatch(/level:\s*2,\s*nameEn:\s*deviceNameEn/);
+    expect(seed).toMatch(/level:\s*3,\s*nameEn:\s*deviceNameEn/);
+    expect(seed).toMatch(/level:\s*1,\s*nameEn:\s*deviceNameEn/);
     expect(seed).toContain('Generators: "INDUSTRIAL_EQUIPMENT"');
     expect(seed).toContain('Tractor: "AGRICULTURE"');
     expect(seed).toContain("level: 1, nameEn: deviceNameEn");
