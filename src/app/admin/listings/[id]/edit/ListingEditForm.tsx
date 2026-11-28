@@ -714,7 +714,16 @@ export default function ListingEditForm({
                 <label className={labelCls}>دسته‌بندی</label>
                 <select
                   value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
+                  onChange={(e) => {
+                    const nextCategoryId = e.target.value;
+                    if (nextCategoryId !== categoryId) {
+                      // A device/category change invalidates the previous device specs.
+                      // Never carry excavator values into a loader (or another category).
+                      setAttributeValues({});
+                      setAttributeDefs([]);
+                    }
+                    setCategoryId(nextCategoryId);
+                  }}
                   className={inputCls}
                 >
                   <option value="">— انتخاب کنید —</option>
