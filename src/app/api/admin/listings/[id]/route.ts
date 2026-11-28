@@ -171,6 +171,29 @@ export async function PATCH(req: Request, { params }: Params) {
     const existing = await db.listing.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    // Validate image mutation IDs before any listing mutation to prevent partial updates.
+    const requestedImageIds = [
+      ...(Array.isArray(body.removeImages) ? body.removeImages.map(String) : []),
+      ...(body.setPrimaryImage ? [String(body.setPrimaryImage)] : []),
+      ...(Array.isArray(body.reorderImages) ? body.reorderImages.map(String) : []),
+    ];
+    const uniqueRequestedImageIds = [...new Set(requestedImageIds)];
+    if (body.reorderImages && Array.isArray(body.reorderImages) &&
+        new Set(body.reorderImages.map(String)).size !== body.reorderImages.length) {
+      return NextResponse.json({ error: "Duplicate image IDs in reorderImages" }, { status: 400 });
+    }
+    if (uniqueRequestedImageIds.length) {
+      const ownedImages = await db.listingImage.findMany({
+        where: { listingId: id, id: { in: uniqueRequestedImageIds } },
+        select: { id: true },
+      });
+      const ownedIds = new Set(ownedImages.map((img: any) => String(img.id)));
+      const invalidImageIds = uniqueRequestedImageIds.filter((imageId) => !ownedIds.has(imageId));
+      if (invalidImageIds.length) {
+        return NextResponse.json({ error: "One or more images do not belong to this listing", invalidImageIds }, { status: 400 });
+      }
+    }
+
     const url = new URL(req.url);
     const queryAction = url.searchParams.get("action");
     const bodyAction = body.action as string | undefined;
@@ -355,7 +378,7 @@ export async function PATCH(req: Request, { params }: Params) {
     }
     if (body.removeImages && Array.isArray(body.removeImages)) {
       await db.listingImage.deleteMany({
-        where: { id: { in: body.removeImages.map(String) } },
+        where: { listingId: id, id: { in: body.removeImages.map(String) } },
       });
     await logAudit({
       actorId: user?.id ?? null,
@@ -380,7 +403,7 @@ export async function PATCH(req: Request, { params }: Params) {
     });
 
       await db.listingImage.update({
-        where: { id: String(body.setPrimaryImage) },
+        where: { listingId: id, id: String(body.setPrimaryImage) },
         data: { isPrimary: true },
       });
       await logAudit({
@@ -395,7 +418,7 @@ export async function PATCH(req: Request, { params }: Params) {
     if (body.reorderImages && Array.isArray(body.reorderImages)) {
       await Promise.all(
         body.reorderImages.map((imgId: string, idx: number) =>
-          db.listingImage.update({ where: { id: String(imgId) }, data: { sortOrder: idx } }),
+          db.listingImage.updateMany({ where: { listingId: id, id: String(imgId) }, data: { sortOrder: idx } }),
         ),
       );
       await logAudit({
