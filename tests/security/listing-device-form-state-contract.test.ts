@@ -68,6 +68,11 @@ describe("listing device category technical form state", () => {
     expect(validator).toContain("Date values must be valid and match a date attribute");
     expect(validator).toContain("optionOwners.get(option.optionId) !== option.attributeId");
     expect(validator).toContain("getCategoryAttributeIds(db, categoryId)");
+    expect(validator).toContain('definition?.type !== "BOOLEAN" || typeof value.booleanValue !== "boolean"');
+    expect(validator).toContain('type === "MULTI_SELECT"');
+    expect(validator).toContain('expectedType: "MULTI_SELECT"');
+    expect(validator).toContain('(type === "INTEGER" || type === "YEAR") && !Number.isInteger(numeric)');
+
   });
 
 });
