@@ -76,3 +76,59 @@ describe("listing device category technical form state", () => {
   });
 
 });
+
+
+const listingCreateRoute = readFileSync(
+  resolve(process.cwd(), "src/app/api/listings/route.ts"),
+  "utf8",
+);
+const listingAttributePutRoute = readFileSync(
+  resolve(process.cwd(), "src/app/api/listings/[id]/attributes/route.ts"),
+  "utf8",
+);
+const newListingPage = readFileSync(
+  resolve(process.cwd(), "src/app/listings/new/page.tsx"),
+  "utf8",
+);
+const sharedAttributeValidator = readFileSync(
+  resolve(process.cwd(), "src/lib/listing-attribute-validation.ts"),
+  "utf8",
+);
+
+describe("end-to-end technical attribute persistence contract", () => {
+  it("validates required fields, storage type compatibility and range bounds", () => {
+    expect(sharedAttributeValidator).toContain("options.enforceRequired");
+    expect(sharedAttributeValidator).toContain("getCategoryAttributeLinks(db, categoryId)");
+    expect(sharedAttributeValidator).toContain("missingRequiredAttributeIds");
+    expect(sharedAttributeValidator).toContain("Attribute values must match their definition type");
+    expect(sharedAttributeValidator).toContain("Range values must contain valid minimum and maximum numbers");
+  });
+
+  it("uses the shared validator for the standalone technical-attribute PUT endpoint", () => {
+    expect(listingAttributePutRoute).toContain('import { validateListingAttributeBatch } from "@/lib/listing-attribute-validation"');
+    expect(listingAttributePutRoute).toContain("{ enforceRequired: true }");
+    expect(listingAttributePutRoute).toContain("if (!validation.ok)");
+  });
+
+  it("persists new listing, images and technical attributes in one transaction", () => {
+    expect(listingCreateRoute).toContain("validateListingAttributeBatch");
+    expect(listingCreateRoute).toContain("{ enforceRequired: true }");
+    expect(listingCreateRoute).toContain("db.$transaction(async (tx: any) =>");
+    expect(listingCreateRoute).toContain("tx.listingImage.createMany");
+    expect(listingCreateRoute).toContain("tx.listingAttributeValue.createMany");
+    expect(listingCreateRoute).toContain('sourceType: "SELLER_INPUT"');
+  });
+
+  it("sends serialized attribute values with the create request instead of a second PUT", () => {
+    expect(newListingPage).toContain("attributeValues: attributePayload");
+    expect(newListingPage).not.toContain("/attributes`,");
+    expect(newListingPage).not.toContain('method: "PUT"');
+  });
+
+  it("enforces required attributes server-side when a seller or admin changes category", () => {
+    for (const route of [sellerListingRoute, adminListingRoute]) {
+      expect(route).toContain("const categoryChanged = data.categoryId !== undefined && data.categoryId !== existing.categoryId");
+      expect(route).toContain("{ enforceRequired: categoryChanged }");
+    }
+  });
+});
