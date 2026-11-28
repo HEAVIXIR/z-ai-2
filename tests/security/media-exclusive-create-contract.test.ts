@@ -36,7 +36,7 @@ describe("media upload exclusive-create contract", () => {
   it("checks that the binary still exists before attaching metadata", () => {
     const attachStart = source.indexOf("export async function attachAsset");
     const attachSection = source.slice(attachStart);
-    expect(source).toContain("async function resolveStoredAssetPath(relativePath: string)");
+    expect(source).toContain("async function resolveStoredAssetPath(relativePath: string, expectedSize?: number)");
     expect(source).toContain("await fs.lstat(resolved)");
     expect(source).toContain("stat.isSymbolicLink()");
   });
