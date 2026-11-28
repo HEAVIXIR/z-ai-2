@@ -481,6 +481,15 @@ export async function getAsset(assetId: string): Promise<MediaAsset | null> {
   return all.find((a) => a.id === assetId) ?? null;
 }
 
+/** Fetch several assets with one filesystem walk for ownership validation. */
+export async function getAssets(assetIds: string[]): Promise<MediaAsset[]> {
+  if (!Array.isArray(assetIds) || assetIds.length === 0) return [];
+  const requestedIds = new Set(assetIds.filter((id) => typeof id === "string" && id.length > 0));
+  if (requestedIds.size === 0) return [];
+  const all = await readAllAssets();
+  return all.filter((asset) => requestedIds.has(asset.id));
+}
+
 /**
  * Delete an asset: removes both the binary file and its sidecar.
  * Audit-logged as 'media.delete'.
