@@ -36,4 +36,13 @@ describe("listing device category technical form state", () => {
     expect(page).toMatch(/onPickChild[\s\S]*?resetCategoryAttributes\(\)/);
     expect(page).toMatch(/onPickGrandchild[\s\S]*?resetCategoryAttributes\(\)/);
   });
+  it("preserves zero when serializing numeric technical attributes", () => {
+    const component = readFileSync(
+      resolve(process.cwd(), "src/components/listings/AttributeFields.tsx"),
+      "utf8",
+    );
+    expect(component).toContain("Number.isFinite(numericValue) ? numericValue : null");
+    expect(component).not.toContain("Number(raw) || null");
+  });
+
 });
