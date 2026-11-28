@@ -347,7 +347,7 @@ export async function PATCH(req: Request, { params }: Args) {
         : null,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json({ error: err?.message ?? "Server error" }, { status: err?.status ?? 500 });
   }
 }
 
