@@ -43,7 +43,7 @@ describe("seller listing image upload contract", () => {
     expect(listingRoute).toContain("asset.uploadedBy !== user.id");
     expect(listingRoute).toContain('asset.entityType !== "Generic"');
     expect(listingRoute).toContain("asset.entityId !== user.id");
-    expect(listingRoute).toContain("asset.url !== requestedUrl");
+    expect(listingRoute).toContain("asset.url !== image.url");
   });
 
   it("persists only verified asset URLs and preserves primary image ordering", () => {
