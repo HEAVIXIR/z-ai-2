@@ -120,6 +120,7 @@ describe("end-to-end technical attribute persistence contract", () => {
       "utf8",
     );
     expect(component).toContain("Include explicit nulls for empty fields");
+    expect(component).toContain('typeof raw === "string" && raw.trim() === ""');
     expect(component).toContain("out.push(entry);");
     expect(component).toContain("entry.numberValue = null;");
     expect(component).toContain("entry.optionId = null;");
