@@ -166,12 +166,11 @@ async function ensureAttribute(spec: AttributeSpec) {
       unit: spec.unit ?? null, filterable: spec.filterable ?? false,
       searchable: spec.searchable ?? false, sortable: spec.sortable ?? false,
       required: false, visibleOnCard: false, visibleOnDetail: true,
-      active: true,
     },
     update: {
       name: spec.name, nameEn: spec.nameEn, type: spec.type, unit: spec.unit ?? null,
       filterable: spec.filterable ?? false, searchable: spec.searchable ?? false,
-      sortable: spec.sortable ?? false, visibleOnDetail: true, active: true,
+      sortable: spec.sortable ?? false, visibleOnDetail: true,
     },
   });
   for (let i = 0; i < (spec.options ?? []).length; i++) {
