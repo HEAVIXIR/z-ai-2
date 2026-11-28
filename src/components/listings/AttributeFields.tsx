@@ -593,12 +593,45 @@ export function buildAttributePayload(
   for (const a of attributes) {
     const k = attrKey(a);
     const raw = values[k];
-    if (raw === undefined || raw === null || raw === "") continue;
     const entry: PayloadEntry = {
       attributeId: a.id,
       unit: a.unit ?? null,
       sourceType: "SELLER_INPUT",
     };
+    // Include explicit nulls for empty fields so PATCH can clear previously
+    // persisted values instead of silently retaining stale specifications.
+    if (raw === undefined || raw === null || raw === "") {
+      switch (a.type) {
+        case "BOOLEAN":
+          entry.booleanValue = null;
+          break;
+        case "SELECT":
+          entry.optionId = null;
+          break;
+        case "MULTI_SELECT":
+        case "RANGE":
+          entry.textValue = null;
+          break;
+        case "DATE":
+        case "DATETIME":
+          entry.dateValue = null;
+          break;
+        case "INTEGER":
+        case "DECIMAL":
+        case "NUMBER":
+        case "CURRENCY":
+        case "UNIT":
+        case "SIZE":
+        case "WEIGHT":
+        case "YEAR":
+          entry.numberValue = null;
+          break;
+        default:
+          entry.textValue = null;
+      }
+      out.push(entry);
+      continue;
+    }
     switch (a.type) {
       case "BOOLEAN":
         entry.booleanValue = raw === true || raw === "true";
