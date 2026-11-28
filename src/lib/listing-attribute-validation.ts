@@ -1,4 +1,4 @@
-import { getCategoryAttributeIds } from "@/lib/category-attributes";
+import { getCategoryAttributeIds, getCategoryAttributeLinks } from "@/lib/category-attributes";
 
 type AttributeValueInput = {
   attributeId?: unknown;
@@ -9,6 +9,8 @@ type AttributeValueInput = {
   optionId?: unknown;
   unit?: unknown;
 };
+
+type ValidationOptions = { enforceRequired?: boolean };
 
 type ValidationResult = { ok: true } | { ok: false; error: string; details?: Record<string, unknown> };
 
@@ -21,6 +23,7 @@ export async function validateListingAttributeBatch(
   db: any,
   categoryId: string | null | undefined,
   incoming: unknown[],
+  options: ValidationOptions = {},
 ): Promise<ValidationResult> {
   if (!Array.isArray(incoming)) return { ok: false, error: "attributeValues must be an array" };
   if (incoming.some((value) => !value || typeof value !== "object" || Array.isArray(value) ||
@@ -58,6 +61,43 @@ export async function validateListingAttributeBatch(
 
   const numericTypes = new Set(["INTEGER", "DECIMAL", "NUMBER", "CURRENCY", "UNIT", "SIZE", "WEIGHT", "YEAR"]);
   const dateTypes = new Set(["DATE", "DATETIME"]);
+  const textTypes = new Set(["TEXT", "LONG_TEXT", "REFERENCE", "LOCATION", "FILE", "IMAGE", "COLOR", "URL", "PHONE", "RANGE", "MULTI_SELECT"]);
+
+  // Reject values sent through a storage column that does not match the
+  // definition type. This keeps the API contract aligned with the form engine.
+  for (const value of values) {
+    const type = (definitionsById.get(String(value.attributeId)) as { type?: string } | undefined)?.type ?? "";
+    const present = (candidate: unknown) => candidate !== undefined && candidate !== null && candidate !== "";
+    const hasText = present(value.textValue);
+    const hasNumber = present(value.numberValue);
+    const hasBoolean = value.booleanValue !== undefined && value.booleanValue !== null;
+    const hasDate = present(value.dateValue);
+    const hasOption = present(value.optionId);
+
+    if (numericTypes.has(type)) {
+      if (hasText || hasBoolean || hasDate || hasOption) {
+        return { ok: false, error: "Attribute values must match their definition type" };
+      }
+    } else if (dateTypes.has(type)) {
+      if (hasText || hasNumber || hasBoolean || hasOption) {
+        return { ok: false, error: "Attribute values must match their definition type" };
+      }
+    } else if (type === "BOOLEAN") {
+      if (hasText || hasNumber || hasDate || hasOption) {
+        return { ok: false, error: "Attribute values must match their definition type" };
+      }
+    } else if (type === "SELECT") {
+      if (hasText || hasNumber || hasBoolean || hasDate) {
+        return { ok: false, error: "Attribute values must match their definition type" };
+      }
+    } else if (type === "MULTI_SELECT" || type === "RANGE" || textTypes.has(type)) {
+      if (hasNumber || hasBoolean || hasDate || hasOption) {
+        return { ok: false, error: "Attribute values must match their definition type" };
+      }
+    } else {
+      return { ok: false, error: "Unsupported attribute type" };
+    }
+  }
   const invalidNumbers = values.some((value) => {
     if (value.numberValue === undefined || value.numberValue === null || value.numberValue === "") return false;
     if (typeof value.numberValue !== "number" && typeof value.numberValue !== "string") return true;
@@ -70,6 +110,18 @@ export async function validateListingAttributeBatch(
       ((type === "INTEGER" || type === "YEAR") && !Number.isInteger(numeric));
   });
   if (invalidNumbers) return { ok: false, error: "Numeric values must be finite and match a numeric attribute" };
+
+  const invalidRanges = values.some((value) => {
+    const definition = definitionsById.get(String(value.attributeId)) as { type?: string } | undefined;
+    if (definition?.type !== "RANGE" || value.textValue === undefined || value.textValue === null || value.textValue === "") return false;
+    if (typeof value.textValue !== "string") return true;
+    const parts = value.textValue.split("|");
+    if (parts.length !== 2) return true;
+    const parsed = parts.map((part) => part.trim() === "" ? null : Number(part));
+    if (parsed.some((part, index) => part !== null && !Number.isFinite(part))) return true;
+    return parsed[0] !== null && parsed[1] !== null && parsed[0] > parsed[1];
+  });
+  if (invalidRanges) return { ok: false, error: "Range values must contain valid minimum and maximum numbers" };
 
   const invalidDates = values.some((value) => {
     if (value.dateValue === undefined || value.dateValue === null || value.dateValue === "") return false;
@@ -126,6 +178,32 @@ export async function validateListingAttributeBatch(
     );
     if (invalidOptions) {
       return { ok: false, error: "One or more selected options do not belong to their attributes" };
+    }
+  }
+
+  if (options.enforceRequired) {
+    const links = await getCategoryAttributeLinks(db, categoryId);
+    const supplied = new Map(values.map((value) => [String(value.attributeId), value]));
+    const missingRequired = links
+      .filter((link: any) => link.required)
+      .filter((link: any) => {
+        const value = supplied.get(link.attributeId);
+        if (!value) return true;
+        return ![
+          value.textValue,
+          value.numberValue,
+          value.booleanValue,
+          value.dateValue,
+          value.optionId,
+        ].some((candidate) => candidate !== undefined && candidate !== null && candidate !== "");
+      })
+      .map((link: any) => link.attributeId);
+    if (missingRequired.length) {
+      return {
+        ok: false,
+        error: "Required technical attributes are missing",
+        details: { missingRequiredAttributeIds: missingRequired },
+      };
     }
   }
 
