@@ -94,6 +94,35 @@ function sidecarPathFor(assetRelativePathWithExt: string): string {
   return `${assetRelativePathWithExt}.meta.json`;
 }
 
+/**
+ * Resolve an asset path from persisted metadata without allowing traversal,
+ * absolute paths, platform separator tricks, or symlink targets.
+ */
+async function resolveStoredAssetPath(relativePath: string): Promise<string | null> {
+  if (
+    typeof relativePath !== "string" ||
+    relativePath.length === 0 ||
+    relativePath.includes("\\") ||
+    relativePath.includes("\0") ||
+    path.posix.isAbsolute(relativePath) ||
+    relativePath.split("/").some((part) => !part || part === "." || part === "..")
+  ) return null;
+
+  const root = path.resolve(UPLOAD_ROOT);
+  const resolved = path.resolve(root, ...relativePath.split("/"));
+  if (!resolved.startsWith(root + path.sep)) return null;
+  try {
+    const stat = await fs.lstat(resolved);
+    if (!stat.isFile() || stat.isSymbolicLink()) return null;
+    const realRoot = await fs.realpath(root);
+    const realFile = await fs.realpath(resolved);
+    if (!realFile.startsWith(realRoot + path.sep)) return null;
+    return resolved;
+  } catch {
+    return null;
+  }
+}
+
 /** Walk a directory recursively, returning every regular file. */
 async function walkFiles(
   dir: string,
@@ -354,7 +383,10 @@ export async function deleteAsset(
   if (!asset) {
     return { ok: false, error: "رسانه یافت نشد." };
   }
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
+  const binaryPath = await resolveStoredAssetPath(asset.relativePath);
+  if (!binaryPath) {
+    return { ok: false, error: "مسیر فایل رسانه نامعتبر است یا فایل وجود ندارد." };
+  }
   const sidecarPath = `${binaryPath}.meta.json`;
 
   // Remove binary file
@@ -409,17 +441,11 @@ export async function attachAsset(
     return { ok: false, error: "رسانه یافت نشد." };
   }
 
-  const binaryPath = path.join(UPLOAD_ROOT, asset.relativePath);
-  const sidecarPath = `${binaryPath}.meta.json`;
-  // Do not recreate metadata for a binary that has already disappeared.
-  try {
-    const binaryStat = await fs.lstat(binaryPath);
-    if (!binaryStat.isFile() || binaryStat.isSymbolicLink()) {
-      return { ok: false, error: "فایل رسانه معتبر نیست." };
-    }
-  } catch {
-    return { ok: false, error: "فایل رسانه یافت نشد." };
+  const binaryPath = await resolveStoredAssetPath(asset.relativePath);
+  if (!binaryPath) {
+    return { ok: false, error: "مسیر فایل رسانه نامعتبر است یا فایل وجود ندارد." };
   }
+  const sidecarPath = `${binaryPath}.meta.json`;
   const before = { entityType: asset.entityType, entityId: asset.entityId };
   const updated: AssetSidecar = {
     id: asset.id,
