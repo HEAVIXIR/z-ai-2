@@ -422,17 +422,19 @@ export async function POST(req: Request) {
     const incomingAttributeValues: any[] = Array.isArray(body.attributeValues)
       ? body.attributeValues
       : [];
-    const attributeValidation = await validateListingAttributeBatch(
-      db,
-      data.categoryId,
-      incomingAttributeValues,
-      { enforceRequired: true },
-    );
-    if (!attributeValidation.ok) {
-      return NextResponse.json(
-        { error: attributeValidation.error, ...(attributeValidation.details ?? {}) },
-        { status: 400 },
+    if (data.categoryId || incomingAttributeValues.length > 0) {
+      const attributeValidation = await validateListingAttributeBatch(
+        db,
+        data.categoryId,
+        incomingAttributeValues,
+        { enforceRequired: true },
       );
+      if (!attributeValidation.ok) {
+        return NextResponse.json(
+          { error: attributeValidation.error, ...(attributeValidation.details ?? {}) },
+          { status: 400 },
+        );
+      }
     }
 
     // Listing, images and technical specifications are committed together.
