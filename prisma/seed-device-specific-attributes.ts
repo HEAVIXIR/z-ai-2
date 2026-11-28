@@ -9,12 +9,6 @@ type AttributeSpec = {
 };
 
 const shared: AttributeSpec[] = [
-  { key: "device-manufacture-year", name: "سال ساخت", nameEn: "Manufacture Year", type: "YEAR", required: true, filterable: true, sortable: true },
-  { key: "device-condition", name: "وضعیت دستگاه", nameEn: "Machine Condition", type: "SELECT", required: true, filterable: true, options: [
-    { value: "new", label: "نو" }, { value: "used", label: "کارکرده" },
-    { value: "refurbished", label: "بازسازی‌شده" }, { value: "for-parts", label: "مناسب قطعات" },
-  ] },
-  { key: "device-operating-hours", name: "ساعات کارکرد", nameEn: "Operating Hours", type: "INTEGER", unit: "ساعت", filterable: true, sortable: true },
   { key: "device-engine-power", name: "قدرت موتور", nameEn: "Engine Power", type: "DECIMAL", unit: "اسب بخار", filterable: true, sortable: true },
   { key: "device-operating-weight", name: "وزن عملیاتی", nameEn: "Operating Weight", type: "DECIMAL", unit: "تن", filterable: true, sortable: true },
   { key: "device-serial-number", name: "شماره سریال / شاسی", nameEn: "Serial / PIN", type: "TEXT", searchable: true },
@@ -40,7 +34,6 @@ const deviceCatalog: Record<string, AttributeSpec[]> = {
   ],
   "Mining Excavator": [
     n("mining-excavator-bucket", "ظرفیت باکت معدنی", "Mining Bucket Capacity", "متر مکعب"),
-    n("mining-excavator-operating-weight", "وزن عملیاتی معدنی", "Mining Operating Weight", "تن"),
     n("mining-excavator-digging-depth", "عمق حفاری", "Digging Depth", "متر"),
     s("mining-excavator-undercarriage", "نوع زیربندی", "Undercarriage", ["زنجیری", "چرخ لاستیکی"]),
   ],
