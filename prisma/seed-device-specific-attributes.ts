@@ -243,7 +243,7 @@ const DEVICE_CATEGORY_SLUGS: Record<string, string[]> = {
   "Mining Excavator": ["mining-excavator-machine", "excavator-mining"],
   "Wheel Loader": ["wheel-loader", "loader"],
   "Skid Steer Loader": ["skid-steer-loader", "compact-loader"],
-  Compactor: ["road-roller", "soil-roller"],
+  Compactor: ["soil-roller"],
   Telehandler: ["telehandler", "telehandler-loader"],
   "Backhoe Loader": ["backhoe-loader"],
   Bulldozer: ["bulldozer"],
@@ -256,7 +256,8 @@ const DEVICE_CATEGORY_SLUGS: Record<string, string[]> = {
   "Rigid Dump Truck": ["rigid-mining-truck", "mining-dump-truck"],
   "Articulated Dump Truck": ["articulated-mining-truck", "mining-dump-truck"],
   "Drilling Machine": ["drill-rig", "drilling"],
-  Crusher: ["jaw-crusher"],
+  // Generic crusher fields are shared across every crusher subtype, not just jaw crushers.
+  Crusher: [],
   "Screening Machine": ["screen"],
   "Asphalt Paver": ["asphalt-finisher", "track-paver"],
   "Asphalt Plant": ["asphalt-plant", "asphalt-machinery"],
@@ -273,6 +274,21 @@ const DEVICE_CATEGORY_SLUGS: Record<string, string[]> = {
   "Combine Harvester": ["combine-harvester"],
 };
 
+// Device families that intentionally share fields across multiple leaf categories.
+// Keeping these links on leaves avoids exposing crusher-only fields on screens,
+// conveyors, feeders, or other equipment in the broader crushing-processing group.
+const DEVICE_CATEGORY_GROUP_SLUGS: Record<string, string[]> = {
+  Crusher: [
+    "jaw-crusher",
+    "cone-crusher",
+    "impact-crusher",
+    "cubiti-crusher",
+    "hammer-crusher",
+    "gyratory-crusher",
+    "roll-crusher",
+  ],
+};
+
 const DEVICE_DOMAINS: Record<string, string> = {
   Generators: "INDUSTRIAL_EQUIPMENT", Compressors: "INDUSTRIAL_EQUIPMENT", Pumps: "INDUSTRIAL_EQUIPMENT",
   Tractor: "AGRICULTURE", "Combine Harvester": "AGRICULTURE",
@@ -283,60 +299,77 @@ async function main() {
   const deviceNames = Object.keys(deviceCatalog);
   for (const [deviceNameEn, specific] of Object.entries(deviceCatalog)) {
     const domain = DEVICE_DOMAINS[deviceNameEn] ?? "MACHINE";
-    // Most device forms attach to a level-2 leaf. Some catalog domains
-    // (e.g. INDUSTRIAL_EQUIPMENT and AGRICULTURE V1) currently end at level 1.
-    let category: { id: string; name: string; nameEn: string | null } | null = null;
-    for (const slug of DEVICE_CATEGORY_SLUGS[deviceNameEn] ?? []) {
-      category = await db.category.findFirst({
-        where: { slug, domain, layer: "CATALOG", active: true },
-        select: { id: true, name: true, nameEn: true },
-      });
-      if (category) break;
+    // Most device forms attach to a level-2/3 leaf. Multi-leaf families
+    // (such as generic crushers) receive the same definitions on each matching leaf.
+    const categories: { id: string; name: string; nameEn: string | null }[] = [];
+    const groupedSlugs = DEVICE_CATEGORY_GROUP_SLUGS[deviceNameEn];
+    if (groupedSlugs) {
+      for (const slug of groupedSlugs) {
+        const match = await db.category.findFirst({
+          where: { slug, domain, layer: "CATALOG", active: true },
+          select: { id: true, name: true, nameEn: true },
+        });
+        if (match && !categories.some((item) => item.id === match.id)) categories.push(match);
+      }
+    } else {
+      let category: { id: string; name: string; nameEn: string | null } | null = null;
+      for (const slug of DEVICE_CATEGORY_SLUGS[deviceNameEn] ?? []) {
+        category = await db.category.findFirst({
+          where: { slug, domain, layer: "CATALOG", active: true },
+          select: { id: true, name: true, nameEn: true },
+        });
+        if (category) break;
+      }
+      // Compatibility fallback for older active taxonomy rows that still carry nameEn.
+      if (!category) {
+        category = await db.category.findFirst({
+          where: { domain, layer: "CATALOG", active: true, level: 2, nameEn: deviceNameEn },
+          select: { id: true, name: true, nameEn: true },
+        });
+      }
+      if (!category) {
+        category = await db.category.findFirst({
+          where: { domain, layer: "CATALOG", active: true, level: 3, nameEn: deviceNameEn },
+          select: { id: true, name: true, nameEn: true },
+        });
+      }
+      if (!category) {
+        category = await db.category.findFirst({
+          where: { domain, layer: "CATALOG", active: true, level: 1, nameEn: deviceNameEn },
+          select: { id: true, name: true, nameEn: true },
+        });
+      }
+      if (category) categories.push(category);
     }
-    // Compatibility fallback for older active taxonomy rows that still carry nameEn.
-    if (!category) {
-      category = await db.category.findFirst({
-        where: { domain, layer: "CATALOG", active: true, level: 2, nameEn: deviceNameEn },
-        select: { id: true, name: true, nameEn: true },
-      });
-    }
-    if (!category) {
-      category = await db.category.findFirst({
-        where: { domain, layer: "CATALOG", active: true, level: 3, nameEn: deviceNameEn },
-        select: { id: true, name: true, nameEn: true },
-      });
-    }
-    if (!category) {
-      category = await db.category.findFirst({
-        where: { domain, layer: "CATALOG", active: true, level: 1, nameEn: deviceNameEn },
-        select: { id: true, name: true, nameEn: true },
-      });
-    }
-    if (!category) {
+    if (categories.length === 0) {
       console.warn(`[device-attributes] category not found; skipped: ${deviceNameEn}`);
       continue;
     }
     const specs = [...shared, ...specific];
-    for (let i = 0; i < specs.length; i++) {
-      const spec = specs[i];
-      const definition = await ensureAttribute(spec);
-      await db.categoryAttribute.upsert({
-        where: { categoryId_attributeId: { categoryId: category.id, attributeId: definition.id } },
-        create: {
-          categoryId: category.id, attributeId: definition.id,
-          required: spec.required ?? false, filterable: spec.filterable ?? false,
-          searchable: spec.searchable ?? false, sortable: spec.sortable ?? false,
-          displayOrder: i,
-        },
-        update: {
-          required: spec.required ?? false, filterable: spec.filterable ?? false,
-          searchable: spec.searchable ?? false, sortable: spec.sortable ?? false,
-          displayOrder: i,
-        },
-      });
-      linked++;
+    const definitions = [];
+    for (const spec of specs) definitions.push(await ensureAttribute(spec));
+    for (const category of categories) {
+      for (let i = 0; i < specs.length; i++) {
+        const spec = specs[i];
+        const definition = definitions[i];
+        await db.categoryAttribute.upsert({
+          where: { categoryId_attributeId: { categoryId: category.id, attributeId: definition.id } },
+          create: {
+            categoryId: category.id, attributeId: definition.id,
+            required: spec.required ?? false, filterable: spec.filterable ?? false,
+            searchable: spec.searchable ?? false, sortable: spec.sortable ?? false,
+            displayOrder: i,
+          },
+          update: {
+            required: spec.required ?? false, filterable: spec.filterable ?? false,
+            searchable: spec.searchable ?? false, sortable: spec.sortable ?? false,
+            displayOrder: i,
+          },
+        });
+        linked++;
+      }
+      console.log(`[device-attributes] ${category.name} — ${specs.length} fields`);
     }
-    console.log(`[device-attributes] ${category.name} — ${specs.length} fields`);
   }
   console.log(`[device-attributes] complete: ${deviceNames.length} device definitions, ${linked} category links`);
 }
