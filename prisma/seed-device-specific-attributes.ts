@@ -39,11 +39,32 @@ const deviceCatalog: Record<string, AttributeSpec[]> = {
     n("excavator-arm-length", "طول بازو", "Arm Length", "متر"),
     s("excavator-undercarriage", "نوع زیربندی", "Undercarriage", ["زنجیری", "چرخ لاستیکی"]),
   ],
+  "Mining Excavator": [
+    n("mining-excavator-bucket", "ظرفیت باکت معدنی", "Mining Bucket Capacity", "متر مکعب"),
+    n("mining-excavator-operating-weight", "وزن عملیاتی معدنی", "Mining Operating Weight", "تن"),
+    n("mining-excavator-digging-depth", "عمق حفاری", "Digging Depth", "متر"),
+    s("mining-excavator-undercarriage", "نوع زیربندی", "Undercarriage", ["زنجیری", "چرخ لاستیکی"]),
+  ],
   "Wheel Loader": [
     n("loader-bucket-capacity", "ظرفیت باکت", "Bucket Capacity", "متر مکعب"),
     n("loader-dump-clearance", "ارتفاع تخلیه", "Dump Clearance", "متر"),
     n("loader-breakout-force", "نیروی شکست", "Breakout Force", "کیلو نیوتن"),
     s("loader-axle", "نوع محور", "Axle Type", ["صلب", "مفصلی"]),
+  ],
+  "Skid Steer Loader": [
+    n("skid-steer-rated-operating-capacity", "ظرفیت عملیاتی مجاز", "Rated Operating Capacity", "کیلوگرم"),
+    n("skid-steer-tipping-load", "بار واژگونی", "Tipping Load", "کیلوگرم"),
+    n("skid-steer-hydraulic-flow", "دبی هیدرولیک", "Hydraulic Flow", "لیتر بر دقیقه"),
+  ],
+  "Compactor": [
+    n("compactor-drum-width", "عرض درام", "Drum Width", "میلی‌متر"),
+    n("compactor-vibration-frequency", "فرکانس ارتعاش", "Vibration Frequency", "هرتز"),
+    n("compactor-amplitude", "دامنه ارتعاش", "Vibration Amplitude", "میلی‌متر"),
+  ],
+  "Telehandler": [
+    n("telehandler-lift-capacity", "ظرفیت بالابری", "Lift Capacity", "تن"),
+    n("telehandler-lift-height", "حداکثر ارتفاع بالابری", "Maximum Lift Height", "متر"),
+    n("telehandler-forward-reach", "دسترسی افقی", "Forward Reach", "متر"),
   ],
   "Backhoe Loader": [
     n("backhoe-digging-depth", "عمق حفاری بکهو", "Backhoe Digging Depth", "متر"),
@@ -72,6 +93,16 @@ const deviceCatalog: Record<string, AttributeSpec[]> = {
     n("forklift-lift-height", "حداکثر ارتفاع بالابری", "Maximum Lift Height", "متر"),
     n("forklift-free-lift", "ارتفاع آزاد", "Free Lift", "متر"),
     s("forklift-mast-type", "نوع دکل", "Mast Type", ["دو مرحله‌ای", "سه مرحله‌ای", "چهار مرحله‌ای"]),
+  ],
+  "Reach Truck": [
+    n("reach-truck-lift-capacity", "ظرفیت باربرداری", "Rated Capacity", "تن"),
+    n("reach-truck-lift-height", "ارتفاع بالابری", "Lift Height", "متر"),
+    n("reach-truck-aisle-width", "عرض راهرو کاری", "Aisle Width", "میلی‌متر"),
+  ],
+  "Stackers": [
+    n("stacker-lift-capacity", "ظرفیت باربرداری", "Rated Capacity", "کیلوگرم"),
+    n("stacker-lift-height", "ارتفاع بالابری", "Lift Height", "متر"),
+    s("stacker-drive", "نوع حرکت", "Drive Type", ["دستی", "نیمه‌برقی", "تمام‌برقی"]),
   ],
   "Mining Dump Truck": [
     n("mining-truck-payload", "ظرفیت بار مفید", "Payload Capacity", "تن"),
@@ -112,10 +143,30 @@ const deviceCatalog: Record<string, AttributeSpec[]> = {
     n("paver-paving-thickness", "ضخامت پخش", "Paving Thickness", "میلی‌متر"),
     n("paver-capacity", "ظرفیت پخش", "Paving Capacity", "تن بر ساعت"),
   ],
+  "Asphalt Plant": [
+    n("asphalt-plant-capacity", "ظرفیت تولید آسفالت", "Plant Capacity", "تن بر ساعت"),
+    n("asphalt-plant-mixer", "ظرفیت میکسر", "Mixer Capacity", "کیلوگرم"),
+    s("asphalt-plant-type", "نوع کارخانه", "Plant Type", ["ثابت", "سیار", "درام میکس"]),
+  ],
+  "Road Roller": [
+    n("road-roller-drum-width", "عرض درام", "Drum Width", "متر"),
+    n("road-roller-operating-weight", "وزن عملیاتی", "Operating Weight", "تن"),
+    n("road-roller-vibration-frequency", "فرکانس ارتعاش", "Vibration Frequency", "هرتز"),
+  ],
+  "Stabilizer": [
+    n("stabilizer-working-width", "عرض کاری", "Working Width", "متر"),
+    n("stabilizer-working-depth", "عمق کاری", "Working Depth", "میلی‌متر"),
+    n("stabilizer-mixing-capacity", "ظرفیت اختلاط", "Mixing Capacity", "تن بر ساعت"),
+  ],
   "Cold Milling Machine": [
     n("milling-width", "عرض تراش", "Milling Width", "میلی‌متر"),
     n("milling-depth", "عمق تراش", "Milling Depth", "میلی‌متر"),
     n("milling-drum-speed", "سرعت درام", "Milling Drum Speed", "دور بر دقیقه"),
+  ],
+  "Batching Plant": [
+    n("batching-plant-capacity", "ظرفیت تولید بتن", "Plant Capacity", "متر مکعب بر ساعت"),
+    n("batching-aggregate-bins", "تعداد مخازن سنگدانه", "Aggregate Bins"),
+    n("batching-mixer-volume", "حجم میکسر", "Mixer Volume", "لیتر"),
   ],
   "Concrete Mixer": [
     n("mixer-drum-volume", "حجم دیگ", "Drum Volume", "متر مکعب"),
@@ -201,10 +252,16 @@ async function main() {
   let linked = 0;
   const deviceNames = Object.keys(deviceCatalog);
   for (const [deviceNameEn, specific] of Object.entries(deviceCatalog)) {
-    const category = await db.category.findFirst({
-      where: { domain: DEVICE_DOMAINS[deviceNameEn] ?? "MACHINE", level: 2, nameEn: deviceNameEn },
+    const domain = DEVICE_DOMAINS[deviceNameEn] ?? "MACHINE";
+    // Most device forms attach to a level-2 leaf. Some catalog domains
+    // (e.g. INDUSTRIAL_EQUIPMENT and AGRICULTURE V1) currently end at level 1.
+    const category = (await db.category.findFirst({
+      where: { domain, level: 2, nameEn: deviceNameEn },
       select: { id: true, name: true, nameEn: true },
-    });
+    })) ?? (await db.category.findFirst({
+      where: { domain, level: 1, nameEn: deviceNameEn },
+      select: { id: true, name: true, nameEn: true },
+    }));
     if (!category) {
       console.warn(`[device-attributes] category not found; skipped: ${deviceNameEn}`);
       continue;
