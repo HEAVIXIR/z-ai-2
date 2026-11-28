@@ -268,7 +268,14 @@ export default function NewListingPage() {
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   // ── Cascade: when a root is selected, populate its children ──
+  const resetCategoryAttributes = () => {
+    setAttributes({});
+    setAttributeDefs([]);
+    setAttrErrors({});
+  };
+
   const onPickRoot = (root: TaxRoot) => {
+    resetCategoryAttributes();
     setSelectedRootId(root.id);
     setCategoryId(root.id);
     setChildCats(root.children ?? []);
@@ -277,6 +284,7 @@ export default function NewListingPage() {
   };
 
   const onPickChild = (child: TaxChild) => {
+    resetCategoryAttributes();
     setSelectedChildId(child.id);
     setCategoryId(child.id);
     setGrandchildCats([]);
@@ -297,6 +305,7 @@ export default function NewListingPage() {
   };
 
   const onPickGrandchild = (gc: TaxChild) => {
+    resetCategoryAttributes();
     setCategoryId(gc.id);
   };
 
