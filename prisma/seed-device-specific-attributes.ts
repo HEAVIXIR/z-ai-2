@@ -261,8 +261,8 @@ const DEVICE_CATEGORY_SLUGS: Record<string, string[]> = {
   "Asphalt Paver": ["asphalt-finisher", "track-paver"],
   "Asphalt Plant": ["asphalt-plant", "asphalt-machinery"],
   "Road Roller": ["road-roller"],
-  Stabilizer: ["grading-earthmoving"],
-  "Cold Milling Machine": ["asphalt-machinery"],
+  // These are named catalog families in the legacy taxonomy; do not attach
+  // their fields to broad road-construction parent categories.
   "Batching Plant": ["batching-plant"],
   "Concrete Mixer": ["concrete-mixer", "transit-mixer"],
   "Concrete Pump": ["concrete-pump"],
