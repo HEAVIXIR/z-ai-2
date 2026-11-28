@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getCurrentUserId } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { getCategoryAttributeIds } from "@/lib/category-attributes";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -301,6 +302,17 @@ export async function PUT(req: Request, { params }: Args) {
       });
 
     await db.$transaction(ops);
+
+    // Record the successful batch after the value transaction commits.
+    // Technical values are intentionally excluded from the audit payload.
+    await logAudit({
+      actorId: userId,
+      actorType: isAdmin ? "ADMIN" : "USER",
+      action: "marketplace.listing_attribute_value.bulk_upsert",
+      entityType: "ListingAttributeValue",
+      entityId: id,
+      after: { count: ops.length, attributeIds: attrIds },
+    });
 
     return NextResponse.json({ ok: true, count: ops.length });
   } catch (err: any) {
