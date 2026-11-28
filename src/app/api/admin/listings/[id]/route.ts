@@ -366,6 +366,9 @@ export async function PATCH(req: Request, { params }: Params) {
 
     // Image mutations run atomically; audit records are emitted only after commit.
     const imageMutation = await mutateListingImages(db, id, body);
+    if (imageMutation?.added) {
+      await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.bulk_create', entityType: 'ListingImage', after: { count: body.addImages.length } });
+    }
     if (imageMutation?.removed) {
       await logAudit({ actorId: user?.id ?? null, actorType: 'ADMIN', action: 'marketplace.listing_image.bulk_deleteMany', entityType: 'ListingImage', after: { bulk: true } });
     }
