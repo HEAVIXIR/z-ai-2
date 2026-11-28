@@ -208,6 +208,30 @@ export async function PATCH(req: Request, { params }: Args) {
       // Seller extend: keep current status (PUBLISHED stays PUBLISHED).
     }
 
+    // Validate incoming attribute IDs against the listing's resulting category.
+    // This prevents forged PATCH requests from attaching unrelated technical specs.
+    if (Array.isArray(body.attributeValues) && body.attributeValues.length > 0) {
+      const targetCategoryId = data.categoryId ?? existing.categoryId;
+      if (!targetCategoryId) {
+        return NextResponse.json({ error: "Attributes require a category" }, { status: 400 });
+      }
+      const allowedLinks = await db.categoryAttribute.findMany({
+        where: { categoryId: targetCategoryId },
+        select: { attributeId: true },
+      });
+      const allowedAttributeIds = new Set(allowedLinks.map((link: any) => link.attributeId));
+      const invalidAttributeIds = body.attributeValues
+        .filter((value: any) => value?.attributeId && !allowedAttributeIds.has(String(value.attributeId)))
+        .map((value: any) => String(value.attributeId));
+      if (invalidAttributeIds.length > 0) {
+        return NextResponse.json(
+          { error: "One or more attributes do not belong to the selected category", invalidAttributeIds },
+          { status: 400 },
+        );
+      }
+    }
+
+
     await db.listing.update({ where: { id }, data }).catch(async (updateErr: any) => {
       // Stale PrismaClient may reject the new P1-5/6 scalar fields. Strip them and retry.
       const msg = String(updateErr?.message ?? "");
@@ -271,28 +295,6 @@ export async function PATCH(req: Request, { params }: Args) {
       });
     }
 
-    // Validate incoming attribute IDs against the listing's resulting category.
-    // This prevents forged PATCH requests from attaching unrelated technical specs.
-    if (Array.isArray(body.attributeValues) && body.attributeValues.length > 0) {
-      const targetCategoryId = data.categoryId ?? existing.categoryId;
-      if (!targetCategoryId) {
-        return NextResponse.json({ error: "Attributes require a category" }, { status: 400 });
-      }
-      const allowedLinks = await db.categoryAttribute.findMany({
-        where: { categoryId: targetCategoryId },
-        select: { attributeId: true },
-      });
-      const allowedAttributeIds = new Set(allowedLinks.map((link: any) => link.attributeId));
-      const invalidAttributeIds = body.attributeValues
-        .filter((value: any) => value?.attributeId && !allowedAttributeIds.has(String(value.attributeId)))
-        .map((value: any) => String(value.attributeId));
-      if (invalidAttributeIds.length > 0) {
-        return NextResponse.json(
-          { error: "One or more attributes do not belong to the selected category", invalidAttributeIds },
-          { status: 400 },
-        );
-      }
-    }
 
 
     // Attribute values upsert
