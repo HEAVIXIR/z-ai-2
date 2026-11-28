@@ -38,6 +38,7 @@ describe("media sidecar metadata validation", () => {
     expect(isValidSidecar({ ...validSidecar(), id: "not-an-id" })).toBe(false);
     expect(isValidSidecar({ ...validSidecar(), filename: "../image.webp" })).toBe(false);
     expect(isValidSidecar({ ...validSidecar(), filename: "image.webp\\0" })).toBe(false);
+    expect(isValidSidecar({ ...validSidecar(), relativePath: "2026/11/image.webp\\0" })).toBe(false);
   });
 
   it("rejects absolute, traversal, backslash, and mismatched paths", () => {
