@@ -79,6 +79,14 @@ describe("listing device category technical form state", () => {
 });
 
 
+const sellerListingRoute = readFileSync(
+  resolve(process.cwd(), "src/app/api/listings/[id]/route.ts"),
+  "utf8",
+);
+const adminListingRoute = readFileSync(
+  resolve(process.cwd(), "src/app/api/admin/listings/[id]/route.ts"),
+  "utf8",
+);
 const listingCreateRoute = readFileSync(
   resolve(process.cwd(), "src/app/api/listings/route.ts"),
   "utf8",
