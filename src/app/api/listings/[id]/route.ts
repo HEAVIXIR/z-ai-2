@@ -7,6 +7,7 @@ import { isAuthenticated, getCurrentUserId } from "@/lib/auth";
 import { isAdmin as rbacIsAdmin } from "@/lib/authorization";
 import { parseBig, parseNumber, slugify } from "@/lib/api-helpers";
 import { mutateListingImages } from "@/lib/listing-image-mutations";
+import { getCategoryAttributeIds } from "@/lib/category-attributes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -239,11 +240,7 @@ export async function PATCH(req: Request, { params }: Args) {
       if (!targetCategoryId) {
         return NextResponse.json({ error: "Attributes require a category" }, { status: 400 });
       }
-      const allowedLinks = await db.categoryAttribute.findMany({
-        where: { categoryId: targetCategoryId },
-        select: { attributeId: true },
-      });
-      const allowedAttributeIds = new Set(allowedLinks.map((link: any) => link.attributeId));
+      const allowedAttributeIds = await getCategoryAttributeIds(db, targetCategoryId);
       const invalidAttributeIds = body.attributeValues
         .filter((value: any) => value?.attributeId && !allowedAttributeIds.has(String(value.attributeId)))
         .map((value: any) => String(value.attributeId));
