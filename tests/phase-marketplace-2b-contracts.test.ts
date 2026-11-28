@@ -126,7 +126,7 @@ describe('Phase Marketplace-2B — Admin Audit Contract Tests', () => {
       // Listing-image writes are intentionally centralized in a transaction helper,
       // so include those extracted writes in the Marketplace mutation inventory.
       const imageHelper = read('src/lib/listing-image-mutations.ts');
-      const helperMutations = imageHelper.match(/tx\\.listingImage\\.(create|update|delete|upsert|deleteMany|updateMany)\\(/g) || [];
+      const helperMutations = imageHelper.match(/tx\.listingImage\.(create|update|delete|upsert|deleteMany|updateMany)\(/g) || [];
       totalMut += helperMutations.length;
       expect(totalMut).toBe(21);
       expect(totalAudit).toBeGreaterThanOrEqual(15);
