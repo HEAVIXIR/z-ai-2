@@ -134,7 +134,12 @@ export function isValidSidecar(value: unknown): value is AssetSidecar {
   if (s.filename.toLowerCase().endsWith(`.${s.ext}`) === false) return false;
   if (!Number.isSafeInteger(s.size) || (s.size as number) <= 0 || (s.size as number) > MAX_UPLOAD_BYTES) return false;
   if (!nullableString(s.uploadedBy) || (typeof s.uploadedBy === "string" && s.uploadedBy.length > 256)) return false;
-  if (typeof s.uploadedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(s.uploadedAt) || !Number.isFinite(Date.parse(s.uploadedAt))) return false;
+  if (typeof s.uploadedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(s.uploadedAt)) return false;
+  const timestamp = Date.parse(s.uploadedAt);
+  if (!Number.isFinite(timestamp)) return false;
+  const parsedDate = new Date(timestamp);
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(s.uploadedAt);
+  if (!match || parsedDate.getUTCFullYear() !== Number(match[1]) || parsedDate.getUTCMonth() + 1 !== Number(match[2]) || parsedDate.getUTCDate() !== Number(match[3]) || parsedDate.getUTCHours() !== Number(match[4]) || parsedDate.getUTCMinutes() !== Number(match[5]) || parsedDate.getUTCSeconds() !== Number(match[6])) return false;
   if (!nullableString(s.entityType) || (s.entityType !== null && !ALLOWED_ENTITY_TYPES.has(s.entityType as string))) return false;
   if (!nullableString(s.entityId) || (typeof s.entityId === "string" && s.entityId.length > 256)) return false;
   if (!nullableString(s.altText) || (typeof s.altText === "string" && s.altText.length > 500)) return false;
