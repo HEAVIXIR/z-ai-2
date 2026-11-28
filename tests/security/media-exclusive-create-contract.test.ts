@@ -18,6 +18,11 @@ describe("media upload exclusive-create contract", () => {
     expect(source).toContain('await fs.writeFile(fullDiskPath, storedBuffer, { flag: "wx" });');
   });
 
+  it("retries binary filename collisions instead of overwriting files", () => {
+    expect(source).toContain("for (let attempt = 0; attempt < 3; attempt += 1)");
+    expect(source).toContain('if ((err as NodeJS.ErrnoException).code !== "EEXIST" || attempt === 2)');
+  });
+
   it("creates the sidecar exclusively (no overwrite on collision)", () => {
     expect(source).toContain('await fs.writeFile(sidecarDiskPath, JSON.stringify(sidecar, null, 2), { encoding: "utf8", flag: "wx" });');
   });
